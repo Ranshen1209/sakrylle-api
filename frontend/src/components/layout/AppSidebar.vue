@@ -143,7 +143,7 @@
     <div class="mt-auto border-t border-gray-100 p-3 dark:border-dark-800">
       <!-- Theme Toggle -->
       <button
-        @click="toggleTheme"
+        @click="toggleTheme($event)"
         class="sidebar-link mb-2 w-full"
         :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
         :title="sidebarCollapsed ? (isDark ? t('nav.lightMode') : t('nav.darkMode')) : undefined"
@@ -791,7 +791,33 @@ function toggleSidebar() {
   appStore.toggleSidebar()
 }
 
-function toggleTheme() {
+function toggleTheme(event?: MouseEvent) {
+  const x = event?.clientX ?? window.innerWidth / 2
+  const y = event?.clientY ?? window.innerHeight / 2
+  const endRadius = Math.hypot(
+    Math.max(x, window.innerWidth - x),
+    Math.max(y, window.innerHeight - y)
+  )
+
+  const supportsViewTransition = 'startViewTransition' in document
+  if (!supportsViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    applyThemeToggle()
+    return
+  }
+
+  const transition = (document as any).startViewTransition(() => {
+    applyThemeToggle()
+  })
+
+  transition.ready.then(() => {
+    document.documentElement.animate(
+      { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`] },
+      { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
+    )
+  })
+}
+
+function applyThemeToggle() {
   isDark.value = !isDark.value
   document.documentElement.classList.toggle('dark', isDark.value)
   localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
@@ -873,6 +899,14 @@ if (
   isDark.value = true
   document.documentElement.classList.add('dark')
 }
+
+// Auto-follow system theme when no user preference is saved
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  if (!localStorage.getItem('theme')) {
+    isDark.value = e.matches
+    document.documentElement.classList.toggle('dark', e.matches)
+  }
+})
 
 // Fetch admin settings (for feature-gated nav items like Ops).
 watch(
