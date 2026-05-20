@@ -429,10 +429,10 @@ const appStore = useAppStore()
 
 // ==================== Site Settings (same as HomeView) ====================
 
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
+const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sakrylle API')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
+const githubUrl = 'https://github.com/Ranshen1209/sub2api'
 
 // ==================== Theme (same as HomeView) ====================
 
@@ -526,7 +526,7 @@ function setDailyUsageDays(days: 7 | 30 | 90) {
 
 const CIRCUMFERENCE = 2 * Math.PI * 68
 const RING_GRADIENTS = [
-  { from: '#a855f7', to: '#5eead4' },
+  { from: '#9181bd', to: '#5eead4' },
   { from: '#6366F1', to: '#A5B4FC' },
   { from: '#10B981', to: '#6EE7B7' },
   { from: '#F59E0B', to: '#FCD34D' },
@@ -945,7 +945,7 @@ onUnmounted(() => {
 }
 .input-ring:focus {
   box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
-  border-color: #a855f7;
+  border-color: #9181bd;
   outline: none;
 }
 
