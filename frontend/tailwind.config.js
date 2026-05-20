@@ -5,19 +5,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 主色调 - Monet Purple 莫奈紫色系
+        // 主色调 - Monet Purple 莫奈紫（低饱和水彩薰衣草调）
         primary: {
-          50: '#faf5ff',
-          100: '#f3e8ff',
-          200: '#e9d5ff',
-          300: '#d8b4fe',
-          400: '#c084fc',
-          500: '#a855f7',
-          600: '#9333ea',
-          700: '#7e22ce',
-          800: '#6b21a8',
-          900: '#581c87',
-          950: '#3b0764'
+          50: '#f8f6fc',
+          100: '#f0ecf8',
+          200: '#e2daf2',
+          300: '#cfc2e8',
+          400: '#b5a3d9',
+          500: '#9181bd',
+          600: '#7b6aab',
+          700: '#6b5b95',
+          800: '#584b7a',
+          900: '#4a3f66',
+          950: '#2d2640'
         },
         // 辅助色 - 深蓝灰
         accent: {
@@ -67,20 +67,20 @@ export default {
       boxShadow: {
         glass: '0 8px 32px rgba(0, 0, 0, 0.08)',
         'glass-sm': '0 4px 16px rgba(0, 0, 0, 0.06)',
-        glow: '0 0 20px rgba(168, 85, 247, 0.25)',
-        'glow-lg': '0 0 40px rgba(168, 85, 247, 0.35)',
+        glow: '0 0 20px rgba(145, 129, 189, 0.25)',
+        'glow-lg': '0 0 40px rgba(145, 129, 189, 0.35)',
         card: '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06)',
         'card-hover': '0 10px 40px rgba(0, 0, 0, 0.08)',
         'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.1)'
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(135deg, #a855f7 0%, #9333ea 100%)',
+        'gradient-primary': 'linear-gradient(135deg, #9181bd 0%, #7b6aab 100%)',
         'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
         'gradient-glass':
           'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
         'mesh-gradient':
-          'radial-gradient(at 40% 20%, rgba(168, 85, 247, 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(147, 51, 234, 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(168, 85, 247, 0.08) 0px, transparent 50%)'
+          'radial-gradient(at 40% 20%, rgba(145, 129, 189, 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(123, 106, 171, 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(145, 129, 189, 0.08) 0px, transparent 50%)'
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',
@@ -118,8 +118,8 @@ export default {
           '100%': { backgroundPosition: '200% 0' }
         },
         glow: {
-          '0%': { boxShadow: '0 0 20px rgba(168, 85, 247, 0.25)' },
-          '100%': { boxShadow: '0 0 30px rgba(168, 85, 247, 0.4)' }
+          '0%': { boxShadow: '0 0 20px rgba(145, 129, 189, 0.25)' },
+          '100%': { boxShadow: '0 0 30px rgba(145, 129, 189, 0.4)' }
         }
       },
       backdropBlur: {
