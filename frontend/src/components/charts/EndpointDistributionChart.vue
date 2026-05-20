@@ -215,12 +215,12 @@ const chartColors = [
   '#ef4444',
   '#8b5cf6',
   '#ec4899',
-  '#a855f7',
+  '#9181bd',
   '#f97316',
   '#6366f1',
   '#84cc16',
   '#06b6d4',
-  '#a855f7'
+  '#9181bd'
 ]
 
 const displayEndpointStats = computed(() => {
