@@ -986,6 +986,8 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		platform = forcedPlatform
 	}
 
+	ownedBy := platformOwnedBy(platform)
+
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
@@ -995,55 +997,112 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	if len(availableModels) > 0 {
-		writeModelsList(c, availableModels)
+		// Build model list from whitelist with owned_by field
+		models := make([]gin.H, 0, len(availableModels))
+		for _, modelID := range availableModels {
+			models = append(models, gin.H{
+				"id":           modelID,
+				"object":       "model",
+				"type":         "model",
+				"display_name": modelID,
+				"owned_by":     ownedBy,
+				"created":      defaultModelCreatedAtUnix,
+				"created_at":   defaultModelCreatedAtRFC3339,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   models,
+		})
 		return
 	}
 
-	// Fallback to default models
-	if platform == service.PlatformOpenAI {
+	// Fallback to default models — wrap each so owned_by is always present.
+	switch platform {
+	case service.PlatformOpenAI:
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
 			"data":   openai.DefaultModels,
 		})
-		return
-	}
-
-	if platform == service.PlatformGemini {
+	case service.PlatformGemini:
+		models := make([]gin.H, 0, len(geminicli.DefaultModels))
+		for _, m := range geminicli.DefaultModels {
+			models = append(models, gin.H{
+				"id":           m.ID,
+				"object":       "model",
+				"type":         m.Type,
+				"display_name": m.DisplayName,
+				"owned_by":     ownedBy,
+				"created_at":   m.CreatedAt,
+			})
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   geminicli.DefaultModels,
+			"data":   models,
 		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   claude.DefaultModels,
-	})
-}
-
-func writeModelsList(c *gin.Context, modelIDs []string) {
-	models := make([]claude.Model, 0, len(modelIDs))
-	for _, modelID := range modelIDs {
-		models = append(models, claude.Model{
-			ID:          modelID,
-			Type:        "model",
-			DisplayName: modelID,
-			CreatedAt:   "2024-01-01T00:00:00Z",
+	default:
+		models := make([]gin.H, 0, len(claude.DefaultModels))
+		for _, m := range claude.DefaultModels {
+			models = append(models, gin.H{
+				"id":           m.ID,
+				"object":       "model",
+				"type":         m.Type,
+				"display_name": m.DisplayName,
+				"owned_by":     ownedBy,
+				"created_at":   m.CreatedAt,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   models,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   models,
-	})
 }
+
+// platformOwnedBy 把内部 platform 标识转成 OpenAI 兼容客户端期望的 owned_by。
+// 缺这个字段会让 CherryStudio 等客户端按 channel UUID 分组，UI 显示成乱码。
+func platformOwnedBy(platform string) string {
+	switch platform {
+	case service.PlatformOpenAI:
+		return "openai"
+	case service.PlatformGemini:
+		return "google"
+	default:
+		return "anthropic"
+	}
+}
+
+const (
+	defaultModelCreatedAtUnix    = int64(1704067200) // 2024-01-01T00:00:00Z
+	defaultModelCreatedAtRFC3339 = "2024-01-01T00:00:00Z"
+)
 
 func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
 	if platform == service.PlatformOpenAI {
 		writeOpenAIModelsList(c, modelIDs)
 		return
 	}
-	writeModelsList(c, modelIDs)
+	writeModelsList(c, platform, modelIDs)
+}
+
+func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
+	ownedBy := platformOwnedBy(platform)
+	models := make([]gin.H, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		models = append(models, gin.H{
+			"id":           modelID,
+			"object":       "model",
+			"type":         "model",
+			"display_name": modelID,
+			"owned_by":     ownedBy,
+			"created":      defaultModelCreatedAtUnix,
+			"created_at":   defaultModelCreatedAtRFC3339,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
 }
 
 func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
@@ -1149,6 +1208,7 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return ids
 	}
 }
+
 
 // AntigravityModels 返回 Antigravity 支持的全部模型
 // GET /antigravity/models
