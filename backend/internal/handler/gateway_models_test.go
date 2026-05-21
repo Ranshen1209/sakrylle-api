@@ -52,7 +52,7 @@ func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHand
 	}
 }
 
-func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
+func TestGatewayModels_NoConfigurationReturnsEmpty(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(20)
@@ -80,8 +80,10 @@ func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, "list", got.Object)
-	require.Contains(t, modelIDsForTest(got.Data), "gemini-2.5-flash")
-	require.NotContains(t, modelIDsForTest(got.Data), "claude-sonnet-4-6")
+	// New contract: when no channel_model_pricing is configured and accounts
+	// have no model_mapping, return an empty list. Surfacing hardcoded
+	// DefaultModels here would leak unconfigured models to API clients.
+	require.Empty(t, got.Data)
 }
 
 func TestGatewayModels_GeminiGroupFiltersMappedModelsByPlatform(t *testing.T) {
