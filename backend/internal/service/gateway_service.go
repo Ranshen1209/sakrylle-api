@@ -10445,8 +10445,19 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 	return normalized, nil
 }
 
-// GetAvailableModels returns the list of models available for a group
-// It aggregates model_mapping keys from all schedulable accounts in the group
+// GetAvailableModels returns the list of models available for a group.
+//
+// Source of truth (in order):
+//  1. channel_model_pricing — what admin declared this channel sells.
+//     This is the authoritative list because it's what admin configures
+//     through the UI and what the billing system uses.
+//  2. accounts.model_mapping — legacy fallback for installs that haven't
+//     migrated to channel-level pricing yet. Aggregates the union of
+//     mapping keys across schedulable accounts in the group.
+//
+// Returns nil if neither source has data; the caller then surfaces an
+// empty list rather than a hardcoded DefaultModels — leaking unconfigured
+// models to clients hides misconfigurations.
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {
@@ -10459,6 +10470,56 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	}
 	modelsListCacheMissTotal.Add(1)
 
+	models := s.collectModelsFromChannelPricing(ctx, groupID, platform)
+	if len(models) == 0 {
+		models = s.collectModelsFromAccountMapping(ctx, groupID, platform)
+	}
+
+	if s.modelsListCache != nil {
+		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
+		modelsListCacheStoreTotal.Add(1)
+	}
+	return cloneStringSlice(models)
+}
+
+// collectModelsFromChannelPricing aggregates the Models[] arrays from every
+// ChannelModelPricing entry whose Platform matches the requested platform
+// (or any entry, when platform is empty). Returns sorted, deduplicated list.
+func (s *GatewayService) collectModelsFromChannelPricing(ctx context.Context, groupID *int64, platform string) []string {
+	if groupID == nil || s.channelService == nil {
+		return nil
+	}
+	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
+	if err != nil || ch == nil {
+		return nil
+	}
+	modelSet := make(map[string]struct{})
+	for _, p := range ch.ModelPricing {
+		if platform != "" && p.Platform != platform {
+			continue
+		}
+		for _, m := range p.Models {
+			m = strings.TrimSpace(m)
+			if m == "" {
+				continue
+			}
+			modelSet[m] = struct{}{}
+		}
+	}
+	if len(modelSet) == 0 {
+		return nil
+	}
+	models := make([]string, 0, len(modelSet))
+	for m := range modelSet {
+		models = append(models, m)
+	}
+	sort.Strings(models)
+	return models
+}
+
+// collectModelsFromAccountMapping is the pre-channel-pricing fallback.
+// It aggregates model_mapping keys from schedulable accounts in the group.
+func (s *GatewayService) collectModelsFromAccountMapping(ctx context.Context, groupID *int64, platform string) []string {
 	var accounts []Account
 	var err error
 
@@ -10472,7 +10533,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		return nil
 	}
 
-	// Filter by platform if specified
 	if platform != "" {
 		filtered := make([]Account, 0)
 		for _, acc := range accounts {
@@ -10483,7 +10543,6 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		accounts = filtered
 	}
 
-	// Collect unique models from all accounts
 	modelSet := make(map[string]struct{})
 	hasAnyMapping := false
 
@@ -10497,27 +10556,16 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		}
 	}
 
-	// If no account has model_mapping, return nil (use default)
 	if !hasAnyMapping {
-		if s.modelsListCache != nil {
-			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
-			modelsListCacheStoreTotal.Add(1)
-		}
 		return nil
 	}
 
-	// Convert to slice
 	models := make([]string, 0, len(modelSet))
 	for model := range modelSet {
 		models = append(models, model)
 	}
 	sort.Strings(models)
-
-	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
-		modelsListCacheStoreTotal.Add(1)
-	}
-	return cloneStringSlice(models)
+	return models
 }
 
 func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform string) {

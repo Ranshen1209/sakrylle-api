@@ -16,14 +16,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -970,8 +967,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 // Models handles listing available models
 // GET /v1/models
-// Returns models based on account configurations (model_mapping whitelist)
-// Falls back to default models if no whitelist is configured
+//
+// Returns the models the admin has declared this group sells, sourced
+// from the group's channel_model_pricing (and legacy account model_mapping
+// as a fallback for un-migrated installs). Does NOT fall back to a
+// hardcoded DefaultModels list — that would leak unconfigured models to
+// API clients and hide misconfigurations.
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
@@ -988,7 +989,6 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	ownedBy := platformOwnedBy(platform)
 
-	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(platform), apiKey.Group.ModelsListConfig.Models)
@@ -996,71 +996,26 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	if len(availableModels) > 0 {
-		// Build model list from whitelist with owned_by field
-		models := make([]gin.H, 0, len(availableModels))
-		for _, modelID := range availableModels {
-			models = append(models, gin.H{
-				"id":           modelID,
-				"object":       "model",
-				"type":         "model",
-				"display_name": modelID,
-				"owned_by":     ownedBy,
-				"created":      defaultModelCreatedAtUnix,
-				"created_at":   defaultModelCreatedAtRFC3339,
-			})
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   models,
-		})
-		return
-	}
-
-	// Fallback to default models — wrap each so owned_by is always present.
-	switch platform {
-	case service.PlatformOpenAI:
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   openai.DefaultModels,
-		})
-	case service.PlatformGemini:
-		models := make([]gin.H, 0, len(geminicli.DefaultModels))
-		for _, m := range geminicli.DefaultModels {
-			models = append(models, gin.H{
-				"id":           m.ID,
-				"object":       "model",
-				"type":         m.Type,
-				"display_name": m.DisplayName,
-				"owned_by":     ownedBy,
-				"created_at":   m.CreatedAt,
-			})
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   models,
-		})
-	default:
-		models := make([]gin.H, 0, len(claude.DefaultModels))
-		for _, m := range claude.DefaultModels {
-			models = append(models, gin.H{
-				"id":           m.ID,
-				"object":       "model",
-				"type":         m.Type,
-				"display_name": m.DisplayName,
-				"owned_by":     ownedBy,
-				"created_at":   m.CreatedAt,
-			})
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   models,
+	// Build model list with owned_by field (no fallback to default models)
+	models := make([]gin.H, 0, len(availableModels))
+	for _, modelID := range availableModels {
+		models = append(models, gin.H{
+			"id":           modelID,
+			"object":       "model",
+			"type":         "model",
+			"display_name": modelID,
+			"owned_by":     ownedBy,
+			"created":      defaultModelCreatedAtUnix,
+			"created_at":   defaultModelCreatedAtRFC3339,
 		})
 	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
 }
 
 // platformOwnedBy 把内部 platform 标识转成 OpenAI 兼容客户端期望的 owned_by。
-// 缺这个字段会让 CherryStudio 等客户端按 channel UUID 分组，UI 显示成乱码。
 func platformOwnedBy(platform string) string {
 	switch platform {
 	case service.PlatformOpenAI:
