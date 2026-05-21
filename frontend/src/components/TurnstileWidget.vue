@@ -5,7 +5,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { useTheme } from '@/composables/useTheme'
 
 interface TurnstileRenderOptions {
   sitekey: string
@@ -50,6 +51,18 @@ const emit = defineEmits<{
 const containerRef = ref<HTMLElement | null>(null)
 const widgetId = ref<string | null>(null)
 const scriptLoaded = ref(false)
+
+const { isDark } = useTheme()
+
+// When caller leaves theme at the default 'auto', follow Sakrylle's own
+// dark/light toggle (driven by localStorage + the .dark class on <html>),
+// not Cloudflare's OS-level auto. Otherwise honor the explicit prop.
+const resolvedTheme = computed<'light' | 'dark'>(() => {
+  if (props.theme === 'light' || props.theme === 'dark') {
+    return props.theme
+  }
+  return isDark.value ? 'dark' : 'light'
+})
 
 const loadScript = (): Promise<void> => {
   return new Promise((resolve, reject) => {
@@ -116,7 +129,7 @@ const renderWidget = () => {
     'error-callback': () => {
       emit('error')
     },
-    theme: props.theme,
+    theme: resolvedTheme.value,
     size: props.size
   })
 }
@@ -163,6 +176,15 @@ watch(
     }
   }
 )
+
+// Turnstile has no setTheme API, so re-render when site theme flips.
+// This drops the current token and emits a fresh challenge — acceptable
+// because dark-mode toggling is rare and intentional.
+watch(resolvedTheme, () => {
+  if (scriptLoaded.value && props.siteKey) {
+    renderWidget()
+  }
+})
 </script>
 
 <style scoped>
