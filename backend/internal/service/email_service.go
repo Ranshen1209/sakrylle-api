@@ -198,7 +198,10 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 		from, to, subject, body)
 
 	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
+	var auth smtp.Auth
+	if config.Username != "" {
+		auth = smtp.PlainAuth("", config.Username, config.Password, config.Host)
+	}
 
 	if config.UseTLS {
 		return s.sendMailTLS(addr, auth, config.From, to, []byte(msg), config.Host)
@@ -231,8 +234,10 @@ func (s *EmailService) sendMailPlain(addr string, auth smtp.Auth, from, to strin
 		}
 	}
 
-	if err = client.Auth(auth); err != nil {
-		return fmt.Errorf("smtp auth: %w", err)
+	if auth != nil {
+		if err = client.Auth(auth); err != nil {
+			return fmt.Errorf("smtp auth: %w", err)
+		}
 	}
 	if err = client.Mail(from); err != nil {
 		return fmt.Errorf("smtp mail: %w", err)
@@ -276,8 +281,10 @@ func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string,
 	}
 	defer func() { _ = client.Close() }()
 
-	if err = client.Auth(auth); err != nil {
-		return fmt.Errorf("smtp auth: %w", err)
+	if auth != nil {
+		if err = client.Auth(auth); err != nil {
+			return fmt.Errorf("smtp auth: %w", err)
+		}
 	}
 
 	if err = client.Mail(from); err != nil {
