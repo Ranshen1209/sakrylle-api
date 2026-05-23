@@ -54,12 +54,12 @@ export function formatNumber(num: number | null | undefined): string {
 
 /**
  * 格式化货币金额
- * @param amount 金额
- * @param currency 货币代码，默认 USD
- * @returns 格式化后的字符串，如 "$1.25"
+ * @param amount 金额（数值视作 ￥，不做汇率换算）
+ * @param currency 货币代码，默认 CNY
+ * @returns 格式化后的字符串，如 "￥1.25"
  */
-export function formatCurrency(amount: number | null | undefined, currency: string = 'USD'): string {
-  if (amount === null || amount === undefined) return '$0.00'
+export function formatCurrency(amount: number | null | undefined, currency: string = 'CNY'): string {
+  if (amount === null || amount === undefined) return '￥0.00'
 
   const locale = getLocale()
 
@@ -70,7 +70,8 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
     style: 'currency',
     currency: currency,
     minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits
+    maximumFractionDigits: fractionDigits,
+    currencyDisplay: 'narrowSymbol'
   }).format(amount)
 }
 
