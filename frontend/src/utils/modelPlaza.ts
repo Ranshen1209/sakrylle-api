@@ -44,14 +44,14 @@ export interface PlazaModel {
   group: PlazaGroupAccess
 }
 
-/** Format the original USD price as displayed text, scaled by `scale`. */
+/** Format the price as displayed text, scaled by `scale` (numeric value unchanged; rendered as ￥). */
 export function formatPrice(value: number | null, scale: number): string {
   if (value == null) return '-'
   const scaled = value * scale
-  if (scaled === 0) return '$0'
-  // toPrecision(6) is plenty for prices like 0.00075 → "$0.00075", and the
+  if (scaled === 0) return '￥0'
+  // toPrecision(6) is plenty for prices like 0.00075 → "￥0.00075", and the
   // strip removes IEEE 754 trailing-zero noise.
-  return `$${scaled.toPrecision(6).replace(/\.?0+$/, '')}`
+  return `￥${scaled.toPrecision(6).replace(/\.?0+$/, '')}`
 }
 
 /**

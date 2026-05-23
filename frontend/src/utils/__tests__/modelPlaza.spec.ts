@@ -212,15 +212,15 @@ describe('formatPrice', () => {
 
   it('strips trailing IEEE noise', () => {
     // 0.0000005 × 1_000_000 = 0.5, but JS may produce "0.5000000000".
-    expect(formatPrice(0.0000005, 1_000_000)).toBe('$0.5')
+    expect(formatPrice(0.0000005, 1_000_000)).toBe('￥0.5')
   })
 
   it('renders zero cleanly', () => {
-    expect(formatPrice(0, 1_000_000)).toBe('$0')
+    expect(formatPrice(0, 1_000_000)).toBe('￥0')
   })
 
   it('keeps full precision for small values', () => {
-    expect(formatPrice(0.0000001, 1_000_000)).toBe('$0.1')
+    expect(formatPrice(0.0000001, 1_000_000)).toBe('￥0.1')
   })
 })
 
