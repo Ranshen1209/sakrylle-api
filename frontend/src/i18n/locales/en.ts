@@ -1134,7 +1134,7 @@ export default {
   // post-multiplier pricing prominently displayed.
   plaza: {
     title: 'Model Plaza',
-    description: 'Browse every model you can use; prices are already discounted by your best group multiplier.',
+    description: 'Browse every model and price available to you.',
     modelCount: '{count} models',
     searchPlaceholder: 'Search models, platform, or channel…',
     showOriginal: 'Show original',

@@ -141,7 +141,7 @@ const filteredModels = computed<PlazaModel[]>(() => {
   const q = searchQuery.value.trim().toLowerCase()
   return plazaModels.value.filter((m) => {
     if (filterPlatform.value && m.platform !== filterPlatform.value) return false
-    if (filterGroup.value && !m.groups.some((g) => g.name === filterGroup.value)) return false
+    if (filterGroup.value && m.group.name !== filterGroup.value) return false
     if (filterBilling.value) {
       const mode = m.pricing?.billing_mode ?? BILLING_MODE_TOKEN
       if (mode !== filterBilling.value) return false
