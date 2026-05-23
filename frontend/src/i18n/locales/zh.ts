@@ -1118,7 +1118,7 @@ export default {
   // post-multiplier pricing prominently displayed.
   plaza: {
     title: '模型广场',
-    description: '浏览你可用的全部模型；价格已按你的最优分组倍率折算。',
+    description: '浏览你可用的全部模型与价格。',
     modelCount: '共 {count} 个模型',
     searchPlaceholder: '搜索模型、平台或渠道…',
     showOriginal: '显示原价',

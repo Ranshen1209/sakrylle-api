@@ -18,7 +18,7 @@
       <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {{ t('plaza.filters.platform') }}
       </h3>
-      <div class="grid grid-cols-2 gap-1.5">
+      <div class="flex flex-col gap-1.5">
         <FilterPill
           :active="platform === ''"
           :label="t('plaza.filters.all')"
@@ -41,7 +41,7 @@
       <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {{ t('plaza.filters.group') }}
       </h3>
-      <div class="grid grid-cols-2 gap-1.5">
+      <div class="flex flex-col gap-1.5">
         <FilterPill
           :active="group === ''"
           :label="t('plaza.filters.all')"
@@ -65,7 +65,7 @@
       <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {{ t('plaza.filters.billing') }}
       </h3>
-      <div class="grid grid-cols-2 gap-1.5">
+      <div class="flex flex-col gap-1.5">
         <FilterPill
           :active="billing === ''"
           :label="t('plaza.filters.all')"
@@ -113,9 +113,8 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 // ── Inline FilterPill ──────────────────────────────────────────────
-// Defined inline (render fn) to keep the plaza folder small. Controlled
-// chip with active/inactive styling, count badge, and an optional discount
-// suffix like "0.2x".
+// Render-fn chip with active/inactive styling, count badge, and optional
+// rate suffix like "0.2x". Full-width so it stacks one-per-row.
 const FilterPill = (p: {
   active: boolean
   label: string
@@ -128,7 +127,7 @@ const FilterPill = (p: {
     {
       type: 'button',
       class: [
-        'flex items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+        'flex w-full items-center justify-between gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors',
         p.active
           ? 'border-primary-400 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/30 dark:text-primary-200'
           : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-700',
@@ -179,19 +178,18 @@ const platformFacets = computed<Facet[]>(() => {
 })
 
 const groupFacets = computed<Facet[]>(() => {
-  // Aggregate by group display name so two ids with the same name (rare but
-  // possible across platforms) collapse into one filter row.
+  // Aggregate by group display name. Each plaza row has exactly one group
+  // (one card == one access path), so count is rows-per-group.
   const counts = new Map<string, { count: number; rate: number }>()
   for (const m of props.models) {
-    for (const g of m.groups) {
-      const prev = counts.get(g.name)
-      if (prev) {
-        prev.count += 1
-        // Track the *minimum* rate so the suffix shows best-case discount.
-        if (g.effectiveRate < prev.rate) prev.rate = g.effectiveRate
-      } else {
-        counts.set(g.name, { count: 1, rate: g.effectiveRate })
-      }
+    const g = m.group
+    const prev = counts.get(g.name)
+    if (prev) {
+      prev.count += 1
+      // Track minimum rate so the suffix shows the best-case discount.
+      if (g.effectiveRate < prev.rate) prev.rate = g.effectiveRate
+    } else {
+      counts.set(g.name, { count: 1, rate: g.effectiveRate })
     }
   }
   return [...counts.entries()]

@@ -3,8 +3,6 @@
     class="group relative flex flex-col gap-3 overflow-hidden rounded-2xl border bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:bg-dark-800"
     :class="[platformBorderClass(model.platform)]"
   >
-    <div class="absolute inset-x-0 top-0 h-1 opacity-80" :class="[platformAccentBarClass(model.platform)]" />
-
     <header class="flex items-start justify-between gap-3">
       <div class="flex min-w-0 items-center gap-3">
         <div
@@ -22,9 +20,9 @@
           </h3>
           <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
             <span class="uppercase tracking-wide">{{ model.platform || '—' }}</span>
-            <span v-if="bestDiscountLabel" class="mx-1.5 text-gray-300 dark:text-gray-600">·</span>
-            <span v-if="bestDiscountLabel" :class="platformTextClass(model.platform)">
-              {{ bestDiscountLabel }}
+            <span v-if="rateLabel" class="mx-1.5 text-gray-300 dark:text-gray-600">·</span>
+            <span v-if="rateLabel" :class="platformTextClass(model.platform)">
+              {{ rateLabel }}
             </span>
           </p>
         </div>
@@ -47,7 +45,7 @@
         <PlazaPriceRow
           :label="t('plaza.pricing.input')"
           :value="model.pricing.input_price"
-          :rate="model.bestRate"
+          :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
           :show-original="showOriginal"
@@ -55,7 +53,7 @@
         <PlazaPriceRow
           :label="t('plaza.pricing.output')"
           :value="model.pricing.output_price"
-          :rate="model.bestRate"
+          :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
           :show-original="showOriginal"
@@ -64,7 +62,7 @@
           v-if="model.pricing.cache_read_price != null"
           :label="t('plaza.pricing.cacheRead')"
           :value="model.pricing.cache_read_price"
-          :rate="model.bestRate"
+          :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
           :show-original="showOriginal"
@@ -73,7 +71,7 @@
           v-if="model.pricing.cache_write_price != null"
           :label="t('plaza.pricing.cacheWrite')"
           :value="model.pricing.cache_write_price"
-          :rate="model.bestRate"
+          :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
           :show-original="showOriginal"
@@ -83,7 +81,7 @@
         <PlazaPriceRow
           :label="t('plaza.pricing.perRequest')"
           :value="model.pricing.per_request_price"
-          :rate="model.bestRate"
+          :rate="effectiveRate"
           :scale="1"
           :unit="t('plaza.pricing.unitPerRequest')"
           :show-original="showOriginal"
@@ -93,7 +91,7 @@
         <PlazaPriceRow
           :label="t('plaza.pricing.image')"
           :value="model.pricing.image_output_price ?? model.pricing.per_request_price"
-          :rate="model.bestRate"
+          :rate="effectiveRate"
           :scale="1"
           :unit="t('plaza.pricing.unitPerRequest')"
           :show-original="showOriginal"
@@ -104,7 +102,7 @@
       {{ t('plaza.noPricing') }}
     </section>
 
-    <!-- Footer: billing badge + groups -->
+    <!-- Footer: billing badge + this card's group -->
     <footer class="flex flex-wrap items-center gap-1.5">
       <span
         class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium"
@@ -113,22 +111,13 @@
         {{ billingLabel }}
       </span>
       <GroupBadge
-        v-for="g in displayedGroups"
-        :key="`g-${g.id}`"
-        :name="g.name"
-        :platform="g.platform as GroupPlatform"
-        :subscription-type="g.subscriptionType as SubscriptionType"
-        :rate-multiplier="g.defaultRate"
-        :user-rate-multiplier="g.userRate"
+        :name="model.group.name"
+        :platform="model.group.platform as GroupPlatform"
+        :subscription-type="model.group.subscriptionType as SubscriptionType"
+        :rate-multiplier="model.group.defaultRate"
+        :user-rate-multiplier="model.group.userRate"
         always-show-rate
       />
-      <span
-        v-if="hiddenGroupCount > 0"
-        class="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-500 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-400"
-        :title="t('plaza.moreGroupsTooltip')"
-      >
-        +{{ hiddenGroupCount }}
-      </span>
     </footer>
   </article>
 </template>
@@ -142,11 +131,7 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import PlazaPriceRow from './PlazaPriceRow.vue'
 import type { PlazaModel } from '@/utils/modelPlaza'
 import type { GroupPlatform, SubscriptionType } from '@/types'
-import {
-  platformAccentBarClass,
-  platformBorderClass,
-  platformTextClass,
-} from '@/utils/platformColors'
+import { platformBorderClass, platformTextClass } from '@/utils/platformColors'
 import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_PER_REQUEST,
@@ -158,14 +143,13 @@ const props = withDefaults(
     model: PlazaModel
     /** Show original strikethrough price beside the discounted price. */
     showOriginal?: boolean
-    /** Cap the number of group chips before "+N" overflow. */
-    maxGroups?: number
   }>(),
-  { showOriginal: true, maxGroups: 4 },
+  { showOriginal: true },
 )
 
 const { t } = useI18n()
 const perMillionScale = 1_000_000
+const effectiveRate = computed(() => props.model.group.effectiveRate)
 
 const billingMode = computed(() => props.model.pricing?.billing_mode ?? BILLING_MODE_TOKEN)
 const isToken = computed(() => billingMode.value === BILLING_MODE_TOKEN)
@@ -184,12 +168,9 @@ const billingBadgeClass = computed(() => {
   return 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
 })
 
-const displayedGroups = computed(() => props.model.groups.slice(0, props.maxGroups))
-const hiddenGroupCount = computed(() => Math.max(0, props.model.groups.length - props.maxGroups))
-
-const bestDiscountLabel = computed(() => {
-  const rate = props.model.bestRate
-  // Skip the badge when there is no discount (rate == 1) — shouting "1.0x" adds
+const rateLabel = computed(() => {
+  const rate = effectiveRate.value
+  // Skip the badge when there is no discount (rate == 1) — shouting "1x" adds
   // noise without information.
   if (rate >= 0.999 && rate <= 1.001) return ''
   // toFixed(2) then strip trailing zero turns 0.20 → "0.2", 1.50 → "1.5".
@@ -208,8 +189,7 @@ async function onCopy() {
       copied.value = false
     }, 1500)
   } catch {
-    // Clipboard may be blocked (insecure context, permissions). Fail silent;
-    // user can still triple-click + copy the model name from the title.
+    // Clipboard may be blocked (insecure context, permissions). Fail silent.
   }
 }
 </script>
