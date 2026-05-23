@@ -406,6 +406,7 @@ export default {
     groups: '分组管理',
     channels: '渠道管理',
     availableChannels: '可用渠道',
+    modelPlaza: '模型广场',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
@@ -1128,6 +1129,44 @@ export default {
       imageOutputPrice: '图片输出',
       perRequestPrice: '每次请求',
       intervals: '阶梯定价',
+      unitPerMillion: '/ 1M token',
+      unitPerRequest: '/ 次'
+    }
+  },
+
+  // Model Plaza (user-facing): card-based view of all available models with
+  // post-multiplier pricing prominently displayed.
+  plaza: {
+    title: '模型广场',
+    description: '浏览你可用的全部模型；价格已按你的最优分组倍率折算。',
+    modelCount: '共 {count} 个模型',
+    searchPlaceholder: '搜索模型、平台或渠道…',
+    showOriginal: '显示原价',
+    empty: '暂无可用模型，请联系管理员开通分组。',
+    noMatch: '没有匹配的模型，试试调整筛选条件。',
+    noPricing: '该模型尚未配置价格',
+    copy: '复制 {name}',
+    moreGroupsTooltip: '还有更多分组可访问该模型',
+    filters: {
+      title: '筛选',
+      reset: '重置',
+      all: '全部',
+      platform: '平台',
+      group: '可用分组',
+      billing: '计费类型'
+    },
+    billing: {
+      token: '按量计费',
+      perRequest: '按次计费',
+      image: '按图片计费'
+    },
+    pricing: {
+      input: '输入',
+      output: '输出',
+      cacheRead: '缓存读取',
+      cacheWrite: '缓存写入',
+      perRequest: '每次',
+      image: '图片',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
     }

@@ -406,6 +406,7 @@ export default {
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',
+    modelPlaza: 'Model Plaza',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
@@ -1124,6 +1125,44 @@ export default {
       imageOutputPrice: 'Image Output',
       perRequestPrice: 'Per Request',
       intervals: 'Tiered Pricing',
+      unitPerMillion: '/ 1M tokens',
+      unitPerRequest: '/ request'
+    }
+  },
+
+  // Model Plaza (user-facing): card-based view of all available models with
+  // post-multiplier pricing prominently displayed.
+  plaza: {
+    title: 'Model Plaza',
+    description: 'Browse every model you can use; prices are already discounted by your best group multiplier.',
+    modelCount: '{count} models',
+    searchPlaceholder: 'Search models, platform, or channel…',
+    showOriginal: 'Show original',
+    empty: 'No models available yet — ask an admin to grant you a group.',
+    noMatch: 'No models match the current filters.',
+    noPricing: 'No pricing configured for this model',
+    copy: 'Copy {name}',
+    moreGroupsTooltip: 'More groups can reach this model',
+    filters: {
+      title: 'Filters',
+      reset: 'Reset',
+      all: 'All',
+      platform: 'Platform',
+      group: 'Available Groups',
+      billing: 'Billing Type'
+    },
+    billing: {
+      token: 'Per Token',
+      perRequest: 'Per Request',
+      image: 'Per Image'
+    },
+    pricing: {
+      input: 'Input',
+      output: 'Output',
+      cacheRead: 'Cache Read',
+      cacheWrite: 'Cache Write',
+      perRequest: 'Per Request',
+      image: 'Image',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
     }
