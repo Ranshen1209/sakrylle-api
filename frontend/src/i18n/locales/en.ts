@@ -377,6 +377,7 @@ export default {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
+    authorizedApps: 'Authorized Apps',
     usage: 'Usage',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
@@ -708,6 +709,29 @@ export default {
   // Groups (shared)
   groups: {
     subscription: 'Sub'
+  },
+
+  // OAuth provider — Authorized Apps
+  authorizedApps: {
+    title: 'Authorized Apps',
+    description: 'Manage third-party apps that can access your account',
+    emptyTitle: 'No authorized apps yet',
+    empty: 'When you authorize a third-party app, it will appear here. You can revoke access at any time.',
+    columns: {
+      app: 'App',
+      scopes: 'Permissions',
+      firstAuthorized: 'First authorized',
+      lastUsed: 'Last used',
+      sessions: 'Active sessions'
+    },
+    revoke: 'Revoke',
+    revokeConfirmTitle: 'Revoke access?',
+    revokeConfirmMessage: '{name} will no longer be able to access your account. Any access tokens already issued will be invalidated immediately.',
+    revoked: 'Revoked {count} session(s)',
+    revokeFailed: 'Revocation failed',
+    loadFailed: 'Failed to load',
+    disabledBadge: 'Decommissioned',
+    disabledTooltip: 'This app has been decommissioned by the administrator, but you can still revoke prior authorizations'
   },
 
   // API Keys

@@ -2,9 +2,11 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -290,4 +292,71 @@ func renderOAuthInlineError(c *gin.Context, status int, message string) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Header("Cache-Control", "no-store")
 	c.String(status, oauthInlineErrorHTML(message))
+}
+
+// ── User-facing grants management ───────────────────────────────────────────
+
+// ListGrants returns the OAuth authorizations the current user has issued,
+// one row per third-party app. Mounted under JWT-protected /api/v1/.
+func (h *OAuthProviderHandler) ListGrants(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	grants, err := h.provider.ListUserGrants(c.Request.Context(), subject.UserID)
+	if err != nil {
+		// Don't echo internal error text — DB error strings can leak schema
+		// names (table/column/constraint). Log server-side, return opaque.
+		slog.Warn("oauth: list user grants failed",
+			"user_id", subject.UserID, "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":             "server_error",
+			"error_description": "failed to load authorized apps",
+		})
+		return
+	}
+	out := make([]gin.H, 0, len(grants))
+	for _, g := range grants {
+		out = append(out, gin.H{
+			"client_id":           g.ClientID,
+			"client_name":         g.ClientName,
+			"client_disabled":     g.ClientDisabled,
+			"scopes":              g.Scopes,
+			"first_authorized_at": g.FirstAuthorizedAt,
+			"last_used_at":        g.LastUsedAt,
+			"active_token_count":  g.ActiveTokenCount,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"items": out})
+}
+
+// RevokeGrant revokes every active token a user holds for the given client.
+// Idempotent: revoking a non-existent or already-revoked grant returns 200
+// with `{"revoked": 0}`. Mounted under JWT-protected /api/v1/.
+func (h *OAuthProviderHandler) RevokeGrant(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	clientID := strings.TrimSpace(c.Param("client_id"))
+	if clientID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "client_id is required",
+		})
+		return
+	}
+	revoked, err := h.provider.RevokeUserGrant(c.Request.Context(), subject.UserID, clientID, time.Now())
+	if err != nil {
+		slog.Warn("oauth: revoke user grant failed",
+			"user_id", subject.UserID, "client_id", clientID, "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":             "server_error",
+			"error_description": "failed to revoke authorization",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revoked": revoked})
 }

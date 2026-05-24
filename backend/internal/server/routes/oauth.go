@@ -57,5 +57,7 @@ func RegisterOAuthRoutes(
 	oauth.Use(gin.HandlerFunc(jwtAuth))
 	{
 		oauth.POST("/authorize/approve", h.OAuthProvider.Approve)
+		oauth.GET("/grants", h.OAuthProvider.ListGrants)
+		oauth.DELETE("/grants/:client_id", h.OAuthProvider.RevokeGrant)
 	}
 }

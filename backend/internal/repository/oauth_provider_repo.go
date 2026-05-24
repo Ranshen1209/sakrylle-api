@@ -192,6 +192,24 @@ func (r *oauthProviderRepository) ListActiveByUserAndClient(ctx context.Context,
 	return out, nil
 }
 
+func (r *oauthProviderRepository) ListActiveByUser(ctx context.Context, userID int64, now time.Time) ([]*service.OAuthRefreshToken, error) {
+	rows, err := r.client.OAuthRefreshToken.Query().
+		Where(
+			oauthrefreshtoken.UserIDEQ(userID),
+			oauthrefreshtoken.RevokedAtIsNil(),
+			oauthrefreshtoken.ExpiresAtGT(now),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active refresh tokens by user: %w", err)
+	}
+	out := make([]*service.OAuthRefreshToken, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entOAuthRefreshTokenToService(row))
+	}
+	return out, nil
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 // withTx wraps a closure in a transaction, committing on nil error and rolling back otherwise.
