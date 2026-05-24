@@ -5503,7 +5503,7 @@ export default {
         },
         qqEmailWarning: {
           title: 'QQ Email Sign-up Warning',
-          description: 'Show a popup on the registration page when a user enters @qq.com / @vip.qq.com / @foxmail.com, recommending Outlook, Gmail, 163, or iCloud. Recommended on — QQ frequently delays or silently drops mail from new domains, which causes "I never got my code" support tickets.',
+          description: 'Show a popup on the registration page when a user enters qq.com / vip.qq.com / foxmail.com, recommending Outlook, Gmail, 163, or iCloud. Recommended on — QQ frequently delays or silently drops mail from new domains, which causes "I never got my code" support tickets.',
           enabled: 'Enable QQ email warning',
           enabledHint: 'When off, the registration page accepts QQ addresses without prompting.',
         },
