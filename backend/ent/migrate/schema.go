@@ -793,6 +793,115 @@ var (
 			},
 		},
 	}
+	// OauthClientsColumns holds the columns for the "oauth_clients" table.
+	OauthClientsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "client_id", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "name", Type: field.TypeString, Size: 200},
+		{Name: "client_secret_hash", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "redirect_uris", Type: field.TypeJSON},
+		{Name: "allowed_scopes", Type: field.TypeJSON},
+		{Name: "pkce_required", Type: field.TypeBool, Default: true},
+		{Name: "default_group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "access_token_ttl_seconds", Type: field.TypeInt, Default: 86400},
+		{Name: "refresh_token_ttl_seconds", Type: field.TypeInt, Default: 2592000},
+		{Name: "disabled", Type: field.TypeBool, Default: false},
+	}
+	// OauthClientsTable holds the schema information for the "oauth_clients" table.
+	OauthClientsTable = &schema.Table{
+		Name:       "oauth_clients",
+		Columns:    OauthClientsColumns,
+		PrimaryKey: []*schema.Column{OauthClientsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oauthclient_disabled",
+				Unique:  false,
+				Columns: []*schema.Column{OauthClientsColumns[12]},
+			},
+		},
+	}
+	// OauthCodesColumns holds the columns for the "oauth_codes" table.
+	OauthCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "code_hash", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "client_id", Type: field.TypeString, Size: 128},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "redirect_uri", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "scopes", Type: field.TypeJSON},
+		{Name: "code_challenge", Type: field.TypeString, Size: 128},
+		{Name: "code_challenge_method", Type: field.TypeString, Size: 10, Default: "S256"},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OauthCodesTable holds the schema information for the "oauth_codes" table.
+	OauthCodesTable = &schema.Table{
+		Name:       "oauth_codes",
+		Columns:    OauthCodesColumns,
+		PrimaryKey: []*schema.Column{OauthCodesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oauthcode_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OauthCodesColumns[10]},
+			},
+			{
+				Name:    "oauthcode_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthCodesColumns[5]},
+			},
+			{
+				Name:    "oauthcode_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthCodesColumns[4]},
+			},
+		},
+	}
+	// OauthRefreshTokensColumns holds the columns for the "oauth_refresh_tokens" table.
+	OauthRefreshTokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "token_hash", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "client_id", Type: field.TypeString, Size: 128},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "scopes", Type: field.TypeJSON},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "rotated_to_hash", Type: field.TypeString, Nullable: true, Size: 64},
+	}
+	// OauthRefreshTokensTable holds the schema information for the "oauth_refresh_tokens" table.
+	OauthRefreshTokensTable = &schema.Table{
+		Name:       "oauth_refresh_tokens",
+		Columns:    OauthRefreshTokensColumns,
+		PrimaryKey: []*schema.Column{OauthRefreshTokensColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oauthrefreshtoken_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OauthRefreshTokensColumns[8]},
+			},
+			{
+				Name:    "oauthrefreshtoken_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthRefreshTokensColumns[5]},
+			},
+			{
+				Name:    "oauthrefreshtoken_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthRefreshTokensColumns[4]},
+			},
+			{
+				Name:    "oauthrefreshtoken_api_key_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthRefreshTokensColumns[6]},
+			},
+		},
+	}
 	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
 	PaymentAuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1790,6 +1899,9 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		OauthClientsTable,
+		OauthCodesTable,
+		OauthRefreshTokensTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -1872,6 +1984,15 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	OauthClientsTable.Annotation = &entsql.Annotation{
+		Table: "oauth_clients",
+	}
+	OauthCodesTable.Annotation = &entsql.Annotation{
+		Table: "oauth_codes",
+	}
+	OauthRefreshTokensTable.Annotation = &entsql.Annotation{
+		Table: "oauth_refresh_tokens",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",
