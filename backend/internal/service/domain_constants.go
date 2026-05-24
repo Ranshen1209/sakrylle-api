@@ -363,6 +363,14 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyQQEmailWarningEnabled is a DB-backed soft switch for the registration
+	// page warning when a user enters a QQ-family email address (qq.com / vip.qq.com /
+	// foxmail.com). When true: the registration page shows a one-shot modal advising
+	// the user to use Outlook / Gmail / 163 instead. Defaults to true (opt-out) because
+	// QQ has historically delayed/silently dropped mail from new international ESP
+	// domains, leading to verification-code complaints.
+	SettingKeyQQEmailWarningEnabled = "qq_email_warning_enabled"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

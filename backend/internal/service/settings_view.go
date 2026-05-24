@@ -179,6 +179,9 @@ type SystemSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// QQ Email Warning feature (registration page warning when QQ email entered)
+	QQEmailWarningEnabled bool `json:"qq_email_warning_enabled"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string
@@ -295,6 +298,9 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// QQ Email Warning feature (registration page warning when QQ email entered)
+	QQEmailWarningEnabled bool `json:"qq_email_warning_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
