@@ -123,6 +123,7 @@ func RegisterGatewayRoutes(
 		})
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
+		gateway.GET("/account/balance", h.Account.Balance)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {

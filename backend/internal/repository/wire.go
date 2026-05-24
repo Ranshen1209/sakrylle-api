@@ -96,6 +96,11 @@ var ProviderSet = wire.NewSet(
 	NewUserPlatformQuotaRepository,     // T14: user × platform quota
 	NewUserPlatformQuotaServiceAdapter, // T14: adapter → service.UserPlatformQuotaRepository
 
+	// OAuth 2.0 provider tables (clients, codes, refresh tokens).
+	NewOAuthClientRepo,
+	NewOAuthCodeRepo,
+	NewOAuthRefreshTokenRepo,
+
 	// Cache implementations
 	NewGatewayCache,
 	NewBillingCache,

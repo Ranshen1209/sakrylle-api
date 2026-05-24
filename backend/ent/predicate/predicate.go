@@ -51,6 +51,15 @@ type IdempotencyRecord func(*sql.Selector)
 // IdentityAdoptionDecision is the predicate function for identityadoptiondecision builders.
 type IdentityAdoptionDecision func(*sql.Selector)
 
+// OAuthClient is the predicate function for oauthclient builders.
+type OAuthClient func(*sql.Selector)
+
+// OAuthCode is the predicate function for oauthcode builders.
+type OAuthCode func(*sql.Selector)
+
+// OAuthRefreshToken is the predicate function for oauthrefreshtoken builders.
+type OAuthRefreshToken func(*sql.Selector)
+
 // PaymentAuditLog is the predicate function for paymentauditlog builders.
 type PaymentAuditLog func(*sql.Selector)
 

@@ -26,6 +26,10 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 //   - 计费执行（Billing Enforcement）：过期/配额/订阅/余额检查 —— skipBilling 时整块跳过
 //
 // /v1/usage 端点只需鉴权，不需要计费执行（允许过期/配额耗尽的 Key 查询自身用量）。
+//
+// OAuth 兼容（docs/SAKRYLLE_API_SPEC.md §4）：以 sk_oauth_ 前缀的 Key 是 OAuth
+// access_token，错误响应改为 OAuth 标准外壳（RFC 6750 §3.1）以触发前端的 refresh
+// 流程；其他逻辑一致复用 api_keys 表。
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
@@ -65,12 +69,14 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			return
 		}
 
+		isOAuth := service.IsOAuthAccessToken(apiKeyString)
+
 		// ── 2. 验证 Key 存在 ─────────────────────────────────────────
 
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, service.ErrAPIKeyNotFound) {
-				AbortWithError(c, 401, "INVALID_API_KEY", "Invalid API key")
+				abortAuthError(c, isOAuth, 401, "INVALID_API_KEY", "invalid_token", "Invalid API key")
 				return
 			}
 			AbortWithError(c, 500, "INTERNAL_ERROR", "Failed to validate API key")
@@ -87,7 +93,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if !apiKey.IsActive() &&
 			apiKey.Status != service.StatusAPIKeyExpired &&
 			apiKey.Status != service.StatusAPIKeyQuotaExhausted {
-			AbortWithError(c, 401, "API_KEY_DISABLED", "API key is disabled")
+			abortAuthError(c, isOAuth, 401, "API_KEY_DISABLED", "invalid_token", "API key is disabled")
 			return
 		}
 
@@ -111,13 +117,13 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// 检查关联的用户
 		if apiKey.User == nil {
-			AbortWithError(c, 401, "USER_NOT_FOUND", "User associated with API key not found")
+			abortAuthError(c, isOAuth, 401, "USER_NOT_FOUND", "invalid_token", "User associated with API key not found")
 			return
 		}
 
 		// 检查用户状态
 		if !apiKey.User.IsActive() {
-			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+			abortAuthError(c, isOAuth, 401, "USER_INACTIVE", "invalid_token", "User account is not active")
 			return
 		}
 		if abortIfAPIKeyGroupUnavailable(c, apiKey) {
@@ -173,20 +179,20 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// Key 状态检查
 			switch apiKey.Status {
 			case service.StatusAPIKeyQuotaExhausted:
-				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+				abortAuthError(c, isOAuth, 429, "API_KEY_QUOTA_EXHAUSTED", "insufficient_quota", "API key 额度已用完")
 				return
 			case service.StatusAPIKeyExpired:
-				AbortWithError(c, 403, "API_KEY_EXPIRED", "API key 已过期")
+				abortAuthError(c, isOAuth, 401, "API_KEY_EXPIRED", "invalid_token", "API key 已过期")
 				return
 			}
 
 			// 运行时过期/配额检查（即使状态是 active，也要检查时间和用量）
 			if apiKey.IsExpired() {
-				AbortWithError(c, 403, "API_KEY_EXPIRED", "API key 已过期")
+				abortAuthError(c, isOAuth, 401, "API_KEY_EXPIRED", "invalid_token", "API key 已过期")
 				return
 			}
 			if apiKey.IsQuotaExhausted() {
-				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+				abortAuthError(c, isOAuth, 429, "API_KEY_QUOTA_EXHAUSTED", "insufficient_quota", "API key 额度已用完")
 				return
 			}
 
@@ -214,7 +220,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
 				if apiKey.User.Balance <= 0 {
-					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
+					abortAuthError(c, isOAuth, 403, "INSUFFICIENT_BALANCE", "insufficient_quota", "Insufficient account balance")
 					return
 				}
 			}
@@ -266,6 +272,28 @@ func GetOpsFallbackAPIKey(c *gin.Context) (*service.APIKey, bool) {
 	}
 	apiKey, ok := value.(*service.APIKey)
 	return apiKey, ok
+}
+
+// abortAuthError emits an OAuth-shaped error envelope when isOAuth is true,
+// otherwise the project's standard error envelope.
+//
+// Per RFC 6750 §3.1 and docs/SAKRYLLE_API_SPEC.md §4.1, OAuth clients expect:
+//
+//	{ "error": { "code": "<oauth_code>", "message": "<msg>" } }
+//
+// where oauth_code is one of invalid_token / insufficient_quota /
+// image_generation_not_enabled.
+func abortAuthError(c *gin.Context, isOAuth bool, status int, internalCode, oauthCode, message string) {
+	if !isOAuth {
+		AbortWithError(c, status, internalCode, message)
+		return
+	}
+	c.AbortWithStatusJSON(status, gin.H{
+		"error": gin.H{
+			"code":    oauthCode,
+			"message": message,
+		},
+	})
 }
 
 // GetSubscriptionFromContext 从上下文中获取订阅信息

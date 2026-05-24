@@ -94,6 +94,11 @@ func (h *APIKeyHandler) List(c *gin.Context) {
 			filters.GroupID = &gid
 		}
 	}
+	// Hide OAuth-issued access tokens (sk_oauth_ prefix) from the user's
+	// API key list. These rows are minted by /oauth/token and managed by
+	// the OAuth flow itself; exposing them in the UI invites accidental
+	// deletion that would silently break the bound OAuth client session.
+	filters.ExcludeKeyPrefix = "sk_oauth_"
 
 	keys, result, err := h.apiKeyService.List(c.Request.Context(), subject.UserID, params, filters)
 	if err != nil {
