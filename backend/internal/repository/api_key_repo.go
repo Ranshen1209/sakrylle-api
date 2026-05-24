@@ -403,6 +403,9 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 			q = q.Where(apikey.GroupIDEQ(*filters.GroupID))
 		}
 	}
+	if filters.ExcludeKeyPrefix != "" {
+		q = q.Where(apikey.Not(apikey.KeyHasPrefix(filters.ExcludeKeyPrefix)))
+	}
 
 	total, err := q.Count(ctx)
 	if err != nil {

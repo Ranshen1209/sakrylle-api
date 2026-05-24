@@ -996,10 +996,17 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	// Build model list with owned_by field (no fallback to default models)
+	// Per docs/SAKRYLLE_API_SPEC.md §3, surface allow_image_generation so
+	// OAuth clients (image.sakrylle.com) can filter the model list.
+	emitImageFlag := platform == service.PlatformOpenAI
+	allowImage := false
+	if emitImageFlag && apiKey != nil && apiKey.Group != nil {
+		allowImage = apiKey.Group.AllowImageGeneration
+	}
+
 	models := make([]gin.H, 0, len(availableModels))
 	for _, modelID := range availableModels {
-		models = append(models, gin.H{
+		entry := gin.H{
 			"id":           modelID,
 			"object":       "model",
 			"type":         "model",
@@ -1007,7 +1014,11 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 			"owned_by":     ownedBy,
 			"created":      defaultModelCreatedAtUnix,
 			"created_at":   defaultModelCreatedAtRFC3339,
-		})
+		}
+		if emitImageFlag {
+			entry["allow_image_generation"] = allowImage
+		}
+		models = append(models, entry)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
