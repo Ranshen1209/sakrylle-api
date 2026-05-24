@@ -118,12 +118,56 @@ func (s *oauthHandlerRefreshRepoStub) ConsumeForRotation(_ context.Context, oldH
 	return &cp, nil
 }
 
-func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByAPIKeyID(_ context.Context, _ int64, _ time.Time) error {
+func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByAPIKeyID(_ context.Context, apiKeyID int64, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, row := range s.tokens {
+		if row.APIKeyID == apiKeyID && row.RevokedAt == nil {
+			t := now
+			row.RevokedAt = &t
+		}
+	}
 	return nil
 }
 
-func (s *oauthHandlerRefreshRepoStub) ListActiveByUserAndClient(_ context.Context, _ int64, _ string, _ time.Time) ([]*service.OAuthRefreshToken, error) {
-	return nil, nil
+func (s *oauthHandlerRefreshRepoStub) ListActiveByUserAndClient(_ context.Context, userID int64, clientID string, now time.Time) ([]*service.OAuthRefreshToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []*service.OAuthRefreshToken{}
+	for _, row := range s.tokens {
+		if row.UserID != userID || row.ClientID != clientID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		if !row.ExpiresAt.After(now) {
+			continue
+		}
+		cp := *row
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
+func (s *oauthHandlerRefreshRepoStub) ListActiveByUser(_ context.Context, userID int64, now time.Time) ([]*service.OAuthRefreshToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []*service.OAuthRefreshToken{}
+	for _, row := range s.tokens {
+		if row.UserID != userID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		if !row.ExpiresAt.After(now) {
+			continue
+		}
+		cp := *row
+		out = append(out, &cp)
+	}
+	return out, nil
 }
 
 type oauthHandlerAPIKeyRepoStub struct {
@@ -755,4 +799,255 @@ func TestTokenBasicAuthCredentials(t *testing.T) {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 		require.Equal(t, "invalid_client", resp["error"])
 	})
+}
+
+// ── User-facing grants management endpoints ─────────────────────────────────
+//
+// These tests exercise the JWT-protected GET/DELETE /api/v1/oauth/grants
+// surface end-to-end through the gin handler, including the unauthenticated
+// guard, cross-user isolation, the empty-revoke 200 idempotency contract, and
+// the response shape contract the frontend depends on.
+
+// mintAccessGrantForHandler runs through Approve + Token to plant exactly one
+// active grant for (userID, testOAuthClientID) and return the issued tokens
+// so revoke tests can verify subsequent /v1/* would fail.
+func mintAccessGrantForHandler(t *testing.T, h *OAuthProviderHandler, userID int64) (accessToken string) {
+	t.Helper()
+	verifier, challenge := pkceVerifierAndChallengeForHandler("verifier-123456789-aaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+
+	// 1. Approve → get authorization code via redirect_to JSON.
+	approveBody, _ := json.Marshal(map[string]string{
+		"client_id":             testOAuthClientID,
+		"redirect_uri":          testOAuthRedirectURI,
+		"response_type":         "code",
+		"scope":                 "image_generation",
+		"state":                 "x",
+		"code_challenge":        challenge,
+		"code_challenge_method": "S256",
+		"decision":              "approve",
+	})
+	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", approveBody, "application/json")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.Approve(c)
+	require.Equal(t, http.StatusOK, rec.Code, "approve failed: %s", rec.Body.String())
+
+	var approveResp map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &approveResp))
+	parsed, err := url.Parse(approveResp["redirect_to"])
+	require.NoError(t, err)
+	code := parsed.Query().Get("code")
+	require.NotEmpty(t, code)
+
+	// 2. Token → exchange code for access_token.
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("redirect_uri", testOAuthRedirectURI)
+	form.Set("code", code)
+	form.Set("code_verifier", verifier)
+	form.Set("client_id", testOAuthClientID)
+	c2, rec2 := newGinTestContext(http.MethodPost, "/oauth/token", []byte(form.Encode()), "application/x-www-form-urlencoded")
+	h.Token(c2)
+	require.Equal(t, http.StatusOK, rec2.Code, "token failed: %s", rec2.Body.String())
+
+	var tokenResp map[string]any
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &tokenResp))
+	at, _ := tokenResp["access_token"].(string)
+	require.NotEmpty(t, at)
+	require.True(t, strings.HasPrefix(at, "sk_oauth_"), "access_token prefix")
+	return at
+}
+
+func TestListGrants_Unauthenticated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodGet, "/api/v1/oauth/grants", nil, "")
+	// Deliberately do NOT set ContextKeyUser → 401.
+	h.ListGrants(c)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestListGrants_EmptyForUserWithNoGrants(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodGet, "/api/v1/oauth/grants", nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 7, Concurrency: 1})
+	h.ListGrants(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Items, "items must be a JSON array, never null")
+	require.Len(t, resp.Items, 0)
+}
+
+func TestListGrants_HappyPathReturnsExpectedShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+	const userID int64 = 17
+	mintAccessGrantForHandler(t, h, userID)
+
+	c, rec := newGinTestContext(http.MethodGet, "/api/v1/oauth/grants", nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.ListGrants(c)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var resp struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1, "want exactly one grant for the test client")
+
+	g := resp.Items[0]
+	require.Equal(t, testOAuthClientID, g["client_id"])
+	require.Equal(t, testOAuthClientName, g["client_name"])
+	require.Equal(t, false, g["client_disabled"])
+	require.EqualValues(t, 1, g["active_token_count"])
+	scopes, _ := g["scopes"].([]any)
+	require.Equal(t, []any{"image_generation"}, scopes)
+	require.NotEmpty(t, g["first_authorized_at"])
+	// last_used_at can be nil since we never hit /v1/*; the contract is the
+	// key is present (so the frontend doesn't need to defensive-check undefined).
+	_, hasLastUsed := g["last_used_at"]
+	require.True(t, hasLastUsed)
+}
+
+func TestListGrants_DoesNotLeakOtherUsersGrants(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+	mintAccessGrantForHandler(t, h, 100)
+	mintAccessGrantForHandler(t, h, 200)
+
+	c, rec := newGinTestContext(http.MethodGet, "/api/v1/oauth/grants", nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 100, Concurrency: 1})
+	h.ListGrants(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1, "user 100 must only see their own grant, not user 200's")
+}
+
+func TestRevokeGrant_Unauthenticated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodDelete, "/api/v1/oauth/grants/"+testOAuthClientID, nil, "")
+	c.Params = gin.Params{{Key: "client_id", Value: testOAuthClientID}}
+	h.RevokeGrant(c)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestRevokeGrant_MissingClientIDReturns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodDelete, "/api/v1/oauth/grants/", nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1, Concurrency: 1})
+	c.Params = gin.Params{{Key: "client_id", Value: ""}}
+	h.RevokeGrant(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "invalid_request", resp["error"])
+}
+
+func TestRevokeGrant_HappyPathReturnsCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+	const userID int64 = 33
+	mintAccessGrantForHandler(t, h, userID)
+
+	c, rec := newGinTestContext(http.MethodDelete, "/api/v1/oauth/grants/"+testOAuthClientID, nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	c.Params = gin.Params{{Key: "client_id", Value: testOAuthClientID}}
+	h.RevokeGrant(c)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.EqualValues(t, 1, resp["revoked"])
+
+	// Subsequent list shows 0 grants — the revoke actually took effect.
+	listC, listRec := newGinTestContext(http.MethodGet, "/api/v1/oauth/grants", nil, "")
+	listC.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.ListGrants(listC)
+	require.Equal(t, http.StatusOK, listRec.Code)
+	var listResp struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &listResp))
+	require.Len(t, listResp.Items, 0, "after revoke, list must be empty")
+}
+
+func TestRevokeGrant_IsIdempotentWhenNoMatchingGrant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	// User has no grants at all; revoking should still 200 with revoked=0.
+	c, rec := newGinTestContext(http.MethodDelete, "/api/v1/oauth/grants/"+testOAuthClientID, nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 999, Concurrency: 1})
+	c.Params = gin.Params{{Key: "client_id", Value: testOAuthClientID}}
+	h.RevokeGrant(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.EqualValues(t, 0, resp["revoked"])
+}
+
+func TestRevokeGrant_DoesNotTouchOtherUsersGrants(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+	mintAccessGrantForHandler(t, h, 100)
+	mintAccessGrantForHandler(t, h, 200)
+
+	// User 100 attempts to revoke "their" grant — but a malicious actor could
+	// pass any client_id. Verify only user 100's tokens get touched, not 200's.
+	c, rec := newGinTestContext(http.MethodDelete, "/api/v1/oauth/grants/"+testOAuthClientID, nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 100, Concurrency: 1})
+	c.Params = gin.Params{{Key: "client_id", Value: testOAuthClientID}}
+	h.RevokeGrant(c)
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.EqualValues(t, 1, resp["revoked"], "only user 100's single grant should be revoked")
+
+	// User 200's grant must still appear when 200 lists their grants.
+	c2, rec2 := newGinTestContext(http.MethodGet, "/api/v1/oauth/grants", nil, "")
+	c2.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 200, Concurrency: 1})
+	h.ListGrants(c2)
+	require.Equal(t, http.StatusOK, rec2.Code)
+	var listResp struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &listResp))
+	require.Len(t, listResp.Items, 1, "user 200's grant must survive user 100's revoke call")
+}
+
+func TestRevokeGrant_DoesNotEchoInternalErrors(t *testing.T) {
+	// Smoke test that the handler returns the *opaque* server_error envelope
+	// (not the raw err.Error()) — important so DB error strings can't leak
+	// table/column/constraint names through the public API.
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodDelete, "/api/v1/oauth/grants/sakrylle-image-playground", nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1, Concurrency: 1})
+	c.Params = gin.Params{{Key: "client_id", Value: "sakrylle-image-playground"}}
+	h.RevokeGrant(c)
+	// Even on the happy "no grants" path, the response body must not contain
+	// raw service-layer error strings (no "list active refresh tokens" etc).
+	body := rec.Body.String()
+	require.NotContains(t, body, "list active refresh tokens")
+	require.NotContains(t, body, "sql:")
+	require.NotContains(t, body, "ent:")
 }

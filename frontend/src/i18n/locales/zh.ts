@@ -394,6 +394,7 @@ export default {
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
+    authorizedApps: '已授权应用',
     usage: '使用记录',
     redeem: '兑换',
     affiliate: '邀请返利',
@@ -725,6 +726,29 @@ export default {
   // Groups (shared)
   groups: {
     subscription: '订阅'
+  },
+
+  // OAuth provider — Authorized Apps
+  authorizedApps: {
+    title: '已授权应用',
+    description: '管理第三方应用对你账户的访问授权',
+    emptyTitle: '还没有授权任何应用',
+    empty: '当你授权第三方应用时，它们会显示在这里。你可以随时撤销访问。',
+    columns: {
+      app: '应用',
+      scopes: '权限',
+      firstAuthorized: '首次授权',
+      lastUsed: '最近使用',
+      sessions: '活跃会话'
+    },
+    revoke: '撤销授权',
+    revokeConfirmTitle: '撤销授权？',
+    revokeConfirmMessage: '撤销后，{name} 将无法再访问你的账户。已签发的访问令牌会立即失效。',
+    revoked: '已撤销 {count} 个会话',
+    revokeFailed: '撤销失败',
+    loadFailed: '加载失败',
+    disabledBadge: '已下线',
+    disabledTooltip: '该应用已被管理员下线，但你仍可以撤销之前的授权'
   },
 
   // API Keys

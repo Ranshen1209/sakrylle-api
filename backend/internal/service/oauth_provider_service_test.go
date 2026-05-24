@@ -134,6 +134,26 @@ func (s *stubRefreshRepo) ListActiveByUserAndClient(_ context.Context, userID in
 	return out, nil
 }
 
+func (s *stubRefreshRepo) ListActiveByUser(_ context.Context, userID int64, now time.Time) ([]*OAuthRefreshToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []*OAuthRefreshToken{}
+	for _, row := range s.tokens {
+		if row.UserID != userID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		if !row.ExpiresAt.After(now) {
+			continue
+		}
+		cp := *row
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
 // stubAPIKeyRepo is a minimal in-memory APIKeyRepository for OAuth tests.
 type stubAPIKeyRepo struct {
 	mu     sync.Mutex
@@ -793,4 +813,420 @@ func TestExchangeAuthorizationCodeConfidentialClient(t *testing.T) {
 			t.Fatalf("empty secret: got err=%v, want ErrOAuthClientAuthFailed", err)
 		}
 	})
+}
+
+// ── User-facing grants (ListUserGrants / RevokeUserGrant) ────────────────────
+
+func TestListUserGrants_GroupsByClientAndUnionsScopes(t *testing.T) {
+	svc, apiKeyRepo, refreshRepo := newServiceUnderTest(t)
+	ctx := context.Background()
+	const userID int64 = 7
+	now := time.Now()
+
+	// Two active tokens for the same client (different "devices"), distinct scopes.
+	apiKey1 := &APIKey{UserID: userID, Key: "sk_oauth_dev1", Status: StatusAPIKeyActive, CreatedAt: now.Add(-3 * time.Hour)}
+	if err := apiKeyRepo.Create(ctx, apiKey1); err != nil {
+		t.Fatalf("create api_key 1: %v", err)
+	}
+	apiKey2 := &APIKey{UserID: userID, Key: "sk_oauth_dev2", Status: StatusAPIKeyActive, CreatedAt: now.Add(-1 * time.Hour)}
+	if err := apiKeyRepo.Create(ctx, apiKey2); err != nil {
+		t.Fatalf("create api_key 2: %v", err)
+	}
+	lastUsed := now.Add(-15 * time.Minute)
+	apiKey2.LastUsedAt = &lastUsed
+	if err := apiKeyRepo.Update(ctx, apiKey2); err != nil {
+		t.Fatalf("update api_key 2: %v", err)
+	}
+
+	if err := refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+		TokenHash: "h1", ClientID: "sakrylle-image-playground", UserID: userID, APIKeyID: apiKey1.ID,
+		Scopes: []string{"image_generation"}, ExpiresAt: now.Add(720 * time.Hour),
+	}); err != nil {
+		t.Fatalf("create refresh 1: %v", err)
+	}
+	if err := refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+		TokenHash: "h2", ClientID: "sakrylle-image-playground", UserID: userID, APIKeyID: apiKey2.ID,
+		Scopes: []string{"image_generation", "balance:read"}, ExpiresAt: now.Add(720 * time.Hour),
+	}); err != nil {
+		t.Fatalf("create refresh 2: %v", err)
+	}
+
+	grants, err := svc.ListUserGrants(ctx, userID)
+	if err != nil {
+		t.Fatalf("list grants: %v", err)
+	}
+	if len(grants) != 1 {
+		t.Fatalf("want 1 grant (grouped by client_id), got %d", len(grants))
+	}
+	g := grants[0]
+	if g.ClientID != "sakrylle-image-playground" {
+		t.Errorf("client_id = %q", g.ClientID)
+	}
+	if g.ClientName != "Sakrylle Image Playground" {
+		t.Errorf("client_name = %q", g.ClientName)
+	}
+	if g.ActiveTokenCount != 2 {
+		t.Errorf("active_token_count = %d, want 2", g.ActiveTokenCount)
+	}
+	if !containsAll(g.Scopes, "image_generation", "balance:read") || len(g.Scopes) != 2 {
+		t.Errorf("scopes union = %v, want [image_generation balance:read]", g.Scopes)
+	}
+	if g.LastUsedAt == nil || !g.LastUsedAt.Equal(lastUsed) {
+		t.Errorf("last_used_at = %v, want %v", g.LastUsedAt, lastUsed)
+	}
+	// FirstAuthorizedAt should equal earliest api_keys.CreatedAt (apiKey1).
+	if !g.FirstAuthorizedAt.Equal(apiKey1.CreatedAt) {
+		t.Errorf("first_authorized_at = %v, want %v", g.FirstAuthorizedAt, apiKey1.CreatedAt)
+	}
+}
+
+func TestListUserGrants_FiltersExpiredAndRevoked(t *testing.T) {
+	svc, apiKeyRepo, refreshRepo := newServiceUnderTest(t)
+	ctx := context.Background()
+	const userID int64 = 8
+	now := time.Now()
+
+	active := &APIKey{UserID: userID, Key: "sk_oauth_active", Status: StatusAPIKeyActive}
+	revokedKey := &APIKey{UserID: userID, Key: "sk_oauth_revoked", Status: StatusAPIKeyDisabled}
+	expiredKey := &APIKey{UserID: userID, Key: "sk_oauth_expired", Status: StatusAPIKeyActive}
+	for _, k := range []*APIKey{active, revokedKey, expiredKey} {
+		if err := apiKeyRepo.Create(ctx, k); err != nil {
+			t.Fatalf("create api_key: %v", err)
+		}
+	}
+
+	revokedAt := now.Add(-1 * time.Hour)
+	tokens := []*OAuthRefreshToken{
+		{TokenHash: "ok", ClientID: "sakrylle-image-playground", UserID: userID, APIKeyID: active.ID, ExpiresAt: now.Add(720 * time.Hour)},
+		{TokenHash: "rv", ClientID: "sakrylle-image-playground", UserID: userID, APIKeyID: revokedKey.ID, ExpiresAt: now.Add(720 * time.Hour), RevokedAt: &revokedAt},
+		{TokenHash: "ex", ClientID: "sakrylle-image-playground", UserID: userID, APIKeyID: expiredKey.ID, ExpiresAt: now.Add(-10 * time.Minute)},
+	}
+	for _, tok := range tokens {
+		if err := refreshRepo.CreateRefreshToken(ctx, tok); err != nil {
+			t.Fatalf("create refresh: %v", err)
+		}
+	}
+	// Manually set RevokedAt on the in-memory stub since CreateRefreshToken doesn't persist it.
+	refreshRepo.tokens["rv"].RevokedAt = &revokedAt
+
+	grants, err := svc.ListUserGrants(ctx, userID)
+	if err != nil {
+		t.Fatalf("list grants: %v", err)
+	}
+	if len(grants) != 1 {
+		t.Fatalf("want 1 grant (only the active token), got %d", len(grants))
+	}
+	if grants[0].ActiveTokenCount != 1 {
+		t.Errorf("active_token_count = %d, want 1", grants[0].ActiveTokenCount)
+	}
+}
+
+func TestListUserGrants_OrphanClientStillSurfaces(t *testing.T) {
+	svc, apiKeyRepo, refreshRepo := newServiceUnderTest(t)
+	ctx := context.Background()
+	const userID int64 = 9
+	now := time.Now()
+
+	apiKey := &APIKey{UserID: userID, Key: "sk_oauth_orphan", Status: StatusAPIKeyActive}
+	if err := apiKeyRepo.Create(ctx, apiKey); err != nil {
+		t.Fatalf("create api_key: %v", err)
+	}
+	if err := refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+		TokenHash: "orphan", ClientID: "deleted-client", UserID: userID, APIKeyID: apiKey.ID,
+		Scopes: []string{"image_generation"}, ExpiresAt: now.Add(720 * time.Hour),
+	}); err != nil {
+		t.Fatalf("create refresh: %v", err)
+	}
+
+	grants, err := svc.ListUserGrants(ctx, userID)
+	if err != nil {
+		t.Fatalf("list grants: %v", err)
+	}
+	if len(grants) != 1 {
+		t.Fatalf("want 1 grant, got %d", len(grants))
+	}
+	if grants[0].ClientID != "deleted-client" {
+		t.Errorf("client_id = %q", grants[0].ClientID)
+	}
+	if !grants[0].ClientDisabled {
+		t.Error("orphan client should surface as ClientDisabled=true")
+	}
+}
+
+func TestListUserGrants_NoGrants(t *testing.T) {
+	svc, _, _ := newServiceUnderTest(t)
+	grants, err := svc.ListUserGrants(context.Background(), 999)
+	if err != nil {
+		t.Fatalf("list grants: %v", err)
+	}
+	if len(grants) != 0 {
+		t.Errorf("want 0 grants, got %d", len(grants))
+	}
+}
+
+func TestRevokeUserGrant_RevokesTokensAndDisablesAPIKeys(t *testing.T) {
+	svc, apiKeyRepo, refreshRepo := newServiceUnderTest(t)
+	ctx := context.Background()
+	const userID int64 = 11
+	now := time.Now()
+
+	apiKey1 := &APIKey{UserID: userID, Key: "sk_oauth_a", Status: StatusAPIKeyActive}
+	apiKey2 := &APIKey{UserID: userID, Key: "sk_oauth_b", Status: StatusAPIKeyActive}
+	for _, k := range []*APIKey{apiKey1, apiKey2} {
+		if err := apiKeyRepo.Create(ctx, k); err != nil {
+			t.Fatalf("create api_key: %v", err)
+		}
+	}
+	for i, apiKey := range []*APIKey{apiKey1, apiKey2} {
+		if err := refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+			TokenHash: "tok" + string(rune('0'+i)),
+			ClientID:  "sakrylle-image-playground",
+			UserID:    userID, APIKeyID: apiKey.ID,
+			Scopes:    []string{"image_generation"},
+			ExpiresAt: now.Add(720 * time.Hour),
+		}); err != nil {
+			t.Fatalf("create refresh: %v", err)
+		}
+	}
+
+	revoked, err := svc.RevokeUserGrant(ctx, userID, "sakrylle-image-playground", now)
+	if err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if revoked != 2 {
+		t.Errorf("revoked count = %d, want 2", revoked)
+	}
+
+	// Both api_keys disabled.
+	for _, id := range []int64{apiKey1.ID, apiKey2.ID} {
+		got, gerr := apiKeyRepo.GetByID(ctx, id)
+		if gerr != nil {
+			t.Fatalf("get api_key %d: %v", id, gerr)
+		}
+		if got.Status != StatusAPIKeyDisabled {
+			t.Errorf("api_key %d status = %q, want disabled", id, got.Status)
+		}
+	}
+	// All refresh tokens revoked.
+	for hash, tok := range refreshRepo.tokens {
+		if tok.RevokedAt == nil {
+			t.Errorf("token %q should be revoked", hash)
+		}
+	}
+
+	// Idempotent: second call on the same grant returns 0.
+	again, err := svc.RevokeUserGrant(ctx, userID, "sakrylle-image-playground", now)
+	if err != nil {
+		t.Fatalf("second revoke: %v", err)
+	}
+	if again != 0 {
+		t.Errorf("idempotent revoke = %d, want 0", again)
+	}
+}
+
+func TestRevokeUserGrant_DoesNotTouchOtherUsers(t *testing.T) {
+	svc, apiKeyRepo, refreshRepo := newServiceUnderTest(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	mineKey := &APIKey{UserID: 1, Key: "sk_oauth_mine", Status: StatusAPIKeyActive}
+	otherKey := &APIKey{UserID: 2, Key: "sk_oauth_other", Status: StatusAPIKeyActive}
+	for _, k := range []*APIKey{mineKey, otherKey} {
+		if err := apiKeyRepo.Create(ctx, k); err != nil {
+			t.Fatalf("create api_key: %v", err)
+		}
+	}
+	for _, tok := range []*OAuthRefreshToken{
+		{TokenHash: "mine", ClientID: "sakrylle-image-playground", UserID: 1, APIKeyID: mineKey.ID, ExpiresAt: now.Add(720 * time.Hour)},
+		{TokenHash: "other", ClientID: "sakrylle-image-playground", UserID: 2, APIKeyID: otherKey.ID, ExpiresAt: now.Add(720 * time.Hour)},
+	} {
+		if err := refreshRepo.CreateRefreshToken(ctx, tok); err != nil {
+			t.Fatalf("create refresh: %v", err)
+		}
+	}
+
+	if _, err := svc.RevokeUserGrant(ctx, 1, "sakrylle-image-playground", now); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	other, _ := apiKeyRepo.GetByID(ctx, otherKey.ID)
+	if other.Status != StatusAPIKeyActive {
+		t.Errorf("other user's api_key was disabled — cross-user leak")
+	}
+	if refreshRepo.tokens["other"].RevokedAt != nil {
+		t.Errorf("other user's refresh token was revoked — cross-user leak")
+	}
+}
+
+// recordingAuthCacheInvalidator captures every InvalidateAuthCacheByKey call so
+// tests can verify the Redis Pub/Sub failsafe is exercised for every revoked
+// access_token. Without this assertion, a regression could leave revoked
+// tokens valid for ~60s in the auth cache (CLAUDE.md hazard #2 under
+// "Deepseek 双协议入口与缓存陷阱").
+type recordingAuthCacheInvalidator struct {
+	mu       sync.Mutex
+	keyCalls []string
+}
+
+func (r *recordingAuthCacheInvalidator) InvalidateAuthCacheByKey(_ context.Context, key string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.keyCalls = append(r.keyCalls, key)
+}
+
+func (r *recordingAuthCacheInvalidator) InvalidateAuthCacheByUserID(_ context.Context, _ int64) {}
+func (r *recordingAuthCacheInvalidator) InvalidateAuthCacheByGroupID(_ context.Context, _ int64) {
+}
+
+func (r *recordingAuthCacheInvalidator) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, len(r.keyCalls))
+	copy(out, r.keyCalls)
+	return out
+}
+
+func TestRevokeUserGrant_PublishesCacheInvalidationForEveryToken(t *testing.T) {
+	groupID := int64(5)
+	clientRepo := &stubClientRepo{clients: map[string]*OAuthClient{
+		"sakrylle-image-playground": {
+			ClientID:               "sakrylle-image-playground",
+			Name:                   "Sakrylle Image Playground",
+			RedirectURIs:           []string{"https://image.sakrylle.com/oauth/callback"},
+			AllowedScopes:          []string{"image_generation"},
+			PKCERequired:           true,
+			DefaultGroupID:         &groupID,
+			AccessTokenTTLSeconds:  86400,
+			RefreshTokenTTLSeconds: 2592000,
+		},
+	}}
+	apiKeyRepo := newStubAPIKeyRepo()
+	refreshRepo := newStubRefreshRepo()
+	settingRepo := &stubSettingRepo{values: map[string]string{
+		"oauth_provider_enabled": "true",
+		"oauth_default_group_id": "5",
+	}}
+	cache := &recordingAuthCacheInvalidator{}
+	svc := NewOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, settingRepo, cache)
+
+	ctx := context.Background()
+	const userID int64 = 42
+	now := time.Now()
+
+	keys := []*APIKey{
+		{UserID: userID, Key: "sk_oauth_dev1", Status: StatusAPIKeyActive},
+		{UserID: userID, Key: "sk_oauth_dev2", Status: StatusAPIKeyActive},
+		{UserID: userID, Key: "sk_oauth_dev3", Status: StatusAPIKeyActive},
+	}
+	for _, k := range keys {
+		if err := apiKeyRepo.Create(ctx, k); err != nil {
+			t.Fatalf("create api_key: %v", err)
+		}
+	}
+	for i, k := range keys {
+		if err := refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+			TokenHash: "tok-" + string(rune('a'+i)),
+			ClientID:  "sakrylle-image-playground",
+			UserID:    userID, APIKeyID: k.ID,
+			ExpiresAt: now.Add(720 * time.Hour),
+		}); err != nil {
+			t.Fatalf("create refresh: %v", err)
+		}
+	}
+
+	revoked, err := svc.RevokeUserGrant(ctx, userID, "sakrylle-image-playground", now)
+	if err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if revoked != 3 {
+		t.Fatalf("revoked = %d, want 3", revoked)
+	}
+
+	calls := cache.snapshot()
+	if len(calls) != 3 {
+		t.Fatalf("cache invalidator called %d times, want 3 (one per token)", len(calls))
+	}
+	wantKeys := map[string]bool{"sk_oauth_dev1": true, "sk_oauth_dev2": true, "sk_oauth_dev3": true}
+	for _, k := range calls {
+		if !wantKeys[k] {
+			t.Errorf("unexpected key in cache invalidator calls: %q", k)
+		}
+		delete(wantKeys, k)
+	}
+	if len(wantKeys) > 0 {
+		t.Errorf("cache invalidator never called for: %v", wantKeys)
+	}
+}
+
+// updateFailingAPIKeyRepo simulates an api_keys UPDATE failure so we can verify
+// the cache invalidation fail-safe still runs (otherwise revoked tokens stay
+// hot in cache for ~60s).
+type updateFailingAPIKeyRepo struct {
+	*stubAPIKeyRepo
+}
+
+func (r *updateFailingAPIKeyRepo) Update(_ context.Context, _ *APIKey) error {
+	return errors.New("simulated update failure")
+}
+
+func TestRevokeUserGrant_InvalidatesCacheEvenWhenAPIKeyUpdateFails(t *testing.T) {
+	groupID := int64(5)
+	clientRepo := &stubClientRepo{clients: map[string]*OAuthClient{
+		"sakrylle-image-playground": {
+			ClientID:               "sakrylle-image-playground",
+			RedirectURIs:           []string{"https://image.sakrylle.com/oauth/callback"},
+			PKCERequired:           true,
+			DefaultGroupID:         &groupID,
+			AccessTokenTTLSeconds:  86400,
+			RefreshTokenTTLSeconds: 2592000,
+		},
+	}}
+	baseAPIKeyRepo := newStubAPIKeyRepo()
+	apiKeyRepo := &updateFailingAPIKeyRepo{stubAPIKeyRepo: baseAPIKeyRepo}
+	refreshRepo := newStubRefreshRepo()
+	cache := &recordingAuthCacheInvalidator{}
+	svc := NewOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, &stubSettingRepo{values: map[string]string{}}, cache)
+
+	ctx := context.Background()
+	const userID int64 = 99
+	now := time.Now()
+
+	apiKey := &APIKey{UserID: userID, Key: "sk_oauth_zombie", Status: StatusAPIKeyActive}
+	if err := baseAPIKeyRepo.Create(ctx, apiKey); err != nil {
+		t.Fatalf("create api_key: %v", err)
+	}
+	if err := refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+		TokenHash: "z", ClientID: "sakrylle-image-playground", UserID: userID, APIKeyID: apiKey.ID,
+		ExpiresAt: now.Add(720 * time.Hour),
+	}); err != nil {
+		t.Fatalf("create refresh: %v", err)
+	}
+
+	revoked, err := svc.RevokeUserGrant(ctx, userID, "sakrylle-image-playground", now)
+	if err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if revoked != 1 {
+		t.Errorf("revoked = %d, want 1 (refresh token DB revoke succeeded)", revoked)
+	}
+	calls := cache.snapshot()
+	if len(calls) != 1 || calls[0] != "sk_oauth_zombie" {
+		t.Errorf("cache invalidator must fire even when api_keys.UPDATE fails; got calls=%v", calls)
+	}
+	if refreshRepo.tokens["z"].RevokedAt == nil {
+		t.Errorf("refresh token must be revoked at the DB level even when api_keys update fails")
+	}
+}
+
+func containsAll(haystack []string, needles ...string) bool {
+	set := make(map[string]struct{}, len(haystack))
+	for _, h := range haystack {
+		set[h] = struct{}{}
+	}
+	for _, n := range needles {
+		if _, ok := set[n]; !ok {
+			return false
+		}
+	}
+	return true
 }

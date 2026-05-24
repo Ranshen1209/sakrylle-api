@@ -51,6 +51,19 @@ type OAuthRefreshToken struct {
 	RotatedToHash *string
 }
 
+// OAuthGrant is the user-facing aggregate view of an authorization: all
+// active refresh tokens for one (user, client) pair collapsed into a single
+// row, with the union of scopes and the freshest last_used timestamp.
+type OAuthGrant struct {
+	ClientID          string
+	ClientName        string
+	ClientDisabled    bool
+	Scopes            []string
+	FirstAuthorizedAt time.Time
+	LastUsedAt        *time.Time
+	ActiveTokenCount  int
+}
+
 // ── Repository interfaces ───────────────────────────────────────────────────
 
 type OAuthClientRepository interface {
@@ -80,6 +93,10 @@ type OAuthRefreshTokenRepository interface {
 	// tokens for (user_id, client_id). Used by code-replay revocation to
 	// find every token derived from the previous successful exchange.
 	ListActiveByUserAndClient(ctx context.Context, userID int64, clientID string, now time.Time) ([]*OAuthRefreshToken, error)
+	// ListActiveByUser returns all non-revoked, unexpired refresh tokens
+	// for a user, across all clients. Used by the user-facing "authorized
+	// apps" view, which groups by client_id in the service layer.
+	ListActiveByUser(ctx context.Context, userID int64, now time.Time) ([]*OAuthRefreshToken, error)
 }
 
 // ── Errors ──────────────────────────────────────────────────────────────────

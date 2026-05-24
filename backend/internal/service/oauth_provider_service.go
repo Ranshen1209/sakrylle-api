@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -72,7 +73,10 @@ type OAuthProviderService struct {
 	apiKeyRepo  APIKeyRepository
 	groupRepo   GroupRepository
 	settingRepo SettingRepository
-	apiKeySvc   *APIKeyService
+	// authCache is the auth-cache invalidator (Redis Pub/Sub). Typed as an
+	// interface (not *APIKeyService) so tests can inject a spy and verify
+	// the 60-second `apikey:auth:<sha>` cache is busted on every revocation.
+	authCache APIKeyAuthCacheInvalidator
 }
 
 func NewOAuthProviderService(
@@ -82,7 +86,7 @@ func NewOAuthProviderService(
 	apiKeyRepo APIKeyRepository,
 	groupRepo GroupRepository,
 	settingRepo SettingRepository,
-	apiKeySvc *APIKeyService,
+	authCache APIKeyAuthCacheInvalidator,
 ) *OAuthProviderService {
 	return &OAuthProviderService{
 		clientRepo:  clientRepo,
@@ -91,7 +95,7 @@ func NewOAuthProviderService(
 		apiKeyRepo:  apiKeyRepo,
 		groupRepo:   groupRepo,
 		settingRepo: settingRepo,
-		apiKeySvc:   apiKeySvc,
+		authCache:   authCache,
 	}
 }
 
@@ -239,7 +243,7 @@ func (s *OAuthProviderService) ExchangeAuthorizationCode(
 		// loaded row even on ErrOAuthCodeAlreadyUsed, giving us user_id +
 		// client_id to find and revoke active issuances.
 		if errors.Is(err, ErrOAuthCodeAlreadyUsed) && code != nil {
-			s.revokeAllTokensForUserClient(ctx, code.UserID, code.ClientID, now)
+			_, _ = s.RevokeUserGrant(ctx, code.UserID, code.ClientID, now)
 		}
 		return nil, err
 	}
@@ -257,47 +261,210 @@ func (s *OAuthProviderService) ExchangeAuthorizationCode(
 	return s.mintTokens(ctx, client, code.UserID, code.Scopes)
 }
 
-// revokeAllTokensForUserClient walks every active (user_id, client_id)
-// refresh token, marking each one revoked along with the associated
-// access_token api_keys row. Used as a defensive sweep on code replay.
+// RevokeUserGrant walks every active (user_id, client_id) refresh token,
+// marking each one revoked along with the associated access_token api_keys
+// row, and publishes Redis Pub/Sub cache invalidations so the in-flight
+// auth-cache lookup table drops the keys immediately (otherwise the hash-keyed
+// `apikey:auth:<sha>` cache survives 60+ seconds — see CLAUDE.md).
 //
-// Errors are logged at warn level (this is a SHOULD-level RFC-6749 §10.5
-// sweep, not load-bearing for the response) and the function continues so a
-// single bad row doesn't strand later revocations.
-func (s *OAuthProviderService) revokeAllTokensForUserClient(ctx context.Context, userID int64, clientID string, now time.Time) {
+// Used both as RFC 6749 §10.5 replay defense (called from
+// ExchangeAuthorizationCode on code reuse) and as the user-facing "revoke
+// authorization" action surfaced through GET/DELETE /api/v1/oauth/grants.
+//
+// Returns the number of refresh tokens that were revoked at the DB level.
+// The counter increments as soon as the refresh token transitions to revoked,
+// independent of the api_keys.status update or cache-invalidation publish:
+// once the DB row is revoked, future /v1/* calls hitting the auth path will
+// reject the token, even if the secondary cleanup steps fail. We always
+// attempt InvalidateAuthCacheByKey on a best-effort basis (fail-safe: better
+// to over-invalidate than leave a revoked token alive in cache for 60s).
+//
+// Errors mid-loop are logged at warn level and do not stop the sweep — a
+// single bad row shouldn't strand the rest. The function never returns an
+// error today; the signature reserves error for future hard-fail cases (e.g.
+// the initial list query).
+func (s *OAuthProviderService) RevokeUserGrant(ctx context.Context, userID int64, clientID string, now time.Time) (int, error) {
 	if s.refreshRepo == nil {
-		return
+		return 0, nil
 	}
 	tokens, err := s.refreshRepo.ListActiveByUserAndClient(ctx, userID, clientID, now)
 	if err != nil {
-		slog.Warn("oauth: list active refresh tokens for replay revocation failed",
+		slog.Warn("oauth: list active refresh tokens for revocation failed",
 			"user_id", userID, "client_id", clientID, "err", err)
-		return
+		return 0, fmt.Errorf("list active refresh tokens: %w", err)
 	}
+	revoked := 0
 	for _, tok := range tokens {
 		if rerr := s.refreshRepo.RevokeRefreshTokensByAPIKeyID(ctx, tok.APIKeyID, now); rerr != nil {
 			slog.Warn("oauth: revoke refresh tokens by api_key_id failed",
 				"api_key_id", tok.APIKeyID, "err", rerr)
+			// DB revocation failed — the token is still live, so do NOT
+			// increment the counter and do NOT touch the cache (we'd lie
+			// about the result). Move on; the next user click can retry.
+			continue
 		}
+		// Refresh token is now revoked at the DB level. From here on, count
+		// it as revoked even if the cleanup steps below stumble.
+		revoked++
+
 		apiKey, gerr := s.apiKeyRepo.GetByID(ctx, tok.APIKeyID)
-		if gerr != nil {
-			slog.Warn("oauth: load api_key for replay revocation failed",
-				"api_key_id", tok.APIKeyID, "err", gerr)
+		if gerr != nil || apiKey == nil {
+			if gerr != nil {
+				slog.Warn("oauth: load api_key for revocation failed",
+					"api_key_id", tok.APIKeyID, "err", gerr)
+			}
 			continue
 		}
-		if apiKey == nil {
-			continue
+		// Always invalidate the auth cache, even if the api_keys.status
+		// update below fails. The cache lookup is keyed by plaintext token,
+		// so leaving it hot would let a revoked token authenticate /v1/*
+		// for up to 60 seconds (see CLAUDE.md "Deepseek 双协议入口与缓存陷阱").
+		if s.authCache != nil {
+			s.authCache.InvalidateAuthCacheByKey(ctx, apiKey.Key)
 		}
 		apiKey.Status = StatusAPIKeyDisabled
 		if uerr := s.apiKeyRepo.Update(ctx, apiKey); uerr != nil {
-			slog.Warn("oauth: disable api_key during replay revocation failed",
+			slog.Warn("oauth: disable api_key during revocation failed",
 				"api_key_id", tok.APIKeyID, "err", uerr)
-			continue
-		}
-		if s.apiKeySvc != nil {
-			s.apiKeySvc.InvalidateAuthCacheByKey(ctx, apiKey.Key)
 		}
 	}
+	return revoked, nil
+}
+
+// ListUserGrants returns the user's active OAuth authorizations, one entry
+// per client_id. Each grant carries the union of scopes across active tokens,
+// the earliest authorized_at (i.e. when this app was first granted access in
+// this rotation chain), the most recent api_keys.last_used_at, and the count
+// of active tokens (multi-device sessions surface here as a badge, not as
+// separate rows).
+//
+// Returns an empty slice when the user has no active grants. Orphan client_id
+// rows (the OAuth client was deleted but tokens still exist) surface with
+// ClientName="" and ClientDisabled=true so the UI can render "已下线".
+func (s *OAuthProviderService) ListUserGrants(ctx context.Context, userID int64) ([]*OAuthGrant, error) {
+	if s.refreshRepo == nil {
+		return nil, nil
+	}
+	now := time.Now()
+	tokens, err := s.refreshRepo.ListActiveByUser(ctx, userID, now)
+	if err != nil {
+		return nil, fmt.Errorf("list active refresh tokens: %w", err)
+	}
+	if len(tokens) == 0 {
+		return []*OAuthGrant{}, nil
+	}
+
+	type accumulator struct {
+		grant     *OAuthGrant
+		scopeSeen map[string]struct{}
+		// We currently lack created_at on OAuthRefreshToken (the type doesn't
+		// surface it), so first_authorized_at is approximated by the earliest
+		// non-expired refresh expiry minus the client's refresh TTL. To keep
+		// this honest without schema churn, we initialize FirstAuthorizedAt
+		// with the soonest ExpiresAt and let the handler do the math after we
+		// know the client's TTL. Storing the soonest-expires for now.
+		earliestExpires time.Time
+	}
+	groups := make(map[string]*accumulator, len(tokens))
+	apiKeyIDsByClient := make(map[string][]int64, len(tokens))
+
+	for _, tok := range tokens {
+		acc, ok := groups[tok.ClientID]
+		if !ok {
+			acc = &accumulator{
+				grant: &OAuthGrant{
+					ClientID:         tok.ClientID,
+					Scopes:           []string{},
+					ActiveTokenCount: 0,
+				},
+				scopeSeen:       make(map[string]struct{}),
+				earliestExpires: tok.ExpiresAt,
+			}
+			groups[tok.ClientID] = acc
+		}
+		acc.grant.ActiveTokenCount++
+		for _, sc := range tok.Scopes {
+			if _, seen := acc.scopeSeen[sc]; seen {
+				continue
+			}
+			acc.scopeSeen[sc] = struct{}{}
+			acc.grant.Scopes = append(acc.grant.Scopes, sc)
+		}
+		if tok.ExpiresAt.Before(acc.earliestExpires) {
+			acc.earliestExpires = tok.ExpiresAt
+		}
+		apiKeyIDsByClient[tok.ClientID] = append(apiKeyIDsByClient[tok.ClientID], tok.APIKeyID)
+	}
+
+	out := make([]*OAuthGrant, 0, len(groups))
+	for clientID, acc := range groups {
+		// Resolve client metadata.
+		client, cerr := s.clientRepo.GetClientByID(ctx, clientID)
+		if cerr != nil || client == nil {
+			acc.grant.ClientName = ""
+			acc.grant.ClientDisabled = true
+			// We can't subtract a TTL we don't know, so fall back to "now".
+			acc.grant.FirstAuthorizedAt = now
+		} else {
+			acc.grant.ClientName = client.Name
+			acc.grant.ClientDisabled = client.Disabled
+			// FirstAuthorizedAt ≈ earliest_expires - refresh_ttl. Refresh TTL
+			// is per-client, so this is a stable lower bound on when the
+			// rotation chain started.
+			acc.grant.FirstAuthorizedAt = acc.earliestExpires.Add(
+				-time.Duration(client.RefreshTokenTTLSeconds) * time.Second,
+			)
+		}
+
+		// Pick the freshest api_keys.last_used_at across this client's tokens.
+		var lastUsed *time.Time
+		var earliestCreated *time.Time
+		for _, apiKeyID := range apiKeyIDsByClient[clientID] {
+			apiKey, gerr := s.apiKeyRepo.GetByID(ctx, apiKeyID)
+			if gerr != nil || apiKey == nil {
+				continue
+			}
+			if apiKey.LastUsedAt != nil {
+				if lastUsed == nil || apiKey.LastUsedAt.After(*lastUsed) {
+					lu := *apiKey.LastUsedAt
+					lastUsed = &lu
+				}
+			}
+			ca := apiKey.CreatedAt
+			if !ca.IsZero() {
+				if earliestCreated == nil || ca.Before(*earliestCreated) {
+					ec := ca
+					earliestCreated = &ec
+				}
+			}
+		}
+		acc.grant.LastUsedAt = lastUsed
+		// Prefer api_keys.created_at if available — it's the actual first
+		// authorization timestamp for the *current* rotation chain.
+		if earliestCreated != nil {
+			acc.grant.FirstAuthorizedAt = *earliestCreated
+		}
+
+		out = append(out, acc.grant)
+	}
+
+	// Stable order: most recently used first, then alphabetical client_id.
+	sort.Slice(out, func(i, j int) bool {
+		li := timeOrZero(out[i].LastUsedAt)
+		lj := timeOrZero(out[j].LastUsedAt)
+		if !li.Equal(lj) {
+			return li.After(lj)
+		}
+		return out[i].ClientID < out[j].ClientID
+	})
+	return out, nil
+}
+
+func timeOrZero(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return *t
 }
 
 // RefreshAccessToken handles /oauth/token grant_type=refresh_token.
@@ -347,8 +514,8 @@ func (s *OAuthProviderService) RefreshAccessToken(
 	if oldKey, gerr := s.apiKeyRepo.GetByID(ctx, oldToken.APIKeyID); gerr == nil && oldKey != nil {
 		oldKey.Status = StatusAPIKeyDisabled
 		_ = s.apiKeyRepo.Update(ctx, oldKey)
-		if s.apiKeySvc != nil {
-			s.apiKeySvc.InvalidateAuthCacheByKey(ctx, oldKey.Key)
+		if s.authCache != nil {
+			s.authCache.InvalidateAuthCacheByKey(ctx, oldKey.Key)
 		}
 	}
 

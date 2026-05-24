@@ -206,6 +206,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/authorized-apps',
+    name: 'AuthorizedApps',
+    component: () => import('@/views/user/AuthorizedAppsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Authorized Apps',
+      titleKey: 'authorizedApps.title',
+      descriptionKey: 'authorizedApps.description'
+    }
+  },
+  {
     path: '/usage',
     name: 'Usage',
     component: () => import('@/views/user/UsageView.vue'),
