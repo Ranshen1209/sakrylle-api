@@ -469,6 +469,13 @@ export default {
     emailSuffixNotAllowed: '该邮箱域名不在允许注册范围内。',
     emailSuffixNotAllowedWithAllowed: '该邮箱域名不被允许。可用域名：{suffixes}',
     emailSuffixAllowedMore: '等 {count} 项',
+    qqEmailWarning: {
+      title: '建议更换为其他邮箱',
+      body: 'QQ 邮箱可能会延迟或拒收来自我们域名的验证邮件，从而无法收到验证码。建议您改用 Outlook、Gmail、163 或 iCloud 邮箱完成注册。',
+      recommendedLabel: '推荐使用',
+      continueAnyway: '仍然使用 QQ 邮箱',
+      changeEmail: '换一个邮箱',
+    },
     loginSuccess: '登录成功！欢迎回来。',
     accountCreatedSuccess: '账户创建成功！欢迎使用 {siteName}。',
     reloginRequired: '会话已过期，请重新登录。',
@@ -5834,6 +5841,12 @@ export default {
           configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+        },
+        qqEmailWarning: {
+          title: 'QQ 邮箱注册提醒',
+          description: '当用户在注册页输入 @qq.com / @vip.qq.com / @foxmail.com 邮箱时，弹窗提示其改用 Outlook、Gmail、163 或 iCloud。建议保持开启，可显著降低 QQ 邮件投递失败导致的"收不到验证码"工单。',
+          enabled: '启用 QQ 邮箱提醒',
+          enabledHint: '关闭后注册页不再弹窗，所有邮箱域名均放行。',
         },
         riskControl: {
           title: '风控中心',

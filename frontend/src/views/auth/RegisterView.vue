@@ -48,6 +48,8 @@
               class="input pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
+              @blur="maybeShowQQEmailWarning"
+              @change="maybeShowQQEmailWarning"
             />
           </div>
         </div>
@@ -205,6 +207,12 @@
           @open="showAgreementModal = true"
         />
 
+        <QQEmailWarningModal
+          :visible="showQQEmailWarning"
+          @continue="onQQEmailWarningContinue"
+          @change-email="onQQEmailWarningChangeEmail"
+        />
+
         <!-- Submit Button -->
         <button
           type="submit"
@@ -307,6 +315,7 @@ import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
+import QQEmailWarningModal from '@/components/auth/QQEmailWarningModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
@@ -368,6 +377,15 @@ const loginAgreementRevision = ref<string>('')
 const loginAgreementDocuments = ref<LoginAgreementDocument[]>([])
 const agreementAccepted = ref<boolean>(false)
 const showAgreementModal = ref<boolean>(false)
+
+// QQ email warning — surfaces a modal when the user enters a QQ-family address
+// (qq.com / vip.qq.com / foxmail.com). QQ has historically delayed/silently
+// dropped mail from new international ESP domains; warning users up-front
+// reduces "I never received my verification code" support load. The flag is
+// admin-controlled via the qq_email_warning_enabled setting (defaults true).
+const qqEmailWarningEnabled = ref<boolean>(true)
+const showQQEmailWarning = ref<boolean>(false)
+const qqWarningAcknowledged = ref<boolean>(false)
 
 // Turnstile
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
@@ -471,6 +489,7 @@ onMounted(async () => {
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
+    qqEmailWarningEnabled.value = settings.qq_email_warning_enabled !== false
     applyLoginAgreementSettings(settings)
 
     // Read promo code from URL parameter only if promo code is enabled
@@ -731,6 +750,60 @@ function validateEmail(email: string): boolean {
   return emailRegex.test(email)
 }
 
+// QQ-family domains where Sakrylle's outbound mail (Resend → AWS SES) is
+// known to be delayed or silently dropped. List is intentionally narrow:
+// real users on those domains, not aliases like 163.com or sina.com.
+const QQ_EMAIL_DOMAINS = ['qq.com', 'vip.qq.com', 'foxmail.com'] as const
+
+function isQQFamilyEmail(email: string): boolean {
+  const trimmed = email.trim().toLowerCase()
+  const at = trimmed.lastIndexOf('@')
+  if (at < 0) {
+    return false
+  }
+  const domain = trimmed.slice(at + 1)
+  return QQ_EMAIL_DOMAINS.includes(domain as (typeof QQ_EMAIL_DOMAINS)[number])
+}
+
+function maybeShowQQEmailWarning(): void {
+  if (!qqEmailWarningEnabled.value) {
+    return
+  }
+  if (qqWarningAcknowledged.value) {
+    return
+  }
+  if (!validateEmail(formData.email)) {
+    return
+  }
+  if (!isQQFamilyEmail(formData.email)) {
+    return
+  }
+  showQQEmailWarning.value = true
+}
+
+function onQQEmailWarningContinue(): void {
+  qqWarningAcknowledged.value = true
+  showQQEmailWarning.value = false
+}
+
+function onQQEmailWarningChangeEmail(): void {
+  showQQEmailWarning.value = false
+  formData.email = ''
+  // Re-arm the warning for the next QQ address the user might type.
+  qqWarningAcknowledged.value = false
+  void document.getElementById('email')?.focus()
+}
+
+// Re-arm the warning if the user clears the field after acknowledging once.
+watch(
+  () => formData.email,
+  (value) => {
+    if (qqWarningAcknowledged.value && !isQQFamilyEmail(value)) {
+      qqWarningAcknowledged.value = false
+    }
+  }
+)
+
 function buildEmailSuffixNotAllowedMessage(): string {
   const normalizedWhitelist = normalizeRegistrationEmailSuffixWhitelist(
     registrationEmailSuffixWhitelist.value
@@ -812,6 +885,18 @@ async function handleRegister(): Promise<void> {
 
   // Validate form
   if (!validateForm()) {
+    return
+  }
+
+  // Surface the QQ email warning if the user pasted/autofilled a QQ-family
+  // address and the field never lost focus before submit. The user must
+  // explicitly confirm "continue anyway" before we proceed.
+  if (
+    qqEmailWarningEnabled.value &&
+    !qqWarningAcknowledged.value &&
+    isQQFamilyEmail(formData.email)
+  ) {
+    showQQEmailWarning.value = true
     return
   }
 
