@@ -1935,3 +1935,18 @@ export type {
   PlatformQuotaWindow,
   PlatformQuotasResponse,
 } from '@/api/admin/users'
+
+// OAuth provider — user-facing "Authorized Apps"
+export interface AuthorizedApp {
+  client_id: string
+  client_name: string
+  client_disabled: boolean
+  scopes: string[]
+  first_authorized_at: string
+  last_used_at: string | null
+  active_token_count: number
+}
+
+export interface AuthorizedAppsResponse {
+  items: AuthorizedApp[]
+}
