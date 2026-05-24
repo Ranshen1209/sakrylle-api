@@ -5721,7 +5721,7 @@ export default {
         },
         qqEmailWarning: {
           title: 'QQ 邮箱注册提醒',
-          description: '当用户在注册页输入 @qq.com / @vip.qq.com / @foxmail.com 邮箱时，弹窗提示其改用 Outlook、Gmail、163 或 iCloud。建议保持开启，可显著降低 QQ 邮件投递失败导致的"收不到验证码"工单。',
+          description: '当用户在注册页输入 qq.com / vip.qq.com / foxmail.com 邮箱时，弹窗提示其改用 Outlook、Gmail、163 或 iCloud。建议保持开启，可显著降低 QQ 邮件投递失败导致的"收不到验证码"工单。',
           enabled: '启用 QQ 邮箱提醒',
           enabledHint: '关闭后注册页不再弹窗，所有邮箱域名均放行。',
         },
