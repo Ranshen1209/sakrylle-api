@@ -453,6 +453,13 @@ export default {
     emailSuffixNotAllowedWithAllowed:
       'This email domain is not allowed. Allowed domains: {suffixes}',
     emailSuffixAllowedMore: 'and {count} more',
+    qqEmailWarning: {
+      title: 'Consider using a different email provider',
+      body: 'QQ Mail may delay or block our verification emails, so the code might never arrive. We recommend using Outlook, Gmail, 163, or iCloud to complete sign-up.',
+      recommendedLabel: 'Recommended',
+      continueAnyway: 'Use QQ anyway',
+      changeEmail: 'Change email',
+    },
     loginSuccess: 'Login successful! Welcome back.',
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteName}.',
     reloginRequired: 'Session expired. Please log in again.',
@@ -5551,6 +5558,12 @@ export default {
           configureLink: 'Configure model pricing in Channel Management > Channel Pricing',
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
+        },
+        qqEmailWarning: {
+          title: 'QQ Email Sign-up Warning',
+          description: 'Show a popup on the registration page when a user enters @qq.com / @vip.qq.com / @foxmail.com, recommending Outlook, Gmail, 163, or iCloud. Recommended on — QQ frequently delays or silently drops mail from new domains, which causes "I never got my code" support tickets.',
+          enabled: 'Enable QQ email warning',
+          enabledHint: 'When off, the registration page accepts QQ addresses without prompting.',
         },
         riskControl: {
           title: 'Risk Control',
