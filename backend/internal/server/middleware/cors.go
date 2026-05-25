@@ -12,8 +12,16 @@ import (
 
 var corsWarningOnce sync.Once
 
-// CORS 跨域中间件
-func CORS(cfg config.CORSConfig) gin.HandlerFunc {
+// CORS 跨域中间件。
+//
+// getExtraOrigins (optional, may be nil) returns a per-request snapshot of
+// dynamic browser origins to add to the static allowlist — used for OAuth
+// public PKCE clients whose redirect_uris are registered in the database
+// rather than the config file. Origins returned here are merged into the
+// allowlist for THIS request only; they don't mutate any shared state. When
+// the static allowlist is `*`, the dynamic list is ignored (wildcard already
+// covers everything and adding specific origins would conflict with it).
+func CORS(cfg config.CORSConfig, getExtraOrigins func() []string) gin.HandlerFunc {
 	allowedOrigins := normalizeOrigins(cfg.AllowedOrigins)
 	allowAll := false
 	for _, origin := range allowedOrigins {
@@ -68,7 +76,21 @@ func CORS(cfg config.CORSConfig) gin.HandlerFunc {
 		origin := strings.TrimSpace(c.GetHeader("Origin"))
 		originAllowed := allowAll
 		if origin != "" && !allowAll {
-			_, originAllowed = allowedSet[origin]
+			if _, ok := allowedSet[origin]; ok {
+				originAllowed = true
+			} else if getExtraOrigins != nil {
+				// Dynamic allowlist (e.g. OAuth client redirect_uri origins
+				// from DB). Linear scan is fine — list is tiny (one entry
+				// per registered OAuth client) and the alternative
+				// (rebuilding a map per request) would just trade
+				// allocations for the same work.
+				for _, extra := range getExtraOrigins() {
+					if extra == origin {
+						originAllowed = true
+						break
+					}
+				}
+			}
 		}
 
 		if originAllowed {
