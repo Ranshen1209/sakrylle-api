@@ -67,7 +67,7 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Header("X-Frame-Options", "DENY")
 	c.Header("Cache-Control", "no-store")
-	c.String(http.StatusOK, oauthConsentHTML(client.Name, req))
+	c.String(http.StatusOK, oauthConsentHTML(client.Name, req, middleware.GetNonceFromContext(c)))
 }
 
 // ApproveRequest is the body of POST /api/v1/oauth/authorize/approve.
