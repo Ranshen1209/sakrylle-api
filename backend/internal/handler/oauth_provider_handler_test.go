@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -659,7 +660,7 @@ func TestConsentHTMLEscapesUntrustedQuery(t *testing.T) {
 		CodeChallenge:       "challenge",
 		CodeChallengeMethod: "S256",
 	}
-	got := oauthConsentHTML(testOAuthClientName, req)
+	got := oauthConsentHTML(testOAuthClientName, req, "")
 
 	// The smoking gun is the literal closing-script-tag-then-opening-script
 	// sequence. If this substring appears in the rendered HTML the browser
@@ -668,6 +669,53 @@ func TestConsentHTMLEscapesUntrustedQuery(t *testing.T) {
 		"consent HTML allows attacker-controlled state to break out of inline <script>; "+
 			"untrusted query params must be encoded so '</script>' inside a JS string literal "+
 			"is rendered as e.g. '<\\/script>'")
+
+	// Empty-nonce path (CSP disabled or middleware fell back to
+	// 'unsafe-inline'): the script tag still gets rendered with a nonce
+	// attribute so the same template handles both modes uniformly.
+	require.Contains(t, got, `<script nonce="">`,
+		"empty nonce should still produce a nonce attribute (browser ignores empty value under 'unsafe-inline')")
+}
+
+// scriptTagPattern matches every `<script>` or `<script ...>` opening tag in
+// the rendered consent HTML. Used by the CSP-nonce regression test to assert
+// that no inline script slips through without a nonce attribute, regardless
+// of attribute order or future template tweaks (whitespace, line breaks).
+var scriptTagPattern = regexp.MustCompile(`<script(\s[^>]*)?>`)
+
+// TestConsentHTMLCarriesCSPNonce locks in that EVERY inline <script> block
+// carries the per-request CSP nonce. Production CSP is
+// `script-src 'self' 'nonce-...'` with no 'unsafe-inline'; a script tag
+// without nonce is silently blocked and both consent buttons stop working.
+// See commit history for the live-incident regression this test pins.
+func TestConsentHTMLCarriesCSPNonce(t *testing.T) {
+	req := &service.AuthorizeRequest{
+		ClientID:            testOAuthClientID,
+		RedirectURI:         testOAuthRedirectURI,
+		ResponseType:        "code",
+		Scopes:              []string{"image_generation"},
+		State:               "abc",
+		CodeChallenge:       "challenge",
+		CodeChallengeMethod: "S256",
+	}
+	// Real nonces are base64-encoded 16-byte buffers — include `+/=` so we
+	// also catch a future regression where someone interpolates the nonce
+	// without HTML-escaping the attribute value.
+	nonce := "Kq+Iw/Hv41mCIaqWf8Ty/CJw=="
+	got := oauthConsentHTML(testOAuthClientName, req, nonce)
+
+	require.Contains(t, got, `<script nonce="Kq+Iw/Hv41mCIaqWf8Ty/CJw==">`,
+		"inline <script> must carry CSP nonce attribute or production CSP blocks it")
+
+	// Walk every <script ...> opening tag and require nonce= on each.
+	// Tolerant to attribute reordering and whitespace changes; will also
+	// catch any newly-added inline script that forgets the nonce.
+	matches := scriptTagPattern.FindAllString(got, -1)
+	require.NotEmpty(t, matches, "consent HTML should contain at least one <script> tag")
+	for _, tag := range matches {
+		require.Contains(t, tag, "nonce=",
+			"found unnonced <script> tag %q; every inline script must include the CSP nonce", tag)
+	}
 }
 
 // ── confidential client (Basic auth) coverage ──────────────────────────────
