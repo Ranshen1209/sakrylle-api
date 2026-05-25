@@ -17,6 +17,12 @@ import (
 // redirect_to. If unauthenticated, it bounces to the SPA login flow with a
 // post-login `next` pointing back at the current /oauth/authorize URL.
 //
+// nonce is the per-request CSP nonce from middleware.GetNonceFromContext; the
+// inline <script> tag must carry it or the production CSP (script-src 'self'
+// 'nonce-...' without 'unsafe-inline') will block both buttons. Pass "" when
+// CSP is disabled or the nonce generator failed and middleware fell back to
+// 'unsafe-inline' — the empty attribute is harmless in that mode.
+//
 // Untrusted strings are emitted in two modes:
 //   - HTML body (clientName, scope names) → html.EscapeString
 //   - JSON literal embedded in <script> (state, code_challenge, redirect_uri)
@@ -25,7 +31,7 @@ import (
 //     state="</script><script>alert(1)</script>" from breaking out of the
 //     <script> tag and executing attacker JS in the consent page's origin
 //     (which holds the user's JWT in localStorage).
-func oauthConsentHTML(clientName string, req *service.AuthorizeRequest) string {
+func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce string) string {
 	scopes := req.Scopes
 	if len(scopes) == 0 {
 		scopes = []string{"image_generation"}
@@ -86,7 +92,7 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest) string {
   </div>
   <div class="status" id="status"></div>
 </div>
-<script>
+<script nonce="` + html.EscapeString(nonce) + `">
 (function() {
   var form = ` + formJSON + `;
   var $approve = document.getElementById("approve");
