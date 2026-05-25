@@ -28,6 +28,17 @@ func (s *stubClientRepo) GetClientByID(_ context.Context, id string) (*OAuthClie
 	return nil, ErrOAuthClientNotFound
 }
 
+func (s *stubClientRepo) ListEnabledRedirectURIs(_ context.Context) ([]string, error) {
+	out := make([]string, 0)
+	for _, c := range s.clients {
+		if c.Disabled {
+			continue
+		}
+		out = append(out, c.RedirectURIs...)
+	}
+	return out, nil
+}
+
 type stubCodeRepo struct {
 	mu    sync.Mutex
 	codes map[string]*OAuthCode
@@ -1229,4 +1240,101 @@ func containsAll(haystack []string, needles ...string) bool {
 		}
 	}
 	return true
+}
+
+// ── AllowedClientOrigins ────────────────────────────────────────────────────
+
+// stubOriginRepo is a minimal OAuthClientRepository that only services the
+// dynamic-CORS-allowlist code path. Hand-rolled (instead of reusing
+// stubClientRepo) so the test inputs are obvious from the call site.
+type stubOriginRepo struct {
+	uris []string
+	err  error
+}
+
+func (s *stubOriginRepo) GetClientByID(_ context.Context, _ string) (*OAuthClient, error) {
+	return nil, ErrOAuthClientNotFound
+}
+
+func (s *stubOriginRepo) ListEnabledRedirectURIs(_ context.Context) ([]string, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.uris, nil
+}
+
+func newOriginTestService(repo OAuthClientRepository) *OAuthProviderService {
+	// Only clientRepo is exercised by AllowedClientOrigins; the rest can be
+	// nil without panicking because the method never reaches them.
+	return &OAuthProviderService{clientRepo: repo}
+}
+
+func TestAllowedClientOrigins_DedupesAndSorts(t *testing.T) {
+	// Two clients pointing at the same SPA origin via different paths must
+	// collapse to one entry. Default port (https→443) and no port collapse
+	// to the same authority.
+	repo := &stubOriginRepo{uris: []string{
+		"https://image.sakrylle.com/oauth/callback",
+		"https://image.sakrylle.com/legacy/callback",
+		"http://localhost:5173/oauth/callback",
+	}}
+	got, err := newOriginTestService(repo).AllowedClientOrigins(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{
+		"http://localhost:5173",
+		"https://image.sakrylle.com",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("origin count: got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("origins not deduped/sorted: got %v, want %v", got, want)
+			break
+		}
+	}
+}
+
+func TestAllowedClientOrigins_SkipsNonHTTPSchemes(t *testing.T) {
+	// Native-app callbacks (myapp://) and malformed URIs cannot represent a
+	// browser Origin header, so they must NOT surface in the CORS allowlist.
+	repo := &stubOriginRepo{uris: []string{
+		"https://image.sakrylle.com/oauth/callback",
+		"myapp://oauth/callback",     // native client
+		"com.example.app:/callback",  // private-use scheme, RFC 8252 §7.1
+		"   ",                        // whitespace
+		"",                           // empty
+		"not a url",                  // unparseable host-less
+		"https:///path-only",         // missing host
+	}}
+	got, err := newOriginTestService(repo).AllowedClientOrigins(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0] != "https://image.sakrylle.com" {
+		t.Errorf("expected only the http(s) origin, got %v", got)
+	}
+}
+
+func TestAllowedClientOrigins_PropagatesRepoError(t *testing.T) {
+	// Repo failure must surface — the router uses the error to keep the
+	// previous cached snapshot rather than silently emptying the allowlist.
+	repo := &stubOriginRepo{err: errors.New("db unavailable")}
+	got, err := newOriginTestService(repo).AllowedClientOrigins(context.Background())
+	if err == nil {
+		t.Fatalf("expected error, got origins=%v", got)
+	}
+}
+
+func TestAllowedClientOrigins_EmptyRepoReturnsEmpty(t *testing.T) {
+	repo := &stubOriginRepo{uris: nil}
+	got, err := newOriginTestService(repo).AllowedClientOrigins(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %v", got)
+	}
 }

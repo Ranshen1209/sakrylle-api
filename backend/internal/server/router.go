@@ -17,7 +17,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const frameSrcRefreshTimeout = 5 * time.Second
+const (
+	frameSrcRefreshTimeout    = 5 * time.Second
+	oauthOriginRefreshTimeout = 5 * time.Second
+	// oauthOriginRefreshInterval bounds how long after registering a new
+	// OAuth client an admin must wait before its redirect_uri origin starts
+	// being echoed in CORS responses. 5 min matches operator expectations
+	// for "low-frequency config changes" elsewhere in the stack and avoids
+	// hammering the DB.
+	oauthOriginRefreshInterval = 5 * time.Minute
+)
 
 // SetupRouter 配置路由器中间件和路由
 func SetupRouter(
@@ -30,6 +39,7 @@ func SetupRouter(
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	oauthProviderService *service.OAuthProviderService,
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) *gin.Engine {
@@ -50,10 +60,49 @@ func SetupRouter(
 	}
 	refreshFrameOrigins() // 启动时初始化
 
+	// 缓存 OAuth client 的 redirect_uri origin 列表，用于 /oauth/token 等
+	// 端点的跨域响应。Public PKCE 客户端（浏览器 SPA）必须直连
+	// /oauth/token 兑换 authorization code，因此其 origin 必须出现在
+	// Access-Control-Allow-Origin 响应头中。
+	//
+	// nil-safe：oauthProviderService 在 setup 流程中可能为 nil，此时禁用动态
+	// allowlist；CORS 中间件继续仅依据 cfg.CORS.AllowedOrigins 工作。
+	var cachedOAuthOrigins atomic.Pointer[[]string]
+	cachedOAuthOrigins.Store(&emptyOrigins)
+
+	if oauthProviderService != nil {
+		refreshOAuthOrigins := func() {
+			ctx, cancel := context.WithTimeout(context.Background(), oauthOriginRefreshTimeout)
+			defer cancel()
+			origins, err := oauthProviderService.AllowedClientOrigins(ctx)
+			if err != nil {
+				log.Printf("CORS: failed to refresh OAuth client origins, keeping previous snapshot: %v", err)
+				return
+			}
+			cachedOAuthOrigins.Store(&origins)
+		}
+		refreshOAuthOrigins() // 启动时初始化
+
+		// 5 分钟周期性刷新。新增/禁用 OAuth client 后，新 origin 在该窗口内生效。
+		// 不取消 ticker —— 路由器与进程同生共死。
+		go func() {
+			ticker := time.NewTicker(oauthOriginRefreshInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				refreshOAuthOrigins()
+			}
+		}()
+	}
+
 	// 应用中间件
 	r.Use(middleware2.RequestLogger())
 	r.Use(middleware2.Logger())
-	r.Use(middleware2.CORS(cfg.CORS))
+	r.Use(middleware2.CORS(cfg.CORS, func() []string {
+		if p := cachedOAuthOrigins.Load(); p != nil {
+			return *p
+		}
+		return nil
+	}))
 	r.Use(middleware2.SecurityHeaders(cfg.Security.CSP, func() []string {
 		if p := cachedFrameOrigins.Load(); p != nil {
 			return *p
