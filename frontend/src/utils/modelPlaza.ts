@@ -86,7 +86,7 @@ export function flattenChannelsToPlaza(
   for (const ch of channels) {
     for (const section of ch.platforms) {
       for (const model of section.supported_models) {
-        const platform = model.platform || section.platform
+        const platform = inferDisplayPlatform(model.name, model.platform || section.platform)
         const modelKey = `${platform}::${model.name}`
         const agg = aggregates.get(modelKey) ?? {
           pricing: null,
@@ -103,7 +103,7 @@ export function flattenChannelsToPlaza(
           agg.groupsById.set(g.id, {
             id: g.id,
             name: g.name,
-            platform: g.platform,
+            platform: inferDisplayPlatform(model.name, g.platform),
             subscriptionType: g.subscription_type || 'standard',
             isExclusive: g.is_exclusive,
             defaultRate: g.rate_multiplier,
@@ -143,4 +143,15 @@ function comparePlazaModels(a: PlazaModel, b: PlazaModel): number {
   if (a.platform !== b.platform) return a.platform.localeCompare(b.platform)
   if (a.name !== b.name) return a.name.localeCompare(b.name)
   return a.group.effectiveRate - b.group.effectiveRate
+}
+
+/**
+ * Infer the user-facing display platform from the model name.
+ * The DB may store a protocol-level platform (e.g. 'anthropic' for DeepSeek
+ * because the upstream uses Anthropic protocol), but the plaza should show
+ * the actual provider brand.
+ */
+function inferDisplayPlatform(modelName: string, dbPlatform: string): string {
+  if (modelName.startsWith('deepseek-')) return 'deepseek'
+  return dbPlatform
 }
