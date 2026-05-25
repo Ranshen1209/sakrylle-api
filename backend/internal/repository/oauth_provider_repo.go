@@ -48,6 +48,27 @@ func (r *oauthProviderRepository) GetClientByID(ctx context.Context, clientID st
 	return entOAuthClientToService(row), nil
 }
 
+// ListEnabledRedirectURIs returns the flat union of redirect_uris across every
+// non-disabled client. Order is not guaranteed; the service layer normalizes
+// (parse → origin → dedupe → sort) before exposing the list.
+//
+// Selecting only the redirect_uris column keeps this cheap to call on a
+// 5-minute refresh tick even with many clients registered.
+func (r *oauthProviderRepository) ListEnabledRedirectURIs(ctx context.Context) ([]string, error) {
+	rows, err := r.client.OAuthClient.Query().
+		Where(oauthclient.DisabledEQ(false)).
+		Select(oauthclient.FieldRedirectUris).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list oauth client redirect_uris: %w", err)
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.RedirectUris...)
+	}
+	return out, nil
+}
+
 // ── OAuthCodeRepository ─────────────────────────────────────────────────────
 
 func (r *oauthProviderRepository) CreateCode(ctx context.Context, code *service.OAuthCode) error {

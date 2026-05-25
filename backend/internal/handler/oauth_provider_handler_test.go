@@ -42,6 +42,17 @@ func (s *oauthHandlerClientRepoStub) GetClientByID(_ context.Context, id string)
 	return nil, service.ErrOAuthClientNotFound
 }
 
+func (s *oauthHandlerClientRepoStub) ListEnabledRedirectURIs(_ context.Context) ([]string, error) {
+	out := make([]string, 0)
+	for _, c := range s.clients {
+		if c.Disabled {
+			continue
+		}
+		out = append(out, c.RedirectURIs...)
+	}
+	return out, nil
+}
+
 type oauthHandlerCodeRepoStub struct {
 	mu    sync.Mutex
 	codes map[string]*service.OAuthCode

@@ -68,6 +68,11 @@ type OAuthGrant struct {
 
 type OAuthClientRepository interface {
 	GetClientByID(ctx context.Context, clientID string) (*OAuthClient, error)
+	// ListEnabledRedirectURIs returns the union of redirect_uris across every
+	// non-disabled OAuth client. Used by the CORS layer to compute the
+	// dynamic browser-origin allowlist for /oauth/token (public PKCE clients
+	// must call the token endpoint cross-origin from the browser).
+	ListEnabledRedirectURIs(ctx context.Context) ([]string, error)
 }
 
 type OAuthCodeRepository interface {

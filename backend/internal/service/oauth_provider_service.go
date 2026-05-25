@@ -114,7 +114,64 @@ func (s *OAuthProviderService) IsEnabled(ctx context.Context) bool {
 	}
 }
 
-// LookupClient validates the client_id and rejects disabled clients.
+// AllowedClientOrigins returns the deduped, sorted set of browser origins
+// (scheme://host[:port]) collected from every enabled OAuth client's
+// redirect_uris.
+//
+// Used by the CORS middleware to whitelist public PKCE clients (browser SPAs
+// like image.sakrylle.com) so they can POST to /oauth/token cross-origin to
+// exchange an authorization code. The token endpoint is the only OAuth path
+// that actually needs CORS — /oauth/authorize is a top-level navigation that
+// doesn't trigger a preflight — but the same allowlist covers both for free.
+//
+// URIs that don't parse, lack a host, or aren't http/https are silently
+// skipped: they cannot represent a real browser Origin header value, and an
+// admin who registers `myapp://callback` (native client) shouldn't see it
+// surface as a CORS allowlist entry.
+func (s *OAuthProviderService) AllowedClientOrigins(ctx context.Context) ([]string, error) {
+	uris, err := s.clientRepo.ListEnabledRedirectURIs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(uris))
+	for _, raw := range uris {
+		origin, ok := parseBrowserOrigin(raw)
+		if !ok {
+			continue
+		}
+		seen[origin] = struct{}{}
+	}
+	out := make([]string, 0, len(seen))
+	for origin := range seen {
+		out = append(out, origin)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// parseBrowserOrigin extracts the CORS-style scheme://host[:port] tuple from
+// an HTTP(S) redirect_uri, returning ok=false for any URI that cannot match a
+// browser Origin header (non-HTTP scheme, malformed, host-less).
+func parseBrowserOrigin(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", false
+	}
+	if u.Host == "" {
+		return "", false
+	}
+	return scheme + "://" + u.Host, true
+}
+
+
 //
 // Also enforces that the client has at least one form of credential:
 // PKCE-required (public client) OR a client_secret_hash (confidential client).
