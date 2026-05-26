@@ -744,7 +744,6 @@ export default {
       copied: '已复制',
       copiedHint: '已复制到剪贴板',
       clickToCopy: '点击可复制此端点',
-      speedTest: '测速',
     },
     allGroups: '全部分组',
     allStatus: '全部状态',
