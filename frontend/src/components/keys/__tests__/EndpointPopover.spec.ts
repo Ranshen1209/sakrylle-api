@@ -9,7 +9,6 @@ const messages: Record<string, string> = {
   'keys.endpoints.copied': '已复制',
   'keys.endpoints.copiedHint': '已复制到剪贴板',
   'keys.endpoints.clickToCopy': '点击可复制此端点',
-  'keys.endpoints.speedTest': '测速',
 }
 
 vi.mock('vue-i18n', () => ({
