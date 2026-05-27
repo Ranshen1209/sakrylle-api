@@ -182,6 +182,35 @@ func (s *oauthHandlerRefreshRepoStub) ListActiveByUser(_ context.Context, userID
 	return out, nil
 }
 
+// ── v2 (Workstream A interface additions) ──────────────────────────────────
+//
+// Compile-only shims so this handler test keeps building against the
+// extended OAuthRefreshTokenRepository contract. Workstream B replaces
+// them with real semantics when grant/family revocation tests land.
+
+func (s *oauthHandlerRefreshRepoStub) GetRefreshTokenByHashForUpdate(_ context.Context, tokenHash string, _ time.Time) (*service.OAuthRefreshToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.tokens[tokenHash]
+	if !ok {
+		return nil, service.ErrOAuthRefreshTokenNotFound
+	}
+	cp := *row
+	return &cp, nil
+}
+
+func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByGrantID(_ context.Context, _ string, _ time.Time) ([]int64, error) {
+	return nil, nil
+}
+
+func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByTokenFamilyID(_ context.Context, _ string, _ time.Time) ([]int64, error) {
+	return nil, nil
+}
+
+func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByUserAndClient(_ context.Context, _ int64, _ string, _ time.Time) ([]int64, error) {
+	return nil, nil
+}
+
 type oauthHandlerAPIKeyRepoStub struct {
 	mu     sync.Mutex
 	nextID int64

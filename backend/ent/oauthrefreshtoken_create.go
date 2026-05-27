@@ -114,6 +114,110 @@ func (_c *OAuthRefreshTokenCreate) SetNillableRotatedToHash(v *string) *OAuthRef
 	return _c
 }
 
+// SetGrantID sets the "grant_id" field.
+func (_c *OAuthRefreshTokenCreate) SetGrantID(v string) *OAuthRefreshTokenCreate {
+	_c.mutation.SetGrantID(v)
+	return _c
+}
+
+// SetNillableGrantID sets the "grant_id" field if the given value is not nil.
+func (_c *OAuthRefreshTokenCreate) SetNillableGrantID(v *string) *OAuthRefreshTokenCreate {
+	if v != nil {
+		_c.SetGrantID(*v)
+	}
+	return _c
+}
+
+// SetTokenFamilyID sets the "token_family_id" field.
+func (_c *OAuthRefreshTokenCreate) SetTokenFamilyID(v string) *OAuthRefreshTokenCreate {
+	_c.mutation.SetTokenFamilyID(v)
+	return _c
+}
+
+// SetNillableTokenFamilyID sets the "token_family_id" field if the given value is not nil.
+func (_c *OAuthRefreshTokenCreate) SetNillableTokenFamilyID(v *string) *OAuthRefreshTokenCreate {
+	if v != nil {
+		_c.SetTokenFamilyID(*v)
+	}
+	return _c
+}
+
+// SetGroupID sets the "group_id" field.
+func (_c *OAuthRefreshTokenCreate) SetGroupID(v int64) *OAuthRefreshTokenCreate {
+	_c.mutation.SetGroupID(v)
+	return _c
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_c *OAuthRefreshTokenCreate) SetNillableGroupID(v *int64) *OAuthRefreshTokenCreate {
+	if v != nil {
+		_c.SetGroupID(*v)
+	}
+	return _c
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (_c *OAuthRefreshTokenCreate) SetAllowedGroupsSnapshot(v []int64) *OAuthRefreshTokenCreate {
+	_c.mutation.SetAllowedGroupsSnapshot(v)
+	return _c
+}
+
+// SetDeviceID sets the "device_id" field.
+func (_c *OAuthRefreshTokenCreate) SetDeviceID(v string) *OAuthRefreshTokenCreate {
+	_c.mutation.SetDeviceID(v)
+	return _c
+}
+
+// SetNillableDeviceID sets the "device_id" field if the given value is not nil.
+func (_c *OAuthRefreshTokenCreate) SetNillableDeviceID(v *string) *OAuthRefreshTokenCreate {
+	if v != nil {
+		_c.SetDeviceID(*v)
+	}
+	return _c
+}
+
+// SetDeviceName sets the "device_name" field.
+func (_c *OAuthRefreshTokenCreate) SetDeviceName(v string) *OAuthRefreshTokenCreate {
+	_c.mutation.SetDeviceName(v)
+	return _c
+}
+
+// SetNillableDeviceName sets the "device_name" field if the given value is not nil.
+func (_c *OAuthRefreshTokenCreate) SetNillableDeviceName(v *string) *OAuthRefreshTokenCreate {
+	if v != nil {
+		_c.SetDeviceName(*v)
+	}
+	return _c
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (_c *OAuthRefreshTokenCreate) SetLastUsedAt(v time.Time) *OAuthRefreshTokenCreate {
+	_c.mutation.SetLastUsedAt(v)
+	return _c
+}
+
+// SetNillableLastUsedAt sets the "last_used_at" field if the given value is not nil.
+func (_c *OAuthRefreshTokenCreate) SetNillableLastUsedAt(v *time.Time) *OAuthRefreshTokenCreate {
+	if v != nil {
+		_c.SetLastUsedAt(*v)
+	}
+	return _c
+}
+
+// SetReuseDetectedAt sets the "reuse_detected_at" field.
+func (_c *OAuthRefreshTokenCreate) SetReuseDetectedAt(v time.Time) *OAuthRefreshTokenCreate {
+	_c.mutation.SetReuseDetectedAt(v)
+	return _c
+}
+
+// SetNillableReuseDetectedAt sets the "reuse_detected_at" field if the given value is not nil.
+func (_c *OAuthRefreshTokenCreate) SetNillableReuseDetectedAt(v *time.Time) *OAuthRefreshTokenCreate {
+	if v != nil {
+		_c.SetReuseDetectedAt(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthRefreshTokenMutation object of the builder.
 func (_c *OAuthRefreshTokenCreate) Mutation() *OAuthRefreshTokenMutation {
 	return _c.mutation
@@ -157,6 +261,10 @@ func (_c *OAuthRefreshTokenCreate) defaults() {
 		v := oauthrefreshtoken.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.AllowedGroupsSnapshot(); !ok {
+		v := oauthrefreshtoken.DefaultAllowedGroupsSnapshot
+		_c.mutation.SetAllowedGroupsSnapshot(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -198,6 +306,29 @@ func (_c *OAuthRefreshTokenCreate) check() error {
 	if v, ok := _c.mutation.RotatedToHash(); ok {
 		if err := oauthrefreshtoken.RotatedToHashValidator(v); err != nil {
 			return &ValidationError{Name: "rotated_to_hash", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.rotated_to_hash": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.GrantID(); ok {
+		if err := oauthrefreshtoken.GrantIDValidator(v); err != nil {
+			return &ValidationError{Name: "grant_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.grant_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.TokenFamilyID(); ok {
+		if err := oauthrefreshtoken.TokenFamilyIDValidator(v); err != nil {
+			return &ValidationError{Name: "token_family_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.token_family_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.AllowedGroupsSnapshot(); !ok {
+		return &ValidationError{Name: "allowed_groups_snapshot", err: errors.New(`ent: missing required field "OAuthRefreshToken.allowed_groups_snapshot"`)}
+	}
+	if v, ok := _c.mutation.DeviceID(); ok {
+		if err := oauthrefreshtoken.DeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "device_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.device_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.DeviceName(); ok {
+		if err := oauthrefreshtoken.DeviceNameValidator(v); err != nil {
+			return &ValidationError{Name: "device_name", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.device_name": %w`, err)}
 		}
 	}
 	return nil
@@ -266,6 +397,38 @@ func (_c *OAuthRefreshTokenCreate) createSpec() (*OAuthRefreshToken, *sqlgraph.C
 	if value, ok := _c.mutation.RotatedToHash(); ok {
 		_spec.SetField(oauthrefreshtoken.FieldRotatedToHash, field.TypeString, value)
 		_node.RotatedToHash = &value
+	}
+	if value, ok := _c.mutation.GrantID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldGrantID, field.TypeString, value)
+		_node.GrantID = &value
+	}
+	if value, ok := _c.mutation.TokenFamilyID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldTokenFamilyID, field.TypeString, value)
+		_node.TokenFamilyID = &value
+	}
+	if value, ok := _c.mutation.GroupID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldGroupID, field.TypeInt64, value)
+		_node.GroupID = &value
+	}
+	if value, ok := _c.mutation.AllowedGroupsSnapshot(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldAllowedGroupsSnapshot, field.TypeJSON, value)
+		_node.AllowedGroupsSnapshot = value
+	}
+	if value, ok := _c.mutation.DeviceID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldDeviceID, field.TypeString, value)
+		_node.DeviceID = &value
+	}
+	if value, ok := _c.mutation.DeviceName(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldDeviceName, field.TypeString, value)
+		_node.DeviceName = &value
+	}
+	if value, ok := _c.mutation.LastUsedAt(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldLastUsedAt, field.TypeTime, value)
+		_node.LastUsedAt = &value
+	}
+	if value, ok := _c.mutation.ReuseDetectedAt(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldReuseDetectedAt, field.TypeTime, value)
+		_node.ReuseDetectedAt = &value
 	}
 	return _node, _spec
 }
@@ -448,6 +611,150 @@ func (u *OAuthRefreshTokenUpsert) UpdateRotatedToHash() *OAuthRefreshTokenUpsert
 // ClearRotatedToHash clears the value of the "rotated_to_hash" field.
 func (u *OAuthRefreshTokenUpsert) ClearRotatedToHash() *OAuthRefreshTokenUpsert {
 	u.SetNull(oauthrefreshtoken.FieldRotatedToHash)
+	return u
+}
+
+// SetGrantID sets the "grant_id" field.
+func (u *OAuthRefreshTokenUpsert) SetGrantID(v string) *OAuthRefreshTokenUpsert {
+	u.Set(oauthrefreshtoken.FieldGrantID, v)
+	return u
+}
+
+// UpdateGrantID sets the "grant_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsert) UpdateGrantID() *OAuthRefreshTokenUpsert {
+	u.SetExcluded(oauthrefreshtoken.FieldGrantID)
+	return u
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (u *OAuthRefreshTokenUpsert) ClearGrantID() *OAuthRefreshTokenUpsert {
+	u.SetNull(oauthrefreshtoken.FieldGrantID)
+	return u
+}
+
+// SetTokenFamilyID sets the "token_family_id" field.
+func (u *OAuthRefreshTokenUpsert) SetTokenFamilyID(v string) *OAuthRefreshTokenUpsert {
+	u.Set(oauthrefreshtoken.FieldTokenFamilyID, v)
+	return u
+}
+
+// UpdateTokenFamilyID sets the "token_family_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsert) UpdateTokenFamilyID() *OAuthRefreshTokenUpsert {
+	u.SetExcluded(oauthrefreshtoken.FieldTokenFamilyID)
+	return u
+}
+
+// ClearTokenFamilyID clears the value of the "token_family_id" field.
+func (u *OAuthRefreshTokenUpsert) ClearTokenFamilyID() *OAuthRefreshTokenUpsert {
+	u.SetNull(oauthrefreshtoken.FieldTokenFamilyID)
+	return u
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *OAuthRefreshTokenUpsert) SetGroupID(v int64) *OAuthRefreshTokenUpsert {
+	u.Set(oauthrefreshtoken.FieldGroupID, v)
+	return u
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsert) UpdateGroupID() *OAuthRefreshTokenUpsert {
+	u.SetExcluded(oauthrefreshtoken.FieldGroupID)
+	return u
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *OAuthRefreshTokenUpsert) AddGroupID(v int64) *OAuthRefreshTokenUpsert {
+	u.Add(oauthrefreshtoken.FieldGroupID, v)
+	return u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *OAuthRefreshTokenUpsert) ClearGroupID() *OAuthRefreshTokenUpsert {
+	u.SetNull(oauthrefreshtoken.FieldGroupID)
+	return u
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (u *OAuthRefreshTokenUpsert) SetAllowedGroupsSnapshot(v []int64) *OAuthRefreshTokenUpsert {
+	u.Set(oauthrefreshtoken.FieldAllowedGroupsSnapshot, v)
+	return u
+}
+
+// UpdateAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsert) UpdateAllowedGroupsSnapshot() *OAuthRefreshTokenUpsert {
+	u.SetExcluded(oauthrefreshtoken.FieldAllowedGroupsSnapshot)
+	return u
+}
+
+// SetDeviceID sets the "device_id" field.
+func (u *OAuthRefreshTokenUpsert) SetDeviceID(v string) *OAuthRefreshTokenUpsert {
+	u.Set(oauthrefreshtoken.FieldDeviceID, v)
+	return u
+}
+
+// UpdateDeviceID sets the "device_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsert) UpdateDeviceID() *OAuthRefreshTokenUpsert {
+	u.SetExcluded(oauthrefreshtoken.FieldDeviceID)
+	return u
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (u *OAuthRefreshTokenUpsert) ClearDeviceID() *OAuthRefreshTokenUpsert {
+	u.SetNull(oauthrefreshtoken.FieldDeviceID)
+	return u
+}
+
+// SetDeviceName sets the "device_name" field.
+func (u *OAuthRefreshTokenUpsert) SetDeviceName(v string) *OAuthRefreshTokenUpsert {
+	u.Set(oauthrefreshtoken.FieldDeviceName, v)
+	return u
+}
+
+// UpdateDeviceName sets the "device_name" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsert) UpdateDeviceName() *OAuthRefreshTokenUpsert {
+	u.SetExcluded(oauthrefreshtoken.FieldDeviceName)
+	return u
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (u *OAuthRefreshTokenUpsert) ClearDeviceName() *OAuthRefreshTokenUpsert {
+	u.SetNull(oauthrefreshtoken.FieldDeviceName)
+	return u
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (u *OAuthRefreshTokenUpsert) SetLastUsedAt(v time.Time) *OAuthRefreshTokenUpsert {
+	u.Set(oauthrefreshtoken.FieldLastUsedAt, v)
+	return u
+}
+
+// UpdateLastUsedAt sets the "last_used_at" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsert) UpdateLastUsedAt() *OAuthRefreshTokenUpsert {
+	u.SetExcluded(oauthrefreshtoken.FieldLastUsedAt)
+	return u
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (u *OAuthRefreshTokenUpsert) ClearLastUsedAt() *OAuthRefreshTokenUpsert {
+	u.SetNull(oauthrefreshtoken.FieldLastUsedAt)
+	return u
+}
+
+// SetReuseDetectedAt sets the "reuse_detected_at" field.
+func (u *OAuthRefreshTokenUpsert) SetReuseDetectedAt(v time.Time) *OAuthRefreshTokenUpsert {
+	u.Set(oauthrefreshtoken.FieldReuseDetectedAt, v)
+	return u
+}
+
+// UpdateReuseDetectedAt sets the "reuse_detected_at" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsert) UpdateReuseDetectedAt() *OAuthRefreshTokenUpsert {
+	u.SetExcluded(oauthrefreshtoken.FieldReuseDetectedAt)
+	return u
+}
+
+// ClearReuseDetectedAt clears the value of the "reuse_detected_at" field.
+func (u *OAuthRefreshTokenUpsert) ClearReuseDetectedAt() *OAuthRefreshTokenUpsert {
+	u.SetNull(oauthrefreshtoken.FieldReuseDetectedAt)
 	return u
 }
 
@@ -647,6 +954,174 @@ func (u *OAuthRefreshTokenUpsertOne) UpdateRotatedToHash() *OAuthRefreshTokenUps
 func (u *OAuthRefreshTokenUpsertOne) ClearRotatedToHash() *OAuthRefreshTokenUpsertOne {
 	return u.Update(func(s *OAuthRefreshTokenUpsert) {
 		s.ClearRotatedToHash()
+	})
+}
+
+// SetGrantID sets the "grant_id" field.
+func (u *OAuthRefreshTokenUpsertOne) SetGrantID(v string) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetGrantID(v)
+	})
+}
+
+// UpdateGrantID sets the "grant_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertOne) UpdateGrantID() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateGrantID()
+	})
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (u *OAuthRefreshTokenUpsertOne) ClearGrantID() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearGrantID()
+	})
+}
+
+// SetTokenFamilyID sets the "token_family_id" field.
+func (u *OAuthRefreshTokenUpsertOne) SetTokenFamilyID(v string) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetTokenFamilyID(v)
+	})
+}
+
+// UpdateTokenFamilyID sets the "token_family_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertOne) UpdateTokenFamilyID() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateTokenFamilyID()
+	})
+}
+
+// ClearTokenFamilyID clears the value of the "token_family_id" field.
+func (u *OAuthRefreshTokenUpsertOne) ClearTokenFamilyID() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearTokenFamilyID()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *OAuthRefreshTokenUpsertOne) SetGroupID(v int64) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *OAuthRefreshTokenUpsertOne) AddGroupID(v int64) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.AddGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertOne) UpdateGroupID() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *OAuthRefreshTokenUpsertOne) ClearGroupID() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearGroupID()
+	})
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (u *OAuthRefreshTokenUpsertOne) SetAllowedGroupsSnapshot(v []int64) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetAllowedGroupsSnapshot(v)
+	})
+}
+
+// UpdateAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertOne) UpdateAllowedGroupsSnapshot() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateAllowedGroupsSnapshot()
+	})
+}
+
+// SetDeviceID sets the "device_id" field.
+func (u *OAuthRefreshTokenUpsertOne) SetDeviceID(v string) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetDeviceID(v)
+	})
+}
+
+// UpdateDeviceID sets the "device_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertOne) UpdateDeviceID() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateDeviceID()
+	})
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (u *OAuthRefreshTokenUpsertOne) ClearDeviceID() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearDeviceID()
+	})
+}
+
+// SetDeviceName sets the "device_name" field.
+func (u *OAuthRefreshTokenUpsertOne) SetDeviceName(v string) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetDeviceName(v)
+	})
+}
+
+// UpdateDeviceName sets the "device_name" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertOne) UpdateDeviceName() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateDeviceName()
+	})
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (u *OAuthRefreshTokenUpsertOne) ClearDeviceName() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearDeviceName()
+	})
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (u *OAuthRefreshTokenUpsertOne) SetLastUsedAt(v time.Time) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetLastUsedAt(v)
+	})
+}
+
+// UpdateLastUsedAt sets the "last_used_at" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertOne) UpdateLastUsedAt() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateLastUsedAt()
+	})
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (u *OAuthRefreshTokenUpsertOne) ClearLastUsedAt() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearLastUsedAt()
+	})
+}
+
+// SetReuseDetectedAt sets the "reuse_detected_at" field.
+func (u *OAuthRefreshTokenUpsertOne) SetReuseDetectedAt(v time.Time) *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetReuseDetectedAt(v)
+	})
+}
+
+// UpdateReuseDetectedAt sets the "reuse_detected_at" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertOne) UpdateReuseDetectedAt() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateReuseDetectedAt()
+	})
+}
+
+// ClearReuseDetectedAt clears the value of the "reuse_detected_at" field.
+func (u *OAuthRefreshTokenUpsertOne) ClearReuseDetectedAt() *OAuthRefreshTokenUpsertOne {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearReuseDetectedAt()
 	})
 }
 
@@ -1012,6 +1487,174 @@ func (u *OAuthRefreshTokenUpsertBulk) UpdateRotatedToHash() *OAuthRefreshTokenUp
 func (u *OAuthRefreshTokenUpsertBulk) ClearRotatedToHash() *OAuthRefreshTokenUpsertBulk {
 	return u.Update(func(s *OAuthRefreshTokenUpsert) {
 		s.ClearRotatedToHash()
+	})
+}
+
+// SetGrantID sets the "grant_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) SetGrantID(v string) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetGrantID(v)
+	})
+}
+
+// UpdateGrantID sets the "grant_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertBulk) UpdateGrantID() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateGrantID()
+	})
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) ClearGrantID() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearGrantID()
+	})
+}
+
+// SetTokenFamilyID sets the "token_family_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) SetTokenFamilyID(v string) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetTokenFamilyID(v)
+	})
+}
+
+// UpdateTokenFamilyID sets the "token_family_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertBulk) UpdateTokenFamilyID() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateTokenFamilyID()
+	})
+}
+
+// ClearTokenFamilyID clears the value of the "token_family_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) ClearTokenFamilyID() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearTokenFamilyID()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) SetGroupID(v int64) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) AddGroupID(v int64) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.AddGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertBulk) UpdateGroupID() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) ClearGroupID() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearGroupID()
+	})
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (u *OAuthRefreshTokenUpsertBulk) SetAllowedGroupsSnapshot(v []int64) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetAllowedGroupsSnapshot(v)
+	})
+}
+
+// UpdateAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertBulk) UpdateAllowedGroupsSnapshot() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateAllowedGroupsSnapshot()
+	})
+}
+
+// SetDeviceID sets the "device_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) SetDeviceID(v string) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetDeviceID(v)
+	})
+}
+
+// UpdateDeviceID sets the "device_id" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertBulk) UpdateDeviceID() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateDeviceID()
+	})
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (u *OAuthRefreshTokenUpsertBulk) ClearDeviceID() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearDeviceID()
+	})
+}
+
+// SetDeviceName sets the "device_name" field.
+func (u *OAuthRefreshTokenUpsertBulk) SetDeviceName(v string) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetDeviceName(v)
+	})
+}
+
+// UpdateDeviceName sets the "device_name" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertBulk) UpdateDeviceName() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateDeviceName()
+	})
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (u *OAuthRefreshTokenUpsertBulk) ClearDeviceName() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearDeviceName()
+	})
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (u *OAuthRefreshTokenUpsertBulk) SetLastUsedAt(v time.Time) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetLastUsedAt(v)
+	})
+}
+
+// UpdateLastUsedAt sets the "last_used_at" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertBulk) UpdateLastUsedAt() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateLastUsedAt()
+	})
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (u *OAuthRefreshTokenUpsertBulk) ClearLastUsedAt() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearLastUsedAt()
+	})
+}
+
+// SetReuseDetectedAt sets the "reuse_detected_at" field.
+func (u *OAuthRefreshTokenUpsertBulk) SetReuseDetectedAt(v time.Time) *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.SetReuseDetectedAt(v)
+	})
+}
+
+// UpdateReuseDetectedAt sets the "reuse_detected_at" field to the value that was provided on create.
+func (u *OAuthRefreshTokenUpsertBulk) UpdateReuseDetectedAt() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.UpdateReuseDetectedAt()
+	})
+}
+
+// ClearReuseDetectedAt clears the value of the "reuse_detected_at" field.
+func (u *OAuthRefreshTokenUpsertBulk) ClearReuseDetectedAt() *OAuthRefreshTokenUpsertBulk {
+	return u.Update(func(s *OAuthRefreshTokenUpsert) {
+		s.ClearReuseDetectedAt()
 	})
 }
 

@@ -38,7 +38,23 @@ type OAuthRefreshToken struct {
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 	// token_hash of the row that replaced this one (for replay detection)
 	RotatedToHash *string `json:"rotated_to_hash,omitempty"`
-	selectValues  sql.SelectValues
+	// Grant identity (UUID). Stable across rotations; used for grant-level revoke
+	GrantID *string `json:"grant_id,omitempty"`
+	// Family identity (UUID). Stable across rotations; used for reuse-detection family revoke
+	TokenFamilyID *string `json:"token_family_id,omitempty"`
+	// Current group binding for this refresh token / access token pair
+	GroupID *int64 `json:"group_id,omitempty"`
+	// Group IDs the user consented to for this grant; refresh may switch within this set
+	AllowedGroupsSnapshot []int64 `json:"allowed_groups_snapshot,omitempty"`
+	// DeviceID holds the value of the "device_id" field.
+	DeviceID *string `json:"device_id,omitempty"`
+	// DeviceName holds the value of the "device_name" field.
+	DeviceName *string `json:"device_name,omitempty"`
+	// LastUsedAt holds the value of the "last_used_at" field.
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	// Set when refresh-token reuse triggered family revocation
+	ReuseDetectedAt *time.Time `json:"reuse_detected_at,omitempty"`
+	selectValues    sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -46,13 +62,13 @@ func (*OAuthRefreshToken) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case oauthrefreshtoken.FieldScopes:
+		case oauthrefreshtoken.FieldScopes, oauthrefreshtoken.FieldAllowedGroupsSnapshot:
 			values[i] = new([]byte)
-		case oauthrefreshtoken.FieldID, oauthrefreshtoken.FieldUserID, oauthrefreshtoken.FieldAPIKeyID:
+		case oauthrefreshtoken.FieldID, oauthrefreshtoken.FieldUserID, oauthrefreshtoken.FieldAPIKeyID, oauthrefreshtoken.FieldGroupID:
 			values[i] = new(sql.NullInt64)
-		case oauthrefreshtoken.FieldTokenHash, oauthrefreshtoken.FieldClientID, oauthrefreshtoken.FieldRotatedToHash:
+		case oauthrefreshtoken.FieldTokenHash, oauthrefreshtoken.FieldClientID, oauthrefreshtoken.FieldRotatedToHash, oauthrefreshtoken.FieldGrantID, oauthrefreshtoken.FieldTokenFamilyID, oauthrefreshtoken.FieldDeviceID, oauthrefreshtoken.FieldDeviceName:
 			values[i] = new(sql.NullString)
-		case oauthrefreshtoken.FieldCreatedAt, oauthrefreshtoken.FieldUpdatedAt, oauthrefreshtoken.FieldExpiresAt, oauthrefreshtoken.FieldRevokedAt:
+		case oauthrefreshtoken.FieldCreatedAt, oauthrefreshtoken.FieldUpdatedAt, oauthrefreshtoken.FieldExpiresAt, oauthrefreshtoken.FieldRevokedAt, oauthrefreshtoken.FieldLastUsedAt, oauthrefreshtoken.FieldReuseDetectedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -139,6 +155,63 @@ func (_m *OAuthRefreshToken) assignValues(columns []string, values []any) error 
 				_m.RotatedToHash = new(string)
 				*_m.RotatedToHash = value.String
 			}
+		case oauthrefreshtoken.FieldGrantID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field grant_id", values[i])
+			} else if value.Valid {
+				_m.GrantID = new(string)
+				*_m.GrantID = value.String
+			}
+		case oauthrefreshtoken.FieldTokenFamilyID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field token_family_id", values[i])
+			} else if value.Valid {
+				_m.TokenFamilyID = new(string)
+				*_m.TokenFamilyID = value.String
+			}
+		case oauthrefreshtoken.FieldGroupID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field group_id", values[i])
+			} else if value.Valid {
+				_m.GroupID = new(int64)
+				*_m.GroupID = value.Int64
+			}
+		case oauthrefreshtoken.FieldAllowedGroupsSnapshot:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field allowed_groups_snapshot", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AllowedGroupsSnapshot); err != nil {
+					return fmt.Errorf("unmarshal field allowed_groups_snapshot: %w", err)
+				}
+			}
+		case oauthrefreshtoken.FieldDeviceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field device_id", values[i])
+			} else if value.Valid {
+				_m.DeviceID = new(string)
+				*_m.DeviceID = value.String
+			}
+		case oauthrefreshtoken.FieldDeviceName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field device_name", values[i])
+			} else if value.Valid {
+				_m.DeviceName = new(string)
+				*_m.DeviceName = value.String
+			}
+		case oauthrefreshtoken.FieldLastUsedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_used_at", values[i])
+			} else if value.Valid {
+				_m.LastUsedAt = new(time.Time)
+				*_m.LastUsedAt = value.Time
+			}
+		case oauthrefreshtoken.FieldReuseDetectedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field reuse_detected_at", values[i])
+			} else if value.Valid {
+				_m.ReuseDetectedAt = new(time.Time)
+				*_m.ReuseDetectedAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -207,6 +280,44 @@ func (_m *OAuthRefreshToken) String() string {
 	if v := _m.RotatedToHash; v != nil {
 		builder.WriteString("rotated_to_hash=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.GrantID; v != nil {
+		builder.WriteString("grant_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.TokenFamilyID; v != nil {
+		builder.WriteString("token_family_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.GroupID; v != nil {
+		builder.WriteString("group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("allowed_groups_snapshot=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowedGroupsSnapshot))
+	builder.WriteString(", ")
+	if v := _m.DeviceID; v != nil {
+		builder.WriteString("device_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.DeviceName; v != nil {
+		builder.WriteString("device_name=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.LastUsedAt; v != nil {
+		builder.WriteString("last_used_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.ReuseDetectedAt; v != nil {
+		builder.WriteString("reuse_detected_at=")
+		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteByte(')')
 	return builder.String()

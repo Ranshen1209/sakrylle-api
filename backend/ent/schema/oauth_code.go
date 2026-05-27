@@ -14,6 +14,11 @@ import (
 // OAuthCode holds short-lived OAuth 2.0 authorization codes (RFC 6749 §4.1).
 //
 // Stored as SHA-256(code) so a DB leak never exposes a usable code.
+//
+// v2 (migration 145) adds group_id, grant_id, allowed_groups_snapshot,
+// device_id, and device_name. New code rows MUST have non-empty grant_id and
+// non-empty allowed_groups_snapshot; legacy rows created before migration may
+// still be consumed via the compatibility path. See §10.2.
 type OAuthCode struct {
 	ent.Schema
 }
@@ -58,6 +63,31 @@ func (OAuthCode) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+
+		// ── v2 (migration 145) ────────────────────────────────────────────
+
+		field.Int64("group_id").
+			Optional().
+			Nillable().
+			Comment("Group selected during approval; persisted for token mint"),
+		field.String("grant_id").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Comment("Grant identity; new approvals MUST set this (UUID)"),
+		field.JSON("allowed_groups_snapshot", []int64{}).
+			Default([]int64{}).
+			Comment("Group IDs the user consented to for this grant"),
+		field.String("device_id").
+			MaxLen(128).
+			Optional().
+			Nillable().
+			Comment("Optional client-provided install/session identifier"),
+		field.String("device_name").
+			MaxLen(200).
+			Optional().
+			Nillable().
+			Comment("Sanitized device display name shown in Authorized Apps"),
 	}
 }
 
@@ -66,5 +96,6 @@ func (OAuthCode) Indexes() []ent.Index {
 		index.Fields("expires_at"),
 		index.Fields("user_id"),
 		index.Fields("client_id"),
+		index.Fields("grant_id"),
 	}
 }

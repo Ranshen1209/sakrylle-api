@@ -41,7 +41,33 @@ type OAuthClient struct {
 	// refresh_token lifetime in seconds (default 30d)
 	RefreshTokenTTLSeconds int `json:"refresh_token_ttl_seconds,omitempty"`
 	// Disabled holds the value of the "disabled" field.
-	Disabled     bool `json:"disabled,omitempty"`
+	Disabled bool `json:"disabled,omitempty"`
+	// public | confidential; write-once, validated by service layer
+	ClientType string `json:"client_type,omitempty"`
+	// Categorizes UX/storage expectations: web, native, cli, image, ...
+	AppType string `json:"app_type,omitempty"`
+	// First-party Sakrylle clients may bypass per-grant consent under §9
+	TrustedFirstParty bool `json:"trusted_first_party,omitempty"`
+	// Used when /authorize requests no scope; subset of allowed_scopes
+	DefaultScopes []string `json:"default_scopes,omitempty"`
+	// Optional client-level group whitelist; NULL = unrestricted at client layer
+	AllowedGroupIds []int64 `json:"allowed_group_ids,omitempty"`
+	// CORS origin allowlist for token endpoint and PKCE clients
+	AllowedOrigins []string `json:"allowed_origins,omitempty"`
+	// Whitelist of allowed post-logout redirect URIs
+	LogoutRedirectUris []string `json:"logout_redirect_uris,omitempty"`
+	// Allow this client to use the RFC 8628 device authorization grant
+	DeviceFlowEnabled bool `json:"device_flow_enabled,omitempty"`
+	// Legacy compat: mint refresh tokens even when offline_access not granted
+	AllowRefreshWithoutOfflineAccess bool `json:"allow_refresh_without_offline_access,omitempty"`
+	// IconURL holds the value of the "icon_url" field.
+	IconURL *string `json:"icon_url,omitempty"`
+	// HomepageURL holds the value of the "homepage_url" field.
+	HomepageURL *string `json:"homepage_url,omitempty"`
+	// PrivacyURL holds the value of the "privacy_url" field.
+	PrivacyURL *string `json:"privacy_url,omitempty"`
+	// TermsURL holds the value of the "terms_url" field.
+	TermsURL     *string `json:"terms_url,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -50,13 +76,13 @@ func (*OAuthClient) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case oauthclient.FieldRedirectUris, oauthclient.FieldAllowedScopes:
+		case oauthclient.FieldRedirectUris, oauthclient.FieldAllowedScopes, oauthclient.FieldDefaultScopes, oauthclient.FieldAllowedGroupIds, oauthclient.FieldAllowedOrigins, oauthclient.FieldLogoutRedirectUris:
 			values[i] = new([]byte)
-		case oauthclient.FieldPkceRequired, oauthclient.FieldDisabled:
+		case oauthclient.FieldPkceRequired, oauthclient.FieldDisabled, oauthclient.FieldTrustedFirstParty, oauthclient.FieldDeviceFlowEnabled, oauthclient.FieldAllowRefreshWithoutOfflineAccess:
 			values[i] = new(sql.NullBool)
 		case oauthclient.FieldID, oauthclient.FieldDefaultGroupID, oauthclient.FieldAccessTokenTTLSeconds, oauthclient.FieldRefreshTokenTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case oauthclient.FieldClientID, oauthclient.FieldName, oauthclient.FieldClientSecretHash:
+		case oauthclient.FieldClientID, oauthclient.FieldName, oauthclient.FieldClientSecretHash, oauthclient.FieldClientType, oauthclient.FieldAppType, oauthclient.FieldIconURL, oauthclient.FieldHomepageURL, oauthclient.FieldPrivacyURL, oauthclient.FieldTermsURL:
 			values[i] = new(sql.NullString)
 		case oauthclient.FieldCreatedAt, oauthclient.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -159,6 +185,96 @@ func (_m *OAuthClient) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Disabled = value.Bool
 			}
+		case oauthclient.FieldClientType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_type", values[i])
+			} else if value.Valid {
+				_m.ClientType = value.String
+			}
+		case oauthclient.FieldAppType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field app_type", values[i])
+			} else if value.Valid {
+				_m.AppType = value.String
+			}
+		case oauthclient.FieldTrustedFirstParty:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field trusted_first_party", values[i])
+			} else if value.Valid {
+				_m.TrustedFirstParty = value.Bool
+			}
+		case oauthclient.FieldDefaultScopes:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field default_scopes", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.DefaultScopes); err != nil {
+					return fmt.Errorf("unmarshal field default_scopes: %w", err)
+				}
+			}
+		case oauthclient.FieldAllowedGroupIds:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field allowed_group_ids", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AllowedGroupIds); err != nil {
+					return fmt.Errorf("unmarshal field allowed_group_ids: %w", err)
+				}
+			}
+		case oauthclient.FieldAllowedOrigins:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field allowed_origins", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AllowedOrigins); err != nil {
+					return fmt.Errorf("unmarshal field allowed_origins: %w", err)
+				}
+			}
+		case oauthclient.FieldLogoutRedirectUris:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field logout_redirect_uris", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.LogoutRedirectUris); err != nil {
+					return fmt.Errorf("unmarshal field logout_redirect_uris: %w", err)
+				}
+			}
+		case oauthclient.FieldDeviceFlowEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field device_flow_enabled", values[i])
+			} else if value.Valid {
+				_m.DeviceFlowEnabled = value.Bool
+			}
+		case oauthclient.FieldAllowRefreshWithoutOfflineAccess:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_refresh_without_offline_access", values[i])
+			} else if value.Valid {
+				_m.AllowRefreshWithoutOfflineAccess = value.Bool
+			}
+		case oauthclient.FieldIconURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field icon_url", values[i])
+			} else if value.Valid {
+				_m.IconURL = new(string)
+				*_m.IconURL = value.String
+			}
+		case oauthclient.FieldHomepageURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field homepage_url", values[i])
+			} else if value.Valid {
+				_m.HomepageURL = new(string)
+				*_m.HomepageURL = value.String
+			}
+		case oauthclient.FieldPrivacyURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field privacy_url", values[i])
+			} else if value.Valid {
+				_m.PrivacyURL = new(string)
+				*_m.PrivacyURL = value.String
+			}
+		case oauthclient.FieldTermsURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field terms_url", values[i])
+			} else if value.Valid {
+				_m.TermsURL = new(string)
+				*_m.TermsURL = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -234,6 +350,53 @@ func (_m *OAuthClient) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("disabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Disabled))
+	builder.WriteString(", ")
+	builder.WriteString("client_type=")
+	builder.WriteString(_m.ClientType)
+	builder.WriteString(", ")
+	builder.WriteString("app_type=")
+	builder.WriteString(_m.AppType)
+	builder.WriteString(", ")
+	builder.WriteString("trusted_first_party=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TrustedFirstParty))
+	builder.WriteString(", ")
+	builder.WriteString("default_scopes=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DefaultScopes))
+	builder.WriteString(", ")
+	builder.WriteString("allowed_group_ids=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowedGroupIds))
+	builder.WriteString(", ")
+	builder.WriteString("allowed_origins=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowedOrigins))
+	builder.WriteString(", ")
+	builder.WriteString("logout_redirect_uris=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LogoutRedirectUris))
+	builder.WriteString(", ")
+	builder.WriteString("device_flow_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DeviceFlowEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("allow_refresh_without_offline_access=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowRefreshWithoutOfflineAccess))
+	builder.WriteString(", ")
+	if v := _m.IconURL; v != nil {
+		builder.WriteString("icon_url=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.HomepageURL; v != nil {
+		builder.WriteString("homepage_url=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.PrivacyURL; v != nil {
+		builder.WriteString("privacy_url=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.TermsURL; v != nil {
+		builder.WriteString("terms_url=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

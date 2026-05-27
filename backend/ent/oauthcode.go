@@ -39,7 +39,17 @@ type OAuthCode struct {
 	// ExpiresAt holds the value of the "expires_at" field.
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 	// UsedAt holds the value of the "used_at" field.
-	UsedAt       *time.Time `json:"used_at,omitempty"`
+	UsedAt *time.Time `json:"used_at,omitempty"`
+	// Group selected during approval; persisted for token mint
+	GroupID *int64 `json:"group_id,omitempty"`
+	// Grant identity; new approvals MUST set this (UUID)
+	GrantID *string `json:"grant_id,omitempty"`
+	// Group IDs the user consented to for this grant
+	AllowedGroupsSnapshot []int64 `json:"allowed_groups_snapshot,omitempty"`
+	// Optional client-provided install/session identifier
+	DeviceID *string `json:"device_id,omitempty"`
+	// Sanitized device display name shown in Authorized Apps
+	DeviceName   *string `json:"device_name,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -48,11 +58,11 @@ func (*OAuthCode) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case oauthcode.FieldScopes:
+		case oauthcode.FieldScopes, oauthcode.FieldAllowedGroupsSnapshot:
 			values[i] = new([]byte)
-		case oauthcode.FieldID, oauthcode.FieldUserID:
+		case oauthcode.FieldID, oauthcode.FieldUserID, oauthcode.FieldGroupID:
 			values[i] = new(sql.NullInt64)
-		case oauthcode.FieldCodeHash, oauthcode.FieldClientID, oauthcode.FieldRedirectURI, oauthcode.FieldCodeChallenge, oauthcode.FieldCodeChallengeMethod:
+		case oauthcode.FieldCodeHash, oauthcode.FieldClientID, oauthcode.FieldRedirectURI, oauthcode.FieldCodeChallenge, oauthcode.FieldCodeChallengeMethod, oauthcode.FieldGrantID, oauthcode.FieldDeviceID, oauthcode.FieldDeviceName:
 			values[i] = new(sql.NullString)
 		case oauthcode.FieldCreatedAt, oauthcode.FieldUpdatedAt, oauthcode.FieldExpiresAt, oauthcode.FieldUsedAt:
 			values[i] = new(sql.NullTime)
@@ -146,6 +156,42 @@ func (_m *OAuthCode) assignValues(columns []string, values []any) error {
 				_m.UsedAt = new(time.Time)
 				*_m.UsedAt = value.Time
 			}
+		case oauthcode.FieldGroupID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field group_id", values[i])
+			} else if value.Valid {
+				_m.GroupID = new(int64)
+				*_m.GroupID = value.Int64
+			}
+		case oauthcode.FieldGrantID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field grant_id", values[i])
+			} else if value.Valid {
+				_m.GrantID = new(string)
+				*_m.GrantID = value.String
+			}
+		case oauthcode.FieldAllowedGroupsSnapshot:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field allowed_groups_snapshot", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AllowedGroupsSnapshot); err != nil {
+					return fmt.Errorf("unmarshal field allowed_groups_snapshot: %w", err)
+				}
+			}
+		case oauthcode.FieldDeviceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field device_id", values[i])
+			} else if value.Valid {
+				_m.DeviceID = new(string)
+				*_m.DeviceID = value.String
+			}
+		case oauthcode.FieldDeviceName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field device_name", values[i])
+			} else if value.Valid {
+				_m.DeviceName = new(string)
+				*_m.DeviceName = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -215,6 +261,29 @@ func (_m *OAuthCode) String() string {
 	if v := _m.UsedAt; v != nil {
 		builder.WriteString("used_at=")
 		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.GroupID; v != nil {
+		builder.WriteString("group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.GrantID; v != nil {
+		builder.WriteString("grant_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("allowed_groups_snapshot=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowedGroupsSnapshot))
+	builder.WriteString(", ")
+	if v := _m.DeviceID; v != nil {
+		builder.WriteString("device_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.DeviceName; v != nil {
+		builder.WriteString("device_name=")
+		builder.WriteString(*v)
 	}
 	builder.WriteByte(')')
 	return builder.String()

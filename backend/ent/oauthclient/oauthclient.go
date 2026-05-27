@@ -37,6 +37,32 @@ const (
 	FieldRefreshTokenTTLSeconds = "refresh_token_ttl_seconds"
 	// FieldDisabled holds the string denoting the disabled field in the database.
 	FieldDisabled = "disabled"
+	// FieldClientType holds the string denoting the client_type field in the database.
+	FieldClientType = "client_type"
+	// FieldAppType holds the string denoting the app_type field in the database.
+	FieldAppType = "app_type"
+	// FieldTrustedFirstParty holds the string denoting the trusted_first_party field in the database.
+	FieldTrustedFirstParty = "trusted_first_party"
+	// FieldDefaultScopes holds the string denoting the default_scopes field in the database.
+	FieldDefaultScopes = "default_scopes"
+	// FieldAllowedGroupIds holds the string denoting the allowed_group_ids field in the database.
+	FieldAllowedGroupIds = "allowed_group_ids"
+	// FieldAllowedOrigins holds the string denoting the allowed_origins field in the database.
+	FieldAllowedOrigins = "allowed_origins"
+	// FieldLogoutRedirectUris holds the string denoting the logout_redirect_uris field in the database.
+	FieldLogoutRedirectUris = "logout_redirect_uris"
+	// FieldDeviceFlowEnabled holds the string denoting the device_flow_enabled field in the database.
+	FieldDeviceFlowEnabled = "device_flow_enabled"
+	// FieldAllowRefreshWithoutOfflineAccess holds the string denoting the allow_refresh_without_offline_access field in the database.
+	FieldAllowRefreshWithoutOfflineAccess = "allow_refresh_without_offline_access"
+	// FieldIconURL holds the string denoting the icon_url field in the database.
+	FieldIconURL = "icon_url"
+	// FieldHomepageURL holds the string denoting the homepage_url field in the database.
+	FieldHomepageURL = "homepage_url"
+	// FieldPrivacyURL holds the string denoting the privacy_url field in the database.
+	FieldPrivacyURL = "privacy_url"
+	// FieldTermsURL holds the string denoting the terms_url field in the database.
+	FieldTermsURL = "terms_url"
 	// Table holds the table name of the oauthclient in the database.
 	Table = "oauth_clients"
 )
@@ -56,6 +82,19 @@ var Columns = []string{
 	FieldAccessTokenTTLSeconds,
 	FieldRefreshTokenTTLSeconds,
 	FieldDisabled,
+	FieldClientType,
+	FieldAppType,
+	FieldTrustedFirstParty,
+	FieldDefaultScopes,
+	FieldAllowedGroupIds,
+	FieldAllowedOrigins,
+	FieldLogoutRedirectUris,
+	FieldDeviceFlowEnabled,
+	FieldAllowRefreshWithoutOfflineAccess,
+	FieldIconURL,
+	FieldHomepageURL,
+	FieldPrivacyURL,
+	FieldTermsURL,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -87,6 +126,26 @@ var (
 	DefaultRefreshTokenTTLSeconds int
 	// DefaultDisabled holds the default value on creation for the "disabled" field.
 	DefaultDisabled bool
+	// DefaultClientType holds the default value on creation for the "client_type" field.
+	DefaultClientType string
+	// ClientTypeValidator is a validator for the "client_type" field. It is called by the builders before save.
+	ClientTypeValidator func(string) error
+	// DefaultAppType holds the default value on creation for the "app_type" field.
+	DefaultAppType string
+	// AppTypeValidator is a validator for the "app_type" field. It is called by the builders before save.
+	AppTypeValidator func(string) error
+	// DefaultTrustedFirstParty holds the default value on creation for the "trusted_first_party" field.
+	DefaultTrustedFirstParty bool
+	// DefaultDefaultScopes holds the default value on creation for the "default_scopes" field.
+	DefaultDefaultScopes []string
+	// DefaultAllowedOrigins holds the default value on creation for the "allowed_origins" field.
+	DefaultAllowedOrigins []string
+	// DefaultLogoutRedirectUris holds the default value on creation for the "logout_redirect_uris" field.
+	DefaultLogoutRedirectUris []string
+	// DefaultDeviceFlowEnabled holds the default value on creation for the "device_flow_enabled" field.
+	DefaultDeviceFlowEnabled bool
+	// DefaultAllowRefreshWithoutOfflineAccess holds the default value on creation for the "allow_refresh_without_offline_access" field.
+	DefaultAllowRefreshWithoutOfflineAccess bool
 )
 
 // OrderOption defines the ordering options for the OAuthClient queries.
@@ -145,4 +204,49 @@ func ByRefreshTokenTTLSeconds(opts ...sql.OrderTermOption) OrderOption {
 // ByDisabled orders the results by the disabled field.
 func ByDisabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDisabled, opts...).ToFunc()
+}
+
+// ByClientType orders the results by the client_type field.
+func ByClientType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientType, opts...).ToFunc()
+}
+
+// ByAppType orders the results by the app_type field.
+func ByAppType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAppType, opts...).ToFunc()
+}
+
+// ByTrustedFirstParty orders the results by the trusted_first_party field.
+func ByTrustedFirstParty(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTrustedFirstParty, opts...).ToFunc()
+}
+
+// ByDeviceFlowEnabled orders the results by the device_flow_enabled field.
+func ByDeviceFlowEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeviceFlowEnabled, opts...).ToFunc()
+}
+
+// ByAllowRefreshWithoutOfflineAccess orders the results by the allow_refresh_without_offline_access field.
+func ByAllowRefreshWithoutOfflineAccess(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowRefreshWithoutOfflineAccess, opts...).ToFunc()
+}
+
+// ByIconURL orders the results by the icon_url field.
+func ByIconURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIconURL, opts...).ToFunc()
+}
+
+// ByHomepageURL orders the results by the homepage_url field.
+func ByHomepageURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHomepageURL, opts...).ToFunc()
+}
+
+// ByPrivacyURL orders the results by the privacy_url field.
+func ByPrivacyURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPrivacyURL, opts...).ToFunc()
+}
+
+// ByTermsURL orders the results by the terms_url field.
+func ByTermsURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTermsURL, opts...).ToFunc()
 }

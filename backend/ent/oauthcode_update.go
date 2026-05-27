@@ -172,6 +172,105 @@ func (_u *OAuthCodeUpdate) ClearUsedAt() *OAuthCodeUpdate {
 	return _u
 }
 
+// SetGroupID sets the "group_id" field.
+func (_u *OAuthCodeUpdate) SetGroupID(v int64) *OAuthCodeUpdate {
+	_u.mutation.ResetGroupID()
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *OAuthCodeUpdate) SetNillableGroupID(v *int64) *OAuthCodeUpdate {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// AddGroupID adds value to the "group_id" field.
+func (_u *OAuthCodeUpdate) AddGroupID(v int64) *OAuthCodeUpdate {
+	_u.mutation.AddGroupID(v)
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *OAuthCodeUpdate) ClearGroupID() *OAuthCodeUpdate {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetGrantID sets the "grant_id" field.
+func (_u *OAuthCodeUpdate) SetGrantID(v string) *OAuthCodeUpdate {
+	_u.mutation.SetGrantID(v)
+	return _u
+}
+
+// SetNillableGrantID sets the "grant_id" field if the given value is not nil.
+func (_u *OAuthCodeUpdate) SetNillableGrantID(v *string) *OAuthCodeUpdate {
+	if v != nil {
+		_u.SetGrantID(*v)
+	}
+	return _u
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (_u *OAuthCodeUpdate) ClearGrantID() *OAuthCodeUpdate {
+	_u.mutation.ClearGrantID()
+	return _u
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (_u *OAuthCodeUpdate) SetAllowedGroupsSnapshot(v []int64) *OAuthCodeUpdate {
+	_u.mutation.SetAllowedGroupsSnapshot(v)
+	return _u
+}
+
+// AppendAllowedGroupsSnapshot appends value to the "allowed_groups_snapshot" field.
+func (_u *OAuthCodeUpdate) AppendAllowedGroupsSnapshot(v []int64) *OAuthCodeUpdate {
+	_u.mutation.AppendAllowedGroupsSnapshot(v)
+	return _u
+}
+
+// SetDeviceID sets the "device_id" field.
+func (_u *OAuthCodeUpdate) SetDeviceID(v string) *OAuthCodeUpdate {
+	_u.mutation.SetDeviceID(v)
+	return _u
+}
+
+// SetNillableDeviceID sets the "device_id" field if the given value is not nil.
+func (_u *OAuthCodeUpdate) SetNillableDeviceID(v *string) *OAuthCodeUpdate {
+	if v != nil {
+		_u.SetDeviceID(*v)
+	}
+	return _u
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (_u *OAuthCodeUpdate) ClearDeviceID() *OAuthCodeUpdate {
+	_u.mutation.ClearDeviceID()
+	return _u
+}
+
+// SetDeviceName sets the "device_name" field.
+func (_u *OAuthCodeUpdate) SetDeviceName(v string) *OAuthCodeUpdate {
+	_u.mutation.SetDeviceName(v)
+	return _u
+}
+
+// SetNillableDeviceName sets the "device_name" field if the given value is not nil.
+func (_u *OAuthCodeUpdate) SetNillableDeviceName(v *string) *OAuthCodeUpdate {
+	if v != nil {
+		_u.SetDeviceName(*v)
+	}
+	return _u
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (_u *OAuthCodeUpdate) ClearDeviceName() *OAuthCodeUpdate {
+	_u.mutation.ClearDeviceName()
+	return _u
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_u *OAuthCodeUpdate) Mutation() *OAuthCodeMutation {
 	return _u.mutation
@@ -240,6 +339,21 @@ func (_u *OAuthCodeUpdate) check() error {
 			return &ValidationError{Name: "code_challenge_method", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.code_challenge_method": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GrantID(); ok {
+		if err := oauthcode.GrantIDValidator(v); err != nil {
+			return &ValidationError{Name: "grant_id", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.grant_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DeviceID(); ok {
+		if err := oauthcode.DeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "device_id", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.device_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DeviceName(); ok {
+		if err := oauthcode.DeviceNameValidator(v); err != nil {
+			return &ValidationError{Name: "device_name", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.device_name": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -295,6 +409,41 @@ func (_u *OAuthCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.UsedAtCleared() {
 		_spec.ClearField(oauthcode.FieldUsedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(oauthcode.FieldGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupID(); ok {
+		_spec.AddField(oauthcode.FieldGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(oauthcode.FieldGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.GrantID(); ok {
+		_spec.SetField(oauthcode.FieldGrantID, field.TypeString, value)
+	}
+	if _u.mutation.GrantIDCleared() {
+		_spec.ClearField(oauthcode.FieldGrantID, field.TypeString)
+	}
+	if value, ok := _u.mutation.AllowedGroupsSnapshot(); ok {
+		_spec.SetField(oauthcode.FieldAllowedGroupsSnapshot, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedGroupsSnapshot(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthcode.FieldAllowedGroupsSnapshot, value)
+		})
+	}
+	if value, ok := _u.mutation.DeviceID(); ok {
+		_spec.SetField(oauthcode.FieldDeviceID, field.TypeString, value)
+	}
+	if _u.mutation.DeviceIDCleared() {
+		_spec.ClearField(oauthcode.FieldDeviceID, field.TypeString)
+	}
+	if value, ok := _u.mutation.DeviceName(); ok {
+		_spec.SetField(oauthcode.FieldDeviceName, field.TypeString, value)
+	}
+	if _u.mutation.DeviceNameCleared() {
+		_spec.ClearField(oauthcode.FieldDeviceName, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -459,6 +608,105 @@ func (_u *OAuthCodeUpdateOne) ClearUsedAt() *OAuthCodeUpdateOne {
 	return _u
 }
 
+// SetGroupID sets the "group_id" field.
+func (_u *OAuthCodeUpdateOne) SetGroupID(v int64) *OAuthCodeUpdateOne {
+	_u.mutation.ResetGroupID()
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *OAuthCodeUpdateOne) SetNillableGroupID(v *int64) *OAuthCodeUpdateOne {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// AddGroupID adds value to the "group_id" field.
+func (_u *OAuthCodeUpdateOne) AddGroupID(v int64) *OAuthCodeUpdateOne {
+	_u.mutation.AddGroupID(v)
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *OAuthCodeUpdateOne) ClearGroupID() *OAuthCodeUpdateOne {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetGrantID sets the "grant_id" field.
+func (_u *OAuthCodeUpdateOne) SetGrantID(v string) *OAuthCodeUpdateOne {
+	_u.mutation.SetGrantID(v)
+	return _u
+}
+
+// SetNillableGrantID sets the "grant_id" field if the given value is not nil.
+func (_u *OAuthCodeUpdateOne) SetNillableGrantID(v *string) *OAuthCodeUpdateOne {
+	if v != nil {
+		_u.SetGrantID(*v)
+	}
+	return _u
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (_u *OAuthCodeUpdateOne) ClearGrantID() *OAuthCodeUpdateOne {
+	_u.mutation.ClearGrantID()
+	return _u
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (_u *OAuthCodeUpdateOne) SetAllowedGroupsSnapshot(v []int64) *OAuthCodeUpdateOne {
+	_u.mutation.SetAllowedGroupsSnapshot(v)
+	return _u
+}
+
+// AppendAllowedGroupsSnapshot appends value to the "allowed_groups_snapshot" field.
+func (_u *OAuthCodeUpdateOne) AppendAllowedGroupsSnapshot(v []int64) *OAuthCodeUpdateOne {
+	_u.mutation.AppendAllowedGroupsSnapshot(v)
+	return _u
+}
+
+// SetDeviceID sets the "device_id" field.
+func (_u *OAuthCodeUpdateOne) SetDeviceID(v string) *OAuthCodeUpdateOne {
+	_u.mutation.SetDeviceID(v)
+	return _u
+}
+
+// SetNillableDeviceID sets the "device_id" field if the given value is not nil.
+func (_u *OAuthCodeUpdateOne) SetNillableDeviceID(v *string) *OAuthCodeUpdateOne {
+	if v != nil {
+		_u.SetDeviceID(*v)
+	}
+	return _u
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (_u *OAuthCodeUpdateOne) ClearDeviceID() *OAuthCodeUpdateOne {
+	_u.mutation.ClearDeviceID()
+	return _u
+}
+
+// SetDeviceName sets the "device_name" field.
+func (_u *OAuthCodeUpdateOne) SetDeviceName(v string) *OAuthCodeUpdateOne {
+	_u.mutation.SetDeviceName(v)
+	return _u
+}
+
+// SetNillableDeviceName sets the "device_name" field if the given value is not nil.
+func (_u *OAuthCodeUpdateOne) SetNillableDeviceName(v *string) *OAuthCodeUpdateOne {
+	if v != nil {
+		_u.SetDeviceName(*v)
+	}
+	return _u
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (_u *OAuthCodeUpdateOne) ClearDeviceName() *OAuthCodeUpdateOne {
+	_u.mutation.ClearDeviceName()
+	return _u
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_u *OAuthCodeUpdateOne) Mutation() *OAuthCodeMutation {
 	return _u.mutation
@@ -540,6 +788,21 @@ func (_u *OAuthCodeUpdateOne) check() error {
 			return &ValidationError{Name: "code_challenge_method", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.code_challenge_method": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GrantID(); ok {
+		if err := oauthcode.GrantIDValidator(v); err != nil {
+			return &ValidationError{Name: "grant_id", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.grant_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DeviceID(); ok {
+		if err := oauthcode.DeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "device_id", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.device_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DeviceName(); ok {
+		if err := oauthcode.DeviceNameValidator(v); err != nil {
+			return &ValidationError{Name: "device_name", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.device_name": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -612,6 +875,41 @@ func (_u *OAuthCodeUpdateOne) sqlSave(ctx context.Context) (_node *OAuthCode, er
 	}
 	if _u.mutation.UsedAtCleared() {
 		_spec.ClearField(oauthcode.FieldUsedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(oauthcode.FieldGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupID(); ok {
+		_spec.AddField(oauthcode.FieldGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(oauthcode.FieldGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.GrantID(); ok {
+		_spec.SetField(oauthcode.FieldGrantID, field.TypeString, value)
+	}
+	if _u.mutation.GrantIDCleared() {
+		_spec.ClearField(oauthcode.FieldGrantID, field.TypeString)
+	}
+	if value, ok := _u.mutation.AllowedGroupsSnapshot(); ok {
+		_spec.SetField(oauthcode.FieldAllowedGroupsSnapshot, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedGroupsSnapshot(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthcode.FieldAllowedGroupsSnapshot, value)
+		})
+	}
+	if value, ok := _u.mutation.DeviceID(); ok {
+		_spec.SetField(oauthcode.FieldDeviceID, field.TypeString, value)
+	}
+	if _u.mutation.DeviceIDCleared() {
+		_spec.ClearField(oauthcode.FieldDeviceID, field.TypeString)
+	}
+	if value, ok := _u.mutation.DeviceName(); ok {
+		_spec.SetField(oauthcode.FieldDeviceName, field.TypeString, value)
+	}
+	if _u.mutation.DeviceNameCleared() {
+		_spec.ClearField(oauthcode.FieldDeviceName, field.TypeString)
 	}
 	_node = &OAuthCode{config: _u.config}
 	_spec.Assign = _node.assignValues
