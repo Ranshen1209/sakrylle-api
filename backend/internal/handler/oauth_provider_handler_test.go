@@ -182,11 +182,10 @@ func (s *oauthHandlerRefreshRepoStub) ListActiveByUser(_ context.Context, userID
 	return out, nil
 }
 
-// ── v2 (Workstream A interface additions) ──────────────────────────────────
+// ── v2 fake — grant / family / hash-lookup operations ─────────────────────
 //
-// Compile-only shims so this handler test keeps building against the
-// extended OAuthRefreshTokenRepository contract. Workstream B replaces
-// them with real semantics when grant/family revocation tests land.
+// In-memory fakes for the v2 OAuthRefreshTokenRepository surface so this
+// handler test exercises real rotation/revocation semantics end-to-end.
 
 func (s *oauthHandlerRefreshRepoStub) GetRefreshTokenByHashForUpdate(_ context.Context, tokenHash string, _ time.Time) (*service.OAuthRefreshToken, error) {
 	s.mu.Lock()
@@ -199,16 +198,82 @@ func (s *oauthHandlerRefreshRepoStub) GetRefreshTokenByHashForUpdate(_ context.C
 	return &cp, nil
 }
 
-func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByGrantID(_ context.Context, _ string, _ time.Time) ([]int64, error) {
-	return nil, nil
+func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByGrantID(_ context.Context, grantID string, now time.Time) ([]int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []int64
+	for _, row := range s.tokens {
+		if row.GrantID == nil || *row.GrantID != grantID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		t := now
+		row.RevokedAt = &t
+		ids = append(ids, row.APIKeyID)
+	}
+	return ids, nil
 }
 
-func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByTokenFamilyID(_ context.Context, _ string, _ time.Time) ([]int64, error) {
-	return nil, nil
+func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByTokenFamilyID(_ context.Context, familyID string, now time.Time) ([]int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []int64
+	for _, row := range s.tokens {
+		if row.TokenFamilyID == nil || *row.TokenFamilyID != familyID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		t := now
+		row.RevokedAt = &t
+		ids = append(ids, row.APIKeyID)
+	}
+	return ids, nil
 }
 
-func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByUserAndClient(_ context.Context, _ int64, _ string, _ time.Time) ([]int64, error) {
-	return nil, nil
+func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByUserAndClient(_ context.Context, userID int64, clientID string, now time.Time) ([]int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []int64
+	for _, row := range s.tokens {
+		if row.UserID != userID || row.ClientID != clientID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		t := now
+		row.RevokedAt = &t
+		ids = append(ids, row.APIKeyID)
+	}
+	return ids, nil
+}
+
+// oauthHandlerAPIKeyOAuthAdapter adapts the handler stub APIKeyRepository to
+// the v2 OAuthAPIKeyRepository surface for tests that don't need real
+// batch-disable semantics.
+type oauthHandlerAPIKeyOAuthAdapter struct {
+	*oauthHandlerAPIKeyRepoStub
+}
+
+func (a *oauthHandlerAPIKeyOAuthAdapter) DisableAPIKeysByIDsReturningKeys(ctx context.Context, ids []int64, now time.Time) ([]string, error) {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		key, err := a.GetByID(ctx, id)
+		if err != nil || key == nil {
+			continue
+		}
+		out = append(out, key.Key)
+		if key.Status == service.StatusAPIKeyDisabled {
+			continue
+		}
+		key.Status = service.StatusAPIKeyDisabled
+		_ = a.Update(ctx, key)
+	}
+	return out, nil
 }
 
 type oauthHandlerAPIKeyRepoStub struct {
@@ -388,6 +453,11 @@ func newOAuthProviderHandlerHarness(t *testing.T) (*OAuthProviderHandler, *servi
 			DefaultGroupID:         &groupID,
 			AccessTokenTTLSeconds:  86400,
 			RefreshTokenTTLSeconds: 2592000,
+			// §7.4 / §10.1: legacy compat — image-playground frontend has not
+			// migrated to request offline_access, so allow refresh issuance
+			// without it. Mirrors the prod row state set by the Sakrylle
+			// seed migration.
+			AllowRefreshWithoutOfflineAccess: true,
 		},
 	}}
 	settingRepo := &oauthHandlerSettingRepoStub{values: map[string]string{
@@ -398,8 +468,12 @@ func newOAuthProviderHandlerHarness(t *testing.T) (*OAuthProviderHandler, *servi
 		clientRepo,
 		newOAuthHandlerCodeRepoStub(),
 		newOAuthHandlerRefreshRepoStub(),
-		newOAuthHandlerAPIKeyRepoStub(),
+		nil, // accessRepo
+		nil, // deviceRepo
+		nil, // authzTxRepo
+		&oauthHandlerAPIKeyOAuthAdapter{oauthHandlerAPIKeyRepoStub: newOAuthHandlerAPIKeyRepoStub()},
 		nil, // GroupRepository — unused on this code path
+		nil, // groupAccess
 		settingRepo,
 		nil,
 	)
@@ -569,7 +643,7 @@ func TestTokenAuthorizationCodeFlow(t *testing.T) {
 	require.Equal(t, float64(86400), resp["expires_in"])
 	refresh, _ := resp["refresh_token"].(string)
 	require.True(t, strings.HasPrefix(refresh, "rt_"), "refresh_token must have rt_ prefix, got %q", refresh)
-	require.Equal(t, "image_generation balance:read", resp["scope"])
+	require.Equal(t, "images:create account:balance:read", resp["scope"])
 }
 
 func TestTokenRefreshFlow(t *testing.T) {
@@ -797,7 +871,11 @@ func newConfidentialHandlerHarness(t *testing.T) (*OAuthProviderHandler, *servic
 		clientRepo,
 		newOAuthHandlerCodeRepoStub(),
 		newOAuthHandlerRefreshRepoStub(),
-		newOAuthHandlerAPIKeyRepoStub(),
+		nil, // accessRepo
+		nil, // deviceRepo
+		nil, // authzTxRepo
+		&oauthHandlerAPIKeyOAuthAdapter{oauthHandlerAPIKeyRepoStub: newOAuthHandlerAPIKeyRepoStub()},
+		nil,
 		nil,
 		settingRepo,
 		nil,
@@ -996,7 +1074,7 @@ func TestListGrants_HappyPathReturnsExpectedShape(t *testing.T) {
 	require.Equal(t, false, g["client_disabled"])
 	require.EqualValues(t, 1, g["active_token_count"])
 	scopes, _ := g["scopes"].([]any)
-	require.Equal(t, []any{"image_generation"}, scopes)
+	require.Equal(t, []any{"images:create"}, scopes)
 	require.NotEmpty(t, g["first_authorized_at"])
 	// last_used_at can be nil since we never hit /v1/*; the contract is the
 	// key is present (so the frontend doesn't need to defensive-check undefined).
