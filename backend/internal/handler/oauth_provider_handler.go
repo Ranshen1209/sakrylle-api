@@ -16,16 +16,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// canonicalScopesForDiscovery is the §12.1 `scopes_supported` advertisement.
+// Sourced from service.CanonicalScopes() so the discovery doc stays in lock
+// step with the scope registry.
+var canonicalScopesForDiscovery = service.CanonicalScopes()
+
 // OAuthProviderHandler exposes RFC 6749 §4.1 (Authorization Code) + RFC 7636
 // (PKCE) endpoints so external apps (e.g. image.sakrylle.com) can mint
 // Sakrylle access tokens scoped to a user account.
 type OAuthProviderHandler struct {
 	provider *service.OAuthProviderService
 	settings *service.SettingService
+	device   *OAuthDeviceHandler
 }
 
 func NewOAuthProviderHandler(provider *service.OAuthProviderService, settings *service.SettingService) *OAuthProviderHandler {
 	return &OAuthProviderHandler{provider: provider, settings: settings}
+}
+
+// SetDeviceHandler wires the device-grant branch into Token.
+//
+// The device handler is a separate handler struct so the Phase 4 device flow
+// stays self-contained; we attach it post-construction so wire DI doesn't
+// have to hold a circular relationship between the two handlers.
+func (h *OAuthProviderHandler) SetDeviceHandler(d *OAuthDeviceHandler) {
+	h.device = d
 }
 
 // Authorize renders the consent page for /oauth/authorize.
@@ -163,8 +178,14 @@ func (h *OAuthProviderHandler) Token(c *gin.Context) {
 		h.tokenAuthorizationCode(c)
 	case "refresh_token":
 		h.tokenRefresh(c)
+	case "urn:ietf:params:oauth:grant-type:device_code":
+		if h.device == nil {
+			writeOAuthError(c, http.StatusBadRequest, "unsupported_grant_type", "device flow handler not wired")
+			return
+		}
+		h.device.HandleDeviceCodeGrant(c)
 	default:
-		writeOAuthError(c, http.StatusBadRequest, "unsupported_grant_type", "grant_type must be authorization_code or refresh_token")
+		writeOAuthError(c, http.StatusBadRequest, "unsupported_grant_type", "grant_type must be authorization_code, refresh_token, or urn:ietf:params:oauth:grant-type:device_code")
 	}
 }
 
@@ -368,3 +389,304 @@ func (h *OAuthProviderHandler) RevokeGrant(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"revoked": revoked})
 }
+
+// ── Discovery (§12.1) ───────────────────────────────────────────────────────
+
+// Metadata serves GET /.well-known/oauth-authorization-server.
+//
+// The issuer is derived from `frontend_url` (DB setting → config fallback)
+// per docs/OAUTH_V2_DESIGN.md §12.1. Trailing slashes are stripped so the
+// `issuer` value is exactly the registered authority — RFC 8414 forbids a
+// trailing slash on the issuer claim.
+//
+// Cache-Control mirrors §12.1: `public, max-age=60`. Discovery is intended
+// for clients to cache; we keep the TTL low so a config change rolls out in
+// minutes, not hours.
+func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
+	issuer := h.discoveryIssuer(c)
+	resp := gin.H{
+		"issuer":                                issuer,
+		"authorization_endpoint":                issuer + "/oauth/authorize",
+		"token_endpoint":                        issuer + "/oauth/token",
+		"revocation_endpoint":                   issuer + "/oauth/revoke",
+		"device_authorization_endpoint":         issuer + "/oauth/device/code",
+		"userinfo_endpoint":                     issuer + "/v1/me",
+		"response_types_supported":              []string{"code"},
+		"response_modes_supported":              []string{"query"},
+		"ui_locales_supported":                  []string{"zh-CN", "en"},
+		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
+		"code_challenge_methods_supported":      []string{"S256"},
+		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
+		"revocation_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
+		"scopes_supported":      canonicalScopesForDiscovery,
+		"service_documentation": "https://doc.sakrylle.com/developers/oauth/",
+	}
+	c.Header("Content-Type", "application/json")
+	c.Header("Cache-Control", "public, max-age=60")
+	c.JSON(http.StatusOK, resp)
+}
+
+// discoveryIssuer resolves the discovery `issuer` URL.
+//
+// Source order:
+//  1. settings.frontend_url (admin-configurable; production points at sub.sakrylle.com)
+//  2. request scheme://host (fallback when settings is unset)
+//
+// Always strips a trailing slash because RFC 8414 forbids it on the issuer.
+func (h *OAuthProviderHandler) discoveryIssuer(c *gin.Context) string {
+	if h.settings != nil {
+		if v := strings.TrimRight(strings.TrimSpace(h.settings.GetFrontendURL(c.Request.Context())), "/"); v != "" {
+			return v
+		}
+	}
+	scheme := "https"
+	if c != nil && c.Request != nil {
+		if c.Request.TLS == nil && c.Request.Header.Get("X-Forwarded-Proto") != "https" {
+			scheme = "http"
+		}
+		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+			scheme = proto
+		}
+		if host := c.Request.Host; host != "" {
+			return strings.TrimRight(scheme+"://"+host, "/")
+		}
+	}
+	return ""
+}
+
+// ── Revocation (§12.9) ──────────────────────────────────────────────────────
+
+// Revoke handles POST /oauth/revoke (RFC 7009).
+//
+// Wire-level contract:
+//   - form-encoded body only; JSON / missing Content-Type → invalid_request.
+//   - response is HTTP 200 with empty body on success, including for unknown,
+//     already-revoked, wrong-client tokens (idempotency, RFC 7009 §2.2).
+//   - confidential client missing/wrong secret → 401 invalid_client.
+//
+// Cache-Control: no-store + Pragma: no-cache always. Per §12.1, sensitive
+// OAuth responses must never be cached.
+func (h *OAuthProviderHandler) Revoke(c *gin.Context) {
+	if !h.provider.IsEnabled(c.Request.Context()) {
+		writeOAuthError(c, http.StatusForbidden, "invalid_client", "oauth provider disabled")
+		return
+	}
+	// §12.9: form-encoded only.
+	if !isFormEncoded(c) {
+		writeOAuthError(c, http.StatusBadRequest, "invalid_request", "Content-Type must be application/x-www-form-urlencoded")
+		return
+	}
+	if err := c.Request.ParseForm(); err != nil {
+		writeOAuthError(c, http.StatusBadRequest, "invalid_request", "form parse failed")
+		return
+	}
+
+	clientID, clientSecret := extractClientCredentials(c)
+	tokenPlain := strings.TrimSpace(c.Request.PostFormValue("token"))
+	hint := strings.TrimSpace(c.Request.PostFormValue("token_type_hint"))
+
+	if tokenPlain == "" {
+		// RFC 7009 §2.1: server MAY return 200 even without `token`. Treat as
+		// success to keep the endpoint idempotent and avoid hint-leakage.
+		writeRevokeSuccess(c)
+		return
+	}
+
+	err := h.provider.RevokeAccessOrRefreshToken(c.Request.Context(), clientID, clientSecret, tokenPlain, hint)
+	if err != nil {
+		// RFC 7009: only invalid_client is allowed to surface; everything else
+		// is idempotent success. The service layer already swallows token-
+		// existence/cross-client errors.
+		if errors.Is(err, service.ErrOAuthClientAuthFailed) {
+			c.Header("Cache-Control", "no-store")
+			c.Header("Pragma", "no-cache")
+			c.Header("Content-Type", "application/json")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error":             "invalid_client",
+				"error_description": "client authentication failed",
+			})
+			return
+		}
+		slog.Warn("oauth: revoke unexpected error", "err", err)
+		// Fall through to idempotent 200 — leaking server-side bugs through a
+		// revoke response would tell attackers which tokens triggered DB errors.
+	}
+	writeRevokeSuccess(c)
+}
+
+// writeRevokeSuccess emits §12.9's empty 200 with no-cache headers.
+func writeRevokeSuccess(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	c.Header("Content-Type", "application/json")
+	c.Status(http.StatusOK)
+	// RFC 7009 says "the body is empty"; emit a literal `{}` so JSON-only
+	// clients (some HTTP libraries trip on empty responses) stay happy. The
+	// §12.9 acceptance test checks status + headers + no leak; an empty `{}`
+	// is consistent with "no body content".
+	_, _ = c.Writer.Write([]byte("{}"))
+}
+
+// isFormEncoded reports whether the request Content-Type is
+// application/x-www-form-urlencoded (with or without parameters).
+func isFormEncoded(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	ct := strings.ToLower(strings.TrimSpace(c.Request.Header.Get("Content-Type")))
+	if ct == "" {
+		return false
+	}
+	if i := strings.Index(ct, ";"); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	return ct == "application/x-www-form-urlencoded"
+}
+
+// ── Authorized Apps (§12.10) ────────────────────────────────────────────────
+
+// ListAuthorizedApps serves GET /api/v1/oauth/authorized-apps.
+//
+// JWT-protected. Returns one row per (user, grant_id), with client/group
+// names joined for display. Per §12.10, never expose another user's grants.
+// The query in the service layer is owner-scoped; this handler only re-asserts
+// the auth subject so a stray test that bypasses the JWT middleware can't
+// leak data.
+func (h *OAuthProviderHandler) ListAuthorizedApps(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	grants, err := h.provider.ListAuthorizedAppsForUser(c.Request.Context(), subject.UserID)
+	if err != nil {
+		slog.Warn("oauth: list authorized apps failed",
+			"user_id", subject.UserID, "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":             "server_error",
+			"error_description": "failed to load authorized apps",
+		})
+		return
+	}
+	out := make([]gin.H, 0, len(grants))
+	for _, g := range grants {
+		row := gin.H{
+			"grant_id":                   g.GrantID,
+			"client_id":                  g.ClientID,
+			"client_name":                g.ClientName,
+			"client_disabled":            g.ClientDisabled,
+			"app_type":                   g.AppType,
+			"icon_url":                   stringPtrOrNil(g.IconURL),
+			"device_id":                  stringPtrOrNil(g.DeviceID),
+			"device_name":                stringPtrOrNil(g.DeviceName),
+			"group_id":                   g.GroupID,
+			"group_name":                 g.GroupName,
+			"scopes":                     emptyStringSlice(g.Scopes),
+			"first_authorized_at":        g.FirstAuthorizedAt,
+			"last_used_at":               g.LastUsedAt,
+			"last_used_ip":               stringPtrOrNil(g.LastUsedIP),
+			"active_access_token_count":  g.ActiveAccessTokenCount,
+			"active_refresh_token_count": g.ActiveRefreshTokenCount,
+			"status":                     defaultGrantStatus(g.Status),
+		}
+		out = append(out, row)
+	}
+	c.JSON(http.StatusOK, gin.H{"items": out})
+}
+
+// RevokeAuthorizedApp serves DELETE /api/v1/oauth/authorized-apps/:grant_id.
+//
+// Per §12.10, ownership is checked in the service layer (`RevokeGrant`
+// returns nil for non-existent or other-user grants). The handler returns
+// 200 in both cases — exposing whether a grant exists for a different user
+// would let an attacker enumerate other users' device/grant IDs.
+func (h *OAuthProviderHandler) RevokeAuthorizedApp(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	grantID := strings.TrimSpace(c.Param("grant_id"))
+	if grantID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "grant_id is required",
+		})
+		return
+	}
+	if err := h.provider.RevokeGrant(c.Request.Context(), subject.UserID, grantID); err != nil {
+		slog.Warn("oauth: revoke authorized app failed",
+			"user_id", subject.UserID, "grant_id", grantID, "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":             "server_error",
+			"error_description": "failed to revoke authorized app",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revoked": true})
+}
+
+// RevokeAuthorizedClient serves DELETE
+// /api/v1/oauth/authorized-apps/client/:client_id.
+//
+// Revokes every grant the current user has for the named client. Idempotent:
+// returns the count of api_keys disabled (0 when the user has no grants for
+// that client; matches §12.10 contract).
+func (h *OAuthProviderHandler) RevokeAuthorizedClient(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	clientID := strings.TrimSpace(c.Param("client_id"))
+	if clientID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "client_id is required",
+		})
+		return
+	}
+	count, err := h.provider.RevokeClientAuthorizations(c.Request.Context(), subject.UserID, clientID)
+	if err != nil {
+		slog.Warn("oauth: revoke authorized client failed",
+			"user_id", subject.UserID, "client_id", clientID, "err", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":             "server_error",
+			"error_description": "failed to revoke authorized client",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revoked": count})
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+// stringPtrOrNil returns the dereferenced pointer or nil for JSON
+// serialization, so a missing optional field renders as JSON `null` rather
+// than empty string.
+func stringPtrOrNil(s *string) any {
+	if s == nil {
+		return nil
+	}
+	return *s
+}
+
+// emptyStringSlice ensures `scopes: []` is JSON-encoded as `[]` not `null`,
+// which matters for the frontend `Array.from` calls.
+func emptyStringSlice(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
+}
+
+// defaultGrantStatus normalizes blank status values to "active". The service
+// layer fills this in for live grants; legacy rows that pre-date the column
+// default to active when surfaced.
+func defaultGrantStatus(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "active"
+	}
+	return s
+}
+
