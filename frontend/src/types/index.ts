@@ -1937,6 +1937,88 @@ export type {
 } from '@/api/admin/users'
 
 // OAuth provider — user-facing "Authorized Apps"
+
+/**
+ * Canonical OAuth v2 scope identifiers.
+ *
+ * MUST stay in lock-step with `backend/internal/service/oauth_scopes.go`.
+ * Adding/removing a scope here without a matching backend change will produce
+ * a misleading consent UI. See OAUTH_V2_DESIGN.md §7.1.
+ */
+export type OAuthScope =
+  | 'profile:read'
+  | 'email:read'
+  | 'account:read'
+  | 'account:balance:read'
+  | 'models:read'
+  | 'chat.completions:create'
+  | 'responses:create'
+  | 'messages:create'
+  | 'images:create'
+  | 'usage:read'
+  | 'offline_access'
+
+/**
+ * Stable ordered list of every canonical scope. Used by tests and UI dropdowns
+ * that need to enumerate scopes.
+ */
+export const OAUTH_SCOPES: readonly OAuthScope[] = [
+  'profile:read',
+  'email:read',
+  'account:read',
+  'account:balance:read',
+  'models:read',
+  'chat.completions:create',
+  'responses:create',
+  'messages:create',
+  'images:create',
+  'usage:read',
+  'offline_access'
+] as const
+
+/**
+ * v2 per-grant projection returned by GET /api/v1/oauth/authorized-apps.
+ *
+ * Each row represents one (user, client, device) triple. A user who logged
+ * the same OAuth client in from two devices will see two rows. Compare with
+ * legacy `AuthorizedApp` (one row per client) which the v1 endpoint still
+ * returns during the transitional period.
+ *
+ * Contract: docs/OAUTH_V2_DESIGN.md §12.10.
+ */
+export interface AuthorizedAppGrant {
+  grant_id: string
+  client_id: string
+  client_name: string
+  client_disabled: boolean
+  app_type: string
+  icon_url: string | null
+  device_id: string | null
+  device_name: string | null
+  group_id: number
+  group_name: string
+  /**
+   * Scopes are typed as `string[]` (not `OAuthScope[]`) to tolerate legacy
+   * aliases or future-added scopes the frontend hasn't been redeployed for.
+   * Use `describeScope` from `@/utils/scopes` to resolve display labels.
+   */
+  scopes: string[]
+  first_authorized_at: string
+  last_used_at: string | null
+  last_used_ip: string | null
+  active_access_token_count: number
+  active_refresh_token_count: number
+  status: 'active' | 'revoked'
+}
+
+export interface AuthorizedAppsV2Response {
+  items: AuthorizedAppGrant[]
+}
+
+/**
+ * Legacy v1 row shape — one entry per client. Kept until the
+ * `/api/v1/oauth/grants` compatibility endpoint is removed (see §12.10).
+ */
 export interface AuthorizedApp {
   client_id: string
   client_name: string
