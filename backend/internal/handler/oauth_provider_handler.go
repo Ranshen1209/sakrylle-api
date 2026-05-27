@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -186,7 +187,14 @@ func (h *OAuthProviderHandler) tokenRefresh(c *gin.Context) {
 	clientID, clientSecret := extractClientCredentials(c)
 	refreshToken := strings.TrimSpace(c.Request.PostFormValue("refresh_token"))
 
-	issued, err := h.provider.RefreshAccessToken(c.Request.Context(), clientID, clientSecret, refreshToken)
+	var requestedGroupID *int64
+	if raw := strings.TrimSpace(c.Request.PostFormValue("group_id")); raw != "" {
+		if v, perr := strconv.ParseInt(raw, 10, 64); perr == nil && v > 0 {
+			requestedGroupID = &v
+		}
+	}
+
+	issued, err := h.provider.RefreshAccessToken(c.Request.Context(), clientID, clientSecret, refreshToken, requestedGroupID)
 	if err != nil {
 		writeOAuthError(c, httpStatusForOAuthError(err), oauthErrorReason(err), infraerrors.Message(err))
 		return

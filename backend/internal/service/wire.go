@@ -569,6 +569,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIOAuthService,
 	NewGrokOAuthService,
 	NewOAuthProviderService,
+	NewDefaultGroupAccessPolicy,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
