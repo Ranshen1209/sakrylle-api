@@ -746,6 +746,72 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	return out
 }
 
+// ── OAuthAPIKeyRepository ──────────────────────────────────────────────────
+
+// oauthAPIKeyRepository wraps the standard apiKeyRepository with the
+// OAuth-specific batch helper required by grant/family revocation. It is
+// returned by NewOAuthAPIKeyRepository and satisfies
+// service.OAuthAPIKeyRepository (= service.APIKeyRepository plus
+// DisableAPIKeysByIDsReturningKeys).
+type oauthAPIKeyRepository struct {
+	*apiKeyRepository
+}
+
+// NewOAuthAPIKeyRepository returns the OAuth-aware view of the api_keys
+// repository. Workstream B uses the returned interface for grant, family,
+// and client revocation paths so it can disable many api_keys rows in one
+// statement and immediately invalidate the auth cache by plaintext key.
+func NewOAuthAPIKeyRepository(client *dbent.Client, sqlDB *sql.DB) service.OAuthAPIKeyRepository {
+	return &oauthAPIKeyRepository{apiKeyRepository: newAPIKeyRepositoryWithSQL(client, sqlDB)}
+}
+
+// DisableAPIKeysByIDsReturningKeys disables the matching api_keys rows in a
+// single UPDATE and returns the plaintext keys of the affected rows so the
+// caller can publish apikey:auth:<sha> cache invalidations. Rows that are
+// already disabled are still returned so the caller can defensively
+// invalidate their cache entries — refresh-token reuse may revoke a row
+// twice in quick succession and we must still drop the cached auth state.
+//
+// Returns an empty slice (not nil) when ids is empty so callers can range
+// over the result without a nil check.
+func (r *oauthAPIKeyRepository) DisableAPIKeysByIDsReturningKeys(ctx context.Context, ids []int64, now time.Time) ([]string, error) {
+	if len(ids) == 0 {
+		return []string{}, nil
+	}
+	rows, err := r.client.APIKey.Query().
+		Where(apikey.IDIn(ids...), apikey.DeletedAtIsNil()).
+		Select(apikey.FieldID, apikey.FieldKey, apikey.FieldStatus).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query api_keys for batch disable: %w", err)
+	}
+	if len(rows) == 0 {
+		return []string{}, nil
+	}
+	plaintext := make([]string, 0, len(rows))
+	toDisable := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		plaintext = append(plaintext, row.Key)
+		if row.Status != service.StatusDisabled {
+			toDisable = append(toDisable, row.ID)
+		}
+	}
+	if len(toDisable) == 0 {
+		return plaintext, nil
+	}
+	if _, err := r.client.APIKey.Update().
+		Where(apikey.IDIn(toDisable...), apikey.DeletedAtIsNil()).
+		SetStatus(service.StatusDisabled).
+		SetUpdatedAt(now).
+		Save(ctx); err != nil {
+		return nil, fmt.Errorf("disable api_keys by ids: %w", err)
+	}
+	return plaintext, nil
+}
+
+// Compile-time interface assertion.
+var _ service.OAuthAPIKeyRepository = (*oauthAPIKeyRepository)(nil)
+
 func userEntityToService(u *dbent.User) *service.User {
 	if u == nil {
 		return nil

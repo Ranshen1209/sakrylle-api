@@ -104,6 +104,26 @@ func UsedAt(v time.Time) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldEQ(FieldUsedAt, v))
 }
 
+// GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
+func GroupID(v int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldGroupID, v))
+}
+
+// GrantID applies equality check predicate on the "grant_id" field. It's identical to GrantIDEQ.
+func GrantID(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldGrantID, v))
+}
+
+// DeviceID applies equality check predicate on the "device_id" field. It's identical to DeviceIDEQ.
+func DeviceID(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldDeviceID, v))
+}
+
+// DeviceName applies equality check predicate on the "device_name" field. It's identical to DeviceNameEQ.
+func DeviceName(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldDeviceName, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldEQ(FieldCreatedAt, v))
@@ -637,6 +657,281 @@ func UsedAtIsNil() predicate.OAuthCode {
 // UsedAtNotNil applies the NotNil predicate on the "used_at" field.
 func UsedAtNotNil() predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldNotNull(FieldUsedAt))
+}
+
+// GroupIDEQ applies the EQ predicate on the "group_id" field.
+func GroupIDEQ(v int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldGroupID, v))
+}
+
+// GroupIDNEQ applies the NEQ predicate on the "group_id" field.
+func GroupIDNEQ(v int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNEQ(FieldGroupID, v))
+}
+
+// GroupIDIn applies the In predicate on the "group_id" field.
+func GroupIDIn(vs ...int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIn(FieldGroupID, vs...))
+}
+
+// GroupIDNotIn applies the NotIn predicate on the "group_id" field.
+func GroupIDNotIn(vs ...int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotIn(FieldGroupID, vs...))
+}
+
+// GroupIDGT applies the GT predicate on the "group_id" field.
+func GroupIDGT(v int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGT(FieldGroupID, v))
+}
+
+// GroupIDGTE applies the GTE predicate on the "group_id" field.
+func GroupIDGTE(v int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGTE(FieldGroupID, v))
+}
+
+// GroupIDLT applies the LT predicate on the "group_id" field.
+func GroupIDLT(v int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLT(FieldGroupID, v))
+}
+
+// GroupIDLTE applies the LTE predicate on the "group_id" field.
+func GroupIDLTE(v int64) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLTE(FieldGroupID, v))
+}
+
+// GroupIDIsNil applies the IsNil predicate on the "group_id" field.
+func GroupIDIsNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIsNull(FieldGroupID))
+}
+
+// GroupIDNotNil applies the NotNil predicate on the "group_id" field.
+func GroupIDNotNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotNull(FieldGroupID))
+}
+
+// GrantIDEQ applies the EQ predicate on the "grant_id" field.
+func GrantIDEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldGrantID, v))
+}
+
+// GrantIDNEQ applies the NEQ predicate on the "grant_id" field.
+func GrantIDNEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNEQ(FieldGrantID, v))
+}
+
+// GrantIDIn applies the In predicate on the "grant_id" field.
+func GrantIDIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIn(FieldGrantID, vs...))
+}
+
+// GrantIDNotIn applies the NotIn predicate on the "grant_id" field.
+func GrantIDNotIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotIn(FieldGrantID, vs...))
+}
+
+// GrantIDGT applies the GT predicate on the "grant_id" field.
+func GrantIDGT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGT(FieldGrantID, v))
+}
+
+// GrantIDGTE applies the GTE predicate on the "grant_id" field.
+func GrantIDGTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGTE(FieldGrantID, v))
+}
+
+// GrantIDLT applies the LT predicate on the "grant_id" field.
+func GrantIDLT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLT(FieldGrantID, v))
+}
+
+// GrantIDLTE applies the LTE predicate on the "grant_id" field.
+func GrantIDLTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLTE(FieldGrantID, v))
+}
+
+// GrantIDContains applies the Contains predicate on the "grant_id" field.
+func GrantIDContains(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContains(FieldGrantID, v))
+}
+
+// GrantIDHasPrefix applies the HasPrefix predicate on the "grant_id" field.
+func GrantIDHasPrefix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasPrefix(FieldGrantID, v))
+}
+
+// GrantIDHasSuffix applies the HasSuffix predicate on the "grant_id" field.
+func GrantIDHasSuffix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasSuffix(FieldGrantID, v))
+}
+
+// GrantIDIsNil applies the IsNil predicate on the "grant_id" field.
+func GrantIDIsNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIsNull(FieldGrantID))
+}
+
+// GrantIDNotNil applies the NotNil predicate on the "grant_id" field.
+func GrantIDNotNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotNull(FieldGrantID))
+}
+
+// GrantIDEqualFold applies the EqualFold predicate on the "grant_id" field.
+func GrantIDEqualFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEqualFold(FieldGrantID, v))
+}
+
+// GrantIDContainsFold applies the ContainsFold predicate on the "grant_id" field.
+func GrantIDContainsFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContainsFold(FieldGrantID, v))
+}
+
+// DeviceIDEQ applies the EQ predicate on the "device_id" field.
+func DeviceIDEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldDeviceID, v))
+}
+
+// DeviceIDNEQ applies the NEQ predicate on the "device_id" field.
+func DeviceIDNEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNEQ(FieldDeviceID, v))
+}
+
+// DeviceIDIn applies the In predicate on the "device_id" field.
+func DeviceIDIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIn(FieldDeviceID, vs...))
+}
+
+// DeviceIDNotIn applies the NotIn predicate on the "device_id" field.
+func DeviceIDNotIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotIn(FieldDeviceID, vs...))
+}
+
+// DeviceIDGT applies the GT predicate on the "device_id" field.
+func DeviceIDGT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGT(FieldDeviceID, v))
+}
+
+// DeviceIDGTE applies the GTE predicate on the "device_id" field.
+func DeviceIDGTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGTE(FieldDeviceID, v))
+}
+
+// DeviceIDLT applies the LT predicate on the "device_id" field.
+func DeviceIDLT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLT(FieldDeviceID, v))
+}
+
+// DeviceIDLTE applies the LTE predicate on the "device_id" field.
+func DeviceIDLTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLTE(FieldDeviceID, v))
+}
+
+// DeviceIDContains applies the Contains predicate on the "device_id" field.
+func DeviceIDContains(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContains(FieldDeviceID, v))
+}
+
+// DeviceIDHasPrefix applies the HasPrefix predicate on the "device_id" field.
+func DeviceIDHasPrefix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasPrefix(FieldDeviceID, v))
+}
+
+// DeviceIDHasSuffix applies the HasSuffix predicate on the "device_id" field.
+func DeviceIDHasSuffix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasSuffix(FieldDeviceID, v))
+}
+
+// DeviceIDIsNil applies the IsNil predicate on the "device_id" field.
+func DeviceIDIsNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIsNull(FieldDeviceID))
+}
+
+// DeviceIDNotNil applies the NotNil predicate on the "device_id" field.
+func DeviceIDNotNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotNull(FieldDeviceID))
+}
+
+// DeviceIDEqualFold applies the EqualFold predicate on the "device_id" field.
+func DeviceIDEqualFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEqualFold(FieldDeviceID, v))
+}
+
+// DeviceIDContainsFold applies the ContainsFold predicate on the "device_id" field.
+func DeviceIDContainsFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContainsFold(FieldDeviceID, v))
+}
+
+// DeviceNameEQ applies the EQ predicate on the "device_name" field.
+func DeviceNameEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldDeviceName, v))
+}
+
+// DeviceNameNEQ applies the NEQ predicate on the "device_name" field.
+func DeviceNameNEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNEQ(FieldDeviceName, v))
+}
+
+// DeviceNameIn applies the In predicate on the "device_name" field.
+func DeviceNameIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIn(FieldDeviceName, vs...))
+}
+
+// DeviceNameNotIn applies the NotIn predicate on the "device_name" field.
+func DeviceNameNotIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotIn(FieldDeviceName, vs...))
+}
+
+// DeviceNameGT applies the GT predicate on the "device_name" field.
+func DeviceNameGT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGT(FieldDeviceName, v))
+}
+
+// DeviceNameGTE applies the GTE predicate on the "device_name" field.
+func DeviceNameGTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGTE(FieldDeviceName, v))
+}
+
+// DeviceNameLT applies the LT predicate on the "device_name" field.
+func DeviceNameLT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLT(FieldDeviceName, v))
+}
+
+// DeviceNameLTE applies the LTE predicate on the "device_name" field.
+func DeviceNameLTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLTE(FieldDeviceName, v))
+}
+
+// DeviceNameContains applies the Contains predicate on the "device_name" field.
+func DeviceNameContains(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContains(FieldDeviceName, v))
+}
+
+// DeviceNameHasPrefix applies the HasPrefix predicate on the "device_name" field.
+func DeviceNameHasPrefix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasPrefix(FieldDeviceName, v))
+}
+
+// DeviceNameHasSuffix applies the HasSuffix predicate on the "device_name" field.
+func DeviceNameHasSuffix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasSuffix(FieldDeviceName, v))
+}
+
+// DeviceNameIsNil applies the IsNil predicate on the "device_name" field.
+func DeviceNameIsNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIsNull(FieldDeviceName))
+}
+
+// DeviceNameNotNil applies the NotNil predicate on the "device_name" field.
+func DeviceNameNotNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotNull(FieldDeviceName))
+}
+
+// DeviceNameEqualFold applies the EqualFold predicate on the "device_name" field.
+func DeviceNameEqualFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEqualFold(FieldDeviceName, v))
+}
+
+// DeviceNameContainsFold applies the ContainsFold predicate on the "device_name" field.
+func DeviceNameContainsFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContainsFold(FieldDeviceName, v))
 }
 
 // And groups predicates with the AND operator between them.

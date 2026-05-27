@@ -99,6 +99,41 @@ func RotatedToHash(v string) predicate.OAuthRefreshToken {
 	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldRotatedToHash, v))
 }
 
+// GrantID applies equality check predicate on the "grant_id" field. It's identical to GrantIDEQ.
+func GrantID(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldGrantID, v))
+}
+
+// TokenFamilyID applies equality check predicate on the "token_family_id" field. It's identical to TokenFamilyIDEQ.
+func TokenFamilyID(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldTokenFamilyID, v))
+}
+
+// GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
+func GroupID(v int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldGroupID, v))
+}
+
+// DeviceID applies equality check predicate on the "device_id" field. It's identical to DeviceIDEQ.
+func DeviceID(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldDeviceID, v))
+}
+
+// DeviceName applies equality check predicate on the "device_name" field. It's identical to DeviceNameEQ.
+func DeviceName(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldDeviceName, v))
+}
+
+// LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
+func LastUsedAt(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldLastUsedAt, v))
+}
+
+// ReuseDetectedAt applies equality check predicate on the "reuse_detected_at" field. It's identical to ReuseDetectedAtEQ.
+func ReuseDetectedAt(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldReuseDetectedAt, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OAuthRefreshToken {
 	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldCreatedAt, v))
@@ -552,6 +587,456 @@ func RotatedToHashEqualFold(v string) predicate.OAuthRefreshToken {
 // RotatedToHashContainsFold applies the ContainsFold predicate on the "rotated_to_hash" field.
 func RotatedToHashContainsFold(v string) predicate.OAuthRefreshToken {
 	return predicate.OAuthRefreshToken(sql.FieldContainsFold(FieldRotatedToHash, v))
+}
+
+// GrantIDEQ applies the EQ predicate on the "grant_id" field.
+func GrantIDEQ(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldGrantID, v))
+}
+
+// GrantIDNEQ applies the NEQ predicate on the "grant_id" field.
+func GrantIDNEQ(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNEQ(FieldGrantID, v))
+}
+
+// GrantIDIn applies the In predicate on the "grant_id" field.
+func GrantIDIn(vs ...string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIn(FieldGrantID, vs...))
+}
+
+// GrantIDNotIn applies the NotIn predicate on the "grant_id" field.
+func GrantIDNotIn(vs ...string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotIn(FieldGrantID, vs...))
+}
+
+// GrantIDGT applies the GT predicate on the "grant_id" field.
+func GrantIDGT(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGT(FieldGrantID, v))
+}
+
+// GrantIDGTE applies the GTE predicate on the "grant_id" field.
+func GrantIDGTE(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGTE(FieldGrantID, v))
+}
+
+// GrantIDLT applies the LT predicate on the "grant_id" field.
+func GrantIDLT(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLT(FieldGrantID, v))
+}
+
+// GrantIDLTE applies the LTE predicate on the "grant_id" field.
+func GrantIDLTE(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLTE(FieldGrantID, v))
+}
+
+// GrantIDContains applies the Contains predicate on the "grant_id" field.
+func GrantIDContains(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldContains(FieldGrantID, v))
+}
+
+// GrantIDHasPrefix applies the HasPrefix predicate on the "grant_id" field.
+func GrantIDHasPrefix(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldHasPrefix(FieldGrantID, v))
+}
+
+// GrantIDHasSuffix applies the HasSuffix predicate on the "grant_id" field.
+func GrantIDHasSuffix(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldHasSuffix(FieldGrantID, v))
+}
+
+// GrantIDIsNil applies the IsNil predicate on the "grant_id" field.
+func GrantIDIsNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIsNull(FieldGrantID))
+}
+
+// GrantIDNotNil applies the NotNil predicate on the "grant_id" field.
+func GrantIDNotNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotNull(FieldGrantID))
+}
+
+// GrantIDEqualFold applies the EqualFold predicate on the "grant_id" field.
+func GrantIDEqualFold(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEqualFold(FieldGrantID, v))
+}
+
+// GrantIDContainsFold applies the ContainsFold predicate on the "grant_id" field.
+func GrantIDContainsFold(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldContainsFold(FieldGrantID, v))
+}
+
+// TokenFamilyIDEQ applies the EQ predicate on the "token_family_id" field.
+func TokenFamilyIDEQ(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDNEQ applies the NEQ predicate on the "token_family_id" field.
+func TokenFamilyIDNEQ(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNEQ(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDIn applies the In predicate on the "token_family_id" field.
+func TokenFamilyIDIn(vs ...string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIn(FieldTokenFamilyID, vs...))
+}
+
+// TokenFamilyIDNotIn applies the NotIn predicate on the "token_family_id" field.
+func TokenFamilyIDNotIn(vs ...string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotIn(FieldTokenFamilyID, vs...))
+}
+
+// TokenFamilyIDGT applies the GT predicate on the "token_family_id" field.
+func TokenFamilyIDGT(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGT(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDGTE applies the GTE predicate on the "token_family_id" field.
+func TokenFamilyIDGTE(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGTE(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDLT applies the LT predicate on the "token_family_id" field.
+func TokenFamilyIDLT(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLT(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDLTE applies the LTE predicate on the "token_family_id" field.
+func TokenFamilyIDLTE(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLTE(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDContains applies the Contains predicate on the "token_family_id" field.
+func TokenFamilyIDContains(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldContains(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDHasPrefix applies the HasPrefix predicate on the "token_family_id" field.
+func TokenFamilyIDHasPrefix(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldHasPrefix(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDHasSuffix applies the HasSuffix predicate on the "token_family_id" field.
+func TokenFamilyIDHasSuffix(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldHasSuffix(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDIsNil applies the IsNil predicate on the "token_family_id" field.
+func TokenFamilyIDIsNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIsNull(FieldTokenFamilyID))
+}
+
+// TokenFamilyIDNotNil applies the NotNil predicate on the "token_family_id" field.
+func TokenFamilyIDNotNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotNull(FieldTokenFamilyID))
+}
+
+// TokenFamilyIDEqualFold applies the EqualFold predicate on the "token_family_id" field.
+func TokenFamilyIDEqualFold(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEqualFold(FieldTokenFamilyID, v))
+}
+
+// TokenFamilyIDContainsFold applies the ContainsFold predicate on the "token_family_id" field.
+func TokenFamilyIDContainsFold(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldContainsFold(FieldTokenFamilyID, v))
+}
+
+// GroupIDEQ applies the EQ predicate on the "group_id" field.
+func GroupIDEQ(v int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldGroupID, v))
+}
+
+// GroupIDNEQ applies the NEQ predicate on the "group_id" field.
+func GroupIDNEQ(v int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNEQ(FieldGroupID, v))
+}
+
+// GroupIDIn applies the In predicate on the "group_id" field.
+func GroupIDIn(vs ...int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIn(FieldGroupID, vs...))
+}
+
+// GroupIDNotIn applies the NotIn predicate on the "group_id" field.
+func GroupIDNotIn(vs ...int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotIn(FieldGroupID, vs...))
+}
+
+// GroupIDGT applies the GT predicate on the "group_id" field.
+func GroupIDGT(v int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGT(FieldGroupID, v))
+}
+
+// GroupIDGTE applies the GTE predicate on the "group_id" field.
+func GroupIDGTE(v int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGTE(FieldGroupID, v))
+}
+
+// GroupIDLT applies the LT predicate on the "group_id" field.
+func GroupIDLT(v int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLT(FieldGroupID, v))
+}
+
+// GroupIDLTE applies the LTE predicate on the "group_id" field.
+func GroupIDLTE(v int64) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLTE(FieldGroupID, v))
+}
+
+// GroupIDIsNil applies the IsNil predicate on the "group_id" field.
+func GroupIDIsNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIsNull(FieldGroupID))
+}
+
+// GroupIDNotNil applies the NotNil predicate on the "group_id" field.
+func GroupIDNotNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotNull(FieldGroupID))
+}
+
+// DeviceIDEQ applies the EQ predicate on the "device_id" field.
+func DeviceIDEQ(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldDeviceID, v))
+}
+
+// DeviceIDNEQ applies the NEQ predicate on the "device_id" field.
+func DeviceIDNEQ(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNEQ(FieldDeviceID, v))
+}
+
+// DeviceIDIn applies the In predicate on the "device_id" field.
+func DeviceIDIn(vs ...string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIn(FieldDeviceID, vs...))
+}
+
+// DeviceIDNotIn applies the NotIn predicate on the "device_id" field.
+func DeviceIDNotIn(vs ...string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotIn(FieldDeviceID, vs...))
+}
+
+// DeviceIDGT applies the GT predicate on the "device_id" field.
+func DeviceIDGT(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGT(FieldDeviceID, v))
+}
+
+// DeviceIDGTE applies the GTE predicate on the "device_id" field.
+func DeviceIDGTE(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGTE(FieldDeviceID, v))
+}
+
+// DeviceIDLT applies the LT predicate on the "device_id" field.
+func DeviceIDLT(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLT(FieldDeviceID, v))
+}
+
+// DeviceIDLTE applies the LTE predicate on the "device_id" field.
+func DeviceIDLTE(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLTE(FieldDeviceID, v))
+}
+
+// DeviceIDContains applies the Contains predicate on the "device_id" field.
+func DeviceIDContains(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldContains(FieldDeviceID, v))
+}
+
+// DeviceIDHasPrefix applies the HasPrefix predicate on the "device_id" field.
+func DeviceIDHasPrefix(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldHasPrefix(FieldDeviceID, v))
+}
+
+// DeviceIDHasSuffix applies the HasSuffix predicate on the "device_id" field.
+func DeviceIDHasSuffix(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldHasSuffix(FieldDeviceID, v))
+}
+
+// DeviceIDIsNil applies the IsNil predicate on the "device_id" field.
+func DeviceIDIsNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIsNull(FieldDeviceID))
+}
+
+// DeviceIDNotNil applies the NotNil predicate on the "device_id" field.
+func DeviceIDNotNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotNull(FieldDeviceID))
+}
+
+// DeviceIDEqualFold applies the EqualFold predicate on the "device_id" field.
+func DeviceIDEqualFold(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEqualFold(FieldDeviceID, v))
+}
+
+// DeviceIDContainsFold applies the ContainsFold predicate on the "device_id" field.
+func DeviceIDContainsFold(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldContainsFold(FieldDeviceID, v))
+}
+
+// DeviceNameEQ applies the EQ predicate on the "device_name" field.
+func DeviceNameEQ(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldDeviceName, v))
+}
+
+// DeviceNameNEQ applies the NEQ predicate on the "device_name" field.
+func DeviceNameNEQ(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNEQ(FieldDeviceName, v))
+}
+
+// DeviceNameIn applies the In predicate on the "device_name" field.
+func DeviceNameIn(vs ...string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIn(FieldDeviceName, vs...))
+}
+
+// DeviceNameNotIn applies the NotIn predicate on the "device_name" field.
+func DeviceNameNotIn(vs ...string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotIn(FieldDeviceName, vs...))
+}
+
+// DeviceNameGT applies the GT predicate on the "device_name" field.
+func DeviceNameGT(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGT(FieldDeviceName, v))
+}
+
+// DeviceNameGTE applies the GTE predicate on the "device_name" field.
+func DeviceNameGTE(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGTE(FieldDeviceName, v))
+}
+
+// DeviceNameLT applies the LT predicate on the "device_name" field.
+func DeviceNameLT(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLT(FieldDeviceName, v))
+}
+
+// DeviceNameLTE applies the LTE predicate on the "device_name" field.
+func DeviceNameLTE(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLTE(FieldDeviceName, v))
+}
+
+// DeviceNameContains applies the Contains predicate on the "device_name" field.
+func DeviceNameContains(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldContains(FieldDeviceName, v))
+}
+
+// DeviceNameHasPrefix applies the HasPrefix predicate on the "device_name" field.
+func DeviceNameHasPrefix(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldHasPrefix(FieldDeviceName, v))
+}
+
+// DeviceNameHasSuffix applies the HasSuffix predicate on the "device_name" field.
+func DeviceNameHasSuffix(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldHasSuffix(FieldDeviceName, v))
+}
+
+// DeviceNameIsNil applies the IsNil predicate on the "device_name" field.
+func DeviceNameIsNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIsNull(FieldDeviceName))
+}
+
+// DeviceNameNotNil applies the NotNil predicate on the "device_name" field.
+func DeviceNameNotNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotNull(FieldDeviceName))
+}
+
+// DeviceNameEqualFold applies the EqualFold predicate on the "device_name" field.
+func DeviceNameEqualFold(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEqualFold(FieldDeviceName, v))
+}
+
+// DeviceNameContainsFold applies the ContainsFold predicate on the "device_name" field.
+func DeviceNameContainsFold(v string) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldContainsFold(FieldDeviceName, v))
+}
+
+// LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.
+func LastUsedAtEQ(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldLastUsedAt, v))
+}
+
+// LastUsedAtNEQ applies the NEQ predicate on the "last_used_at" field.
+func LastUsedAtNEQ(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNEQ(FieldLastUsedAt, v))
+}
+
+// LastUsedAtIn applies the In predicate on the "last_used_at" field.
+func LastUsedAtIn(vs ...time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIn(FieldLastUsedAt, vs...))
+}
+
+// LastUsedAtNotIn applies the NotIn predicate on the "last_used_at" field.
+func LastUsedAtNotIn(vs ...time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotIn(FieldLastUsedAt, vs...))
+}
+
+// LastUsedAtGT applies the GT predicate on the "last_used_at" field.
+func LastUsedAtGT(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGT(FieldLastUsedAt, v))
+}
+
+// LastUsedAtGTE applies the GTE predicate on the "last_used_at" field.
+func LastUsedAtGTE(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGTE(FieldLastUsedAt, v))
+}
+
+// LastUsedAtLT applies the LT predicate on the "last_used_at" field.
+func LastUsedAtLT(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLT(FieldLastUsedAt, v))
+}
+
+// LastUsedAtLTE applies the LTE predicate on the "last_used_at" field.
+func LastUsedAtLTE(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLTE(FieldLastUsedAt, v))
+}
+
+// LastUsedAtIsNil applies the IsNil predicate on the "last_used_at" field.
+func LastUsedAtIsNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIsNull(FieldLastUsedAt))
+}
+
+// LastUsedAtNotNil applies the NotNil predicate on the "last_used_at" field.
+func LastUsedAtNotNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotNull(FieldLastUsedAt))
+}
+
+// ReuseDetectedAtEQ applies the EQ predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtEQ(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldEQ(FieldReuseDetectedAt, v))
+}
+
+// ReuseDetectedAtNEQ applies the NEQ predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtNEQ(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNEQ(FieldReuseDetectedAt, v))
+}
+
+// ReuseDetectedAtIn applies the In predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtIn(vs ...time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIn(FieldReuseDetectedAt, vs...))
+}
+
+// ReuseDetectedAtNotIn applies the NotIn predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtNotIn(vs ...time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotIn(FieldReuseDetectedAt, vs...))
+}
+
+// ReuseDetectedAtGT applies the GT predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtGT(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGT(FieldReuseDetectedAt, v))
+}
+
+// ReuseDetectedAtGTE applies the GTE predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtGTE(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldGTE(FieldReuseDetectedAt, v))
+}
+
+// ReuseDetectedAtLT applies the LT predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtLT(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLT(FieldReuseDetectedAt, v))
+}
+
+// ReuseDetectedAtLTE applies the LTE predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtLTE(v time.Time) predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldLTE(FieldReuseDetectedAt, v))
+}
+
+// ReuseDetectedAtIsNil applies the IsNil predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtIsNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldIsNull(FieldReuseDetectedAt))
+}
+
+// ReuseDetectedAtNotNil applies the NotNil predicate on the "reuse_detected_at" field.
+func ReuseDetectedAtNotNil() predicate.OAuthRefreshToken {
+	return predicate.OAuthRefreshToken(sql.FieldNotNull(FieldReuseDetectedAt))
 }
 
 // And groups predicates with the AND operator between them.

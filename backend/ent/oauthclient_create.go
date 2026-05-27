@@ -158,6 +158,156 @@ func (_c *OAuthClientCreate) SetNillableDisabled(v *bool) *OAuthClientCreate {
 	return _c
 }
 
+// SetClientType sets the "client_type" field.
+func (_c *OAuthClientCreate) SetClientType(v string) *OAuthClientCreate {
+	_c.mutation.SetClientType(v)
+	return _c
+}
+
+// SetNillableClientType sets the "client_type" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableClientType(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetClientType(*v)
+	}
+	return _c
+}
+
+// SetAppType sets the "app_type" field.
+func (_c *OAuthClientCreate) SetAppType(v string) *OAuthClientCreate {
+	_c.mutation.SetAppType(v)
+	return _c
+}
+
+// SetNillableAppType sets the "app_type" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableAppType(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetAppType(*v)
+	}
+	return _c
+}
+
+// SetTrustedFirstParty sets the "trusted_first_party" field.
+func (_c *OAuthClientCreate) SetTrustedFirstParty(v bool) *OAuthClientCreate {
+	_c.mutation.SetTrustedFirstParty(v)
+	return _c
+}
+
+// SetNillableTrustedFirstParty sets the "trusted_first_party" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableTrustedFirstParty(v *bool) *OAuthClientCreate {
+	if v != nil {
+		_c.SetTrustedFirstParty(*v)
+	}
+	return _c
+}
+
+// SetDefaultScopes sets the "default_scopes" field.
+func (_c *OAuthClientCreate) SetDefaultScopes(v []string) *OAuthClientCreate {
+	_c.mutation.SetDefaultScopes(v)
+	return _c
+}
+
+// SetAllowedGroupIds sets the "allowed_group_ids" field.
+func (_c *OAuthClientCreate) SetAllowedGroupIds(v []int64) *OAuthClientCreate {
+	_c.mutation.SetAllowedGroupIds(v)
+	return _c
+}
+
+// SetAllowedOrigins sets the "allowed_origins" field.
+func (_c *OAuthClientCreate) SetAllowedOrigins(v []string) *OAuthClientCreate {
+	_c.mutation.SetAllowedOrigins(v)
+	return _c
+}
+
+// SetLogoutRedirectUris sets the "logout_redirect_uris" field.
+func (_c *OAuthClientCreate) SetLogoutRedirectUris(v []string) *OAuthClientCreate {
+	_c.mutation.SetLogoutRedirectUris(v)
+	return _c
+}
+
+// SetDeviceFlowEnabled sets the "device_flow_enabled" field.
+func (_c *OAuthClientCreate) SetDeviceFlowEnabled(v bool) *OAuthClientCreate {
+	_c.mutation.SetDeviceFlowEnabled(v)
+	return _c
+}
+
+// SetNillableDeviceFlowEnabled sets the "device_flow_enabled" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableDeviceFlowEnabled(v *bool) *OAuthClientCreate {
+	if v != nil {
+		_c.SetDeviceFlowEnabled(*v)
+	}
+	return _c
+}
+
+// SetAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field.
+func (_c *OAuthClientCreate) SetAllowRefreshWithoutOfflineAccess(v bool) *OAuthClientCreate {
+	_c.mutation.SetAllowRefreshWithoutOfflineAccess(v)
+	return _c
+}
+
+// SetNillableAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableAllowRefreshWithoutOfflineAccess(v *bool) *OAuthClientCreate {
+	if v != nil {
+		_c.SetAllowRefreshWithoutOfflineAccess(*v)
+	}
+	return _c
+}
+
+// SetIconURL sets the "icon_url" field.
+func (_c *OAuthClientCreate) SetIconURL(v string) *OAuthClientCreate {
+	_c.mutation.SetIconURL(v)
+	return _c
+}
+
+// SetNillableIconURL sets the "icon_url" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableIconURL(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetIconURL(*v)
+	}
+	return _c
+}
+
+// SetHomepageURL sets the "homepage_url" field.
+func (_c *OAuthClientCreate) SetHomepageURL(v string) *OAuthClientCreate {
+	_c.mutation.SetHomepageURL(v)
+	return _c
+}
+
+// SetNillableHomepageURL sets the "homepage_url" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableHomepageURL(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetHomepageURL(*v)
+	}
+	return _c
+}
+
+// SetPrivacyURL sets the "privacy_url" field.
+func (_c *OAuthClientCreate) SetPrivacyURL(v string) *OAuthClientCreate {
+	_c.mutation.SetPrivacyURL(v)
+	return _c
+}
+
+// SetNillablePrivacyURL sets the "privacy_url" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillablePrivacyURL(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetPrivacyURL(*v)
+	}
+	return _c
+}
+
+// SetTermsURL sets the "terms_url" field.
+func (_c *OAuthClientCreate) SetTermsURL(v string) *OAuthClientCreate {
+	_c.mutation.SetTermsURL(v)
+	return _c
+}
+
+// SetNillableTermsURL sets the "terms_url" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableTermsURL(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetTermsURL(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_c *OAuthClientCreate) Mutation() *OAuthClientMutation {
 	return _c.mutation
@@ -217,6 +367,38 @@ func (_c *OAuthClientCreate) defaults() {
 		v := oauthclient.DefaultDisabled
 		_c.mutation.SetDisabled(v)
 	}
+	if _, ok := _c.mutation.ClientType(); !ok {
+		v := oauthclient.DefaultClientType
+		_c.mutation.SetClientType(v)
+	}
+	if _, ok := _c.mutation.AppType(); !ok {
+		v := oauthclient.DefaultAppType
+		_c.mutation.SetAppType(v)
+	}
+	if _, ok := _c.mutation.TrustedFirstParty(); !ok {
+		v := oauthclient.DefaultTrustedFirstParty
+		_c.mutation.SetTrustedFirstParty(v)
+	}
+	if _, ok := _c.mutation.DefaultScopes(); !ok {
+		v := oauthclient.DefaultDefaultScopes
+		_c.mutation.SetDefaultScopes(v)
+	}
+	if _, ok := _c.mutation.AllowedOrigins(); !ok {
+		v := oauthclient.DefaultAllowedOrigins
+		_c.mutation.SetAllowedOrigins(v)
+	}
+	if _, ok := _c.mutation.LogoutRedirectUris(); !ok {
+		v := oauthclient.DefaultLogoutRedirectUris
+		_c.mutation.SetLogoutRedirectUris(v)
+	}
+	if _, ok := _c.mutation.DeviceFlowEnabled(); !ok {
+		v := oauthclient.DefaultDeviceFlowEnabled
+		_c.mutation.SetDeviceFlowEnabled(v)
+	}
+	if _, ok := _c.mutation.AllowRefreshWithoutOfflineAccess(); !ok {
+		v := oauthclient.DefaultAllowRefreshWithoutOfflineAccess
+		_c.mutation.SetAllowRefreshWithoutOfflineAccess(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -260,6 +442,40 @@ func (_c *OAuthClientCreate) check() error {
 	}
 	if _, ok := _c.mutation.Disabled(); !ok {
 		return &ValidationError{Name: "disabled", err: errors.New(`ent: missing required field "OAuthClient.disabled"`)}
+	}
+	if _, ok := _c.mutation.ClientType(); !ok {
+		return &ValidationError{Name: "client_type", err: errors.New(`ent: missing required field "OAuthClient.client_type"`)}
+	}
+	if v, ok := _c.mutation.ClientType(); ok {
+		if err := oauthclient.ClientTypeValidator(v); err != nil {
+			return &ValidationError{Name: "client_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.client_type": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.AppType(); !ok {
+		return &ValidationError{Name: "app_type", err: errors.New(`ent: missing required field "OAuthClient.app_type"`)}
+	}
+	if v, ok := _c.mutation.AppType(); ok {
+		if err := oauthclient.AppTypeValidator(v); err != nil {
+			return &ValidationError{Name: "app_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.app_type": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.TrustedFirstParty(); !ok {
+		return &ValidationError{Name: "trusted_first_party", err: errors.New(`ent: missing required field "OAuthClient.trusted_first_party"`)}
+	}
+	if _, ok := _c.mutation.DefaultScopes(); !ok {
+		return &ValidationError{Name: "default_scopes", err: errors.New(`ent: missing required field "OAuthClient.default_scopes"`)}
+	}
+	if _, ok := _c.mutation.AllowedOrigins(); !ok {
+		return &ValidationError{Name: "allowed_origins", err: errors.New(`ent: missing required field "OAuthClient.allowed_origins"`)}
+	}
+	if _, ok := _c.mutation.LogoutRedirectUris(); !ok {
+		return &ValidationError{Name: "logout_redirect_uris", err: errors.New(`ent: missing required field "OAuthClient.logout_redirect_uris"`)}
+	}
+	if _, ok := _c.mutation.DeviceFlowEnabled(); !ok {
+		return &ValidationError{Name: "device_flow_enabled", err: errors.New(`ent: missing required field "OAuthClient.device_flow_enabled"`)}
+	}
+	if _, ok := _c.mutation.AllowRefreshWithoutOfflineAccess(); !ok {
+		return &ValidationError{Name: "allow_refresh_without_offline_access", err: errors.New(`ent: missing required field "OAuthClient.allow_refresh_without_offline_access"`)}
 	}
 	return nil
 }
@@ -335,6 +551,58 @@ func (_c *OAuthClientCreate) createSpec() (*OAuthClient, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Disabled(); ok {
 		_spec.SetField(oauthclient.FieldDisabled, field.TypeBool, value)
 		_node.Disabled = value
+	}
+	if value, ok := _c.mutation.ClientType(); ok {
+		_spec.SetField(oauthclient.FieldClientType, field.TypeString, value)
+		_node.ClientType = value
+	}
+	if value, ok := _c.mutation.AppType(); ok {
+		_spec.SetField(oauthclient.FieldAppType, field.TypeString, value)
+		_node.AppType = value
+	}
+	if value, ok := _c.mutation.TrustedFirstParty(); ok {
+		_spec.SetField(oauthclient.FieldTrustedFirstParty, field.TypeBool, value)
+		_node.TrustedFirstParty = value
+	}
+	if value, ok := _c.mutation.DefaultScopes(); ok {
+		_spec.SetField(oauthclient.FieldDefaultScopes, field.TypeJSON, value)
+		_node.DefaultScopes = value
+	}
+	if value, ok := _c.mutation.AllowedGroupIds(); ok {
+		_spec.SetField(oauthclient.FieldAllowedGroupIds, field.TypeJSON, value)
+		_node.AllowedGroupIds = value
+	}
+	if value, ok := _c.mutation.AllowedOrigins(); ok {
+		_spec.SetField(oauthclient.FieldAllowedOrigins, field.TypeJSON, value)
+		_node.AllowedOrigins = value
+	}
+	if value, ok := _c.mutation.LogoutRedirectUris(); ok {
+		_spec.SetField(oauthclient.FieldLogoutRedirectUris, field.TypeJSON, value)
+		_node.LogoutRedirectUris = value
+	}
+	if value, ok := _c.mutation.DeviceFlowEnabled(); ok {
+		_spec.SetField(oauthclient.FieldDeviceFlowEnabled, field.TypeBool, value)
+		_node.DeviceFlowEnabled = value
+	}
+	if value, ok := _c.mutation.AllowRefreshWithoutOfflineAccess(); ok {
+		_spec.SetField(oauthclient.FieldAllowRefreshWithoutOfflineAccess, field.TypeBool, value)
+		_node.AllowRefreshWithoutOfflineAccess = value
+	}
+	if value, ok := _c.mutation.IconURL(); ok {
+		_spec.SetField(oauthclient.FieldIconURL, field.TypeString, value)
+		_node.IconURL = &value
+	}
+	if value, ok := _c.mutation.HomepageURL(); ok {
+		_spec.SetField(oauthclient.FieldHomepageURL, field.TypeString, value)
+		_node.HomepageURL = &value
+	}
+	if value, ok := _c.mutation.PrivacyURL(); ok {
+		_spec.SetField(oauthclient.FieldPrivacyURL, field.TypeString, value)
+		_node.PrivacyURL = &value
+	}
+	if value, ok := _c.mutation.TermsURL(); ok {
+		_spec.SetField(oauthclient.FieldTermsURL, field.TypeString, value)
+		_node.TermsURL = &value
 	}
 	return _node, _spec
 }
@@ -547,6 +815,192 @@ func (u *OAuthClientUpsert) SetDisabled(v bool) *OAuthClientUpsert {
 // UpdateDisabled sets the "disabled" field to the value that was provided on create.
 func (u *OAuthClientUpsert) UpdateDisabled() *OAuthClientUpsert {
 	u.SetExcluded(oauthclient.FieldDisabled)
+	return u
+}
+
+// SetClientType sets the "client_type" field.
+func (u *OAuthClientUpsert) SetClientType(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldClientType, v)
+	return u
+}
+
+// UpdateClientType sets the "client_type" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateClientType() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldClientType)
+	return u
+}
+
+// SetAppType sets the "app_type" field.
+func (u *OAuthClientUpsert) SetAppType(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldAppType, v)
+	return u
+}
+
+// UpdateAppType sets the "app_type" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateAppType() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldAppType)
+	return u
+}
+
+// SetTrustedFirstParty sets the "trusted_first_party" field.
+func (u *OAuthClientUpsert) SetTrustedFirstParty(v bool) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldTrustedFirstParty, v)
+	return u
+}
+
+// UpdateTrustedFirstParty sets the "trusted_first_party" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateTrustedFirstParty() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldTrustedFirstParty)
+	return u
+}
+
+// SetDefaultScopes sets the "default_scopes" field.
+func (u *OAuthClientUpsert) SetDefaultScopes(v []string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldDefaultScopes, v)
+	return u
+}
+
+// UpdateDefaultScopes sets the "default_scopes" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateDefaultScopes() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldDefaultScopes)
+	return u
+}
+
+// SetAllowedGroupIds sets the "allowed_group_ids" field.
+func (u *OAuthClientUpsert) SetAllowedGroupIds(v []int64) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldAllowedGroupIds, v)
+	return u
+}
+
+// UpdateAllowedGroupIds sets the "allowed_group_ids" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateAllowedGroupIds() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldAllowedGroupIds)
+	return u
+}
+
+// ClearAllowedGroupIds clears the value of the "allowed_group_ids" field.
+func (u *OAuthClientUpsert) ClearAllowedGroupIds() *OAuthClientUpsert {
+	u.SetNull(oauthclient.FieldAllowedGroupIds)
+	return u
+}
+
+// SetAllowedOrigins sets the "allowed_origins" field.
+func (u *OAuthClientUpsert) SetAllowedOrigins(v []string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldAllowedOrigins, v)
+	return u
+}
+
+// UpdateAllowedOrigins sets the "allowed_origins" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateAllowedOrigins() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldAllowedOrigins)
+	return u
+}
+
+// SetLogoutRedirectUris sets the "logout_redirect_uris" field.
+func (u *OAuthClientUpsert) SetLogoutRedirectUris(v []string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldLogoutRedirectUris, v)
+	return u
+}
+
+// UpdateLogoutRedirectUris sets the "logout_redirect_uris" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateLogoutRedirectUris() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldLogoutRedirectUris)
+	return u
+}
+
+// SetDeviceFlowEnabled sets the "device_flow_enabled" field.
+func (u *OAuthClientUpsert) SetDeviceFlowEnabled(v bool) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldDeviceFlowEnabled, v)
+	return u
+}
+
+// UpdateDeviceFlowEnabled sets the "device_flow_enabled" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateDeviceFlowEnabled() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldDeviceFlowEnabled)
+	return u
+}
+
+// SetAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field.
+func (u *OAuthClientUpsert) SetAllowRefreshWithoutOfflineAccess(v bool) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldAllowRefreshWithoutOfflineAccess, v)
+	return u
+}
+
+// UpdateAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateAllowRefreshWithoutOfflineAccess() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldAllowRefreshWithoutOfflineAccess)
+	return u
+}
+
+// SetIconURL sets the "icon_url" field.
+func (u *OAuthClientUpsert) SetIconURL(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldIconURL, v)
+	return u
+}
+
+// UpdateIconURL sets the "icon_url" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateIconURL() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldIconURL)
+	return u
+}
+
+// ClearIconURL clears the value of the "icon_url" field.
+func (u *OAuthClientUpsert) ClearIconURL() *OAuthClientUpsert {
+	u.SetNull(oauthclient.FieldIconURL)
+	return u
+}
+
+// SetHomepageURL sets the "homepage_url" field.
+func (u *OAuthClientUpsert) SetHomepageURL(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldHomepageURL, v)
+	return u
+}
+
+// UpdateHomepageURL sets the "homepage_url" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateHomepageURL() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldHomepageURL)
+	return u
+}
+
+// ClearHomepageURL clears the value of the "homepage_url" field.
+func (u *OAuthClientUpsert) ClearHomepageURL() *OAuthClientUpsert {
+	u.SetNull(oauthclient.FieldHomepageURL)
+	return u
+}
+
+// SetPrivacyURL sets the "privacy_url" field.
+func (u *OAuthClientUpsert) SetPrivacyURL(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldPrivacyURL, v)
+	return u
+}
+
+// UpdatePrivacyURL sets the "privacy_url" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdatePrivacyURL() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldPrivacyURL)
+	return u
+}
+
+// ClearPrivacyURL clears the value of the "privacy_url" field.
+func (u *OAuthClientUpsert) ClearPrivacyURL() *OAuthClientUpsert {
+	u.SetNull(oauthclient.FieldPrivacyURL)
+	return u
+}
+
+// SetTermsURL sets the "terms_url" field.
+func (u *OAuthClientUpsert) SetTermsURL(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldTermsURL, v)
+	return u
+}
+
+// UpdateTermsURL sets the "terms_url" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateTermsURL() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldTermsURL)
+	return u
+}
+
+// ClearTermsURL clears the value of the "terms_url" field.
+func (u *OAuthClientUpsert) ClearTermsURL() *OAuthClientUpsert {
+	u.SetNull(oauthclient.FieldTermsURL)
 	return u
 }
 
@@ -781,6 +1235,223 @@ func (u *OAuthClientUpsertOne) SetDisabled(v bool) *OAuthClientUpsertOne {
 func (u *OAuthClientUpsertOne) UpdateDisabled() *OAuthClientUpsertOne {
 	return u.Update(func(s *OAuthClientUpsert) {
 		s.UpdateDisabled()
+	})
+}
+
+// SetClientType sets the "client_type" field.
+func (u *OAuthClientUpsertOne) SetClientType(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetClientType(v)
+	})
+}
+
+// UpdateClientType sets the "client_type" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateClientType() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateClientType()
+	})
+}
+
+// SetAppType sets the "app_type" field.
+func (u *OAuthClientUpsertOne) SetAppType(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetAppType(v)
+	})
+}
+
+// UpdateAppType sets the "app_type" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateAppType() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateAppType()
+	})
+}
+
+// SetTrustedFirstParty sets the "trusted_first_party" field.
+func (u *OAuthClientUpsertOne) SetTrustedFirstParty(v bool) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetTrustedFirstParty(v)
+	})
+}
+
+// UpdateTrustedFirstParty sets the "trusted_first_party" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateTrustedFirstParty() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateTrustedFirstParty()
+	})
+}
+
+// SetDefaultScopes sets the "default_scopes" field.
+func (u *OAuthClientUpsertOne) SetDefaultScopes(v []string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetDefaultScopes(v)
+	})
+}
+
+// UpdateDefaultScopes sets the "default_scopes" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateDefaultScopes() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateDefaultScopes()
+	})
+}
+
+// SetAllowedGroupIds sets the "allowed_group_ids" field.
+func (u *OAuthClientUpsertOne) SetAllowedGroupIds(v []int64) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetAllowedGroupIds(v)
+	})
+}
+
+// UpdateAllowedGroupIds sets the "allowed_group_ids" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateAllowedGroupIds() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateAllowedGroupIds()
+	})
+}
+
+// ClearAllowedGroupIds clears the value of the "allowed_group_ids" field.
+func (u *OAuthClientUpsertOne) ClearAllowedGroupIds() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearAllowedGroupIds()
+	})
+}
+
+// SetAllowedOrigins sets the "allowed_origins" field.
+func (u *OAuthClientUpsertOne) SetAllowedOrigins(v []string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetAllowedOrigins(v)
+	})
+}
+
+// UpdateAllowedOrigins sets the "allowed_origins" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateAllowedOrigins() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateAllowedOrigins()
+	})
+}
+
+// SetLogoutRedirectUris sets the "logout_redirect_uris" field.
+func (u *OAuthClientUpsertOne) SetLogoutRedirectUris(v []string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetLogoutRedirectUris(v)
+	})
+}
+
+// UpdateLogoutRedirectUris sets the "logout_redirect_uris" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateLogoutRedirectUris() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateLogoutRedirectUris()
+	})
+}
+
+// SetDeviceFlowEnabled sets the "device_flow_enabled" field.
+func (u *OAuthClientUpsertOne) SetDeviceFlowEnabled(v bool) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetDeviceFlowEnabled(v)
+	})
+}
+
+// UpdateDeviceFlowEnabled sets the "device_flow_enabled" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateDeviceFlowEnabled() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateDeviceFlowEnabled()
+	})
+}
+
+// SetAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field.
+func (u *OAuthClientUpsertOne) SetAllowRefreshWithoutOfflineAccess(v bool) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetAllowRefreshWithoutOfflineAccess(v)
+	})
+}
+
+// UpdateAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateAllowRefreshWithoutOfflineAccess() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateAllowRefreshWithoutOfflineAccess()
+	})
+}
+
+// SetIconURL sets the "icon_url" field.
+func (u *OAuthClientUpsertOne) SetIconURL(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetIconURL(v)
+	})
+}
+
+// UpdateIconURL sets the "icon_url" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateIconURL() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateIconURL()
+	})
+}
+
+// ClearIconURL clears the value of the "icon_url" field.
+func (u *OAuthClientUpsertOne) ClearIconURL() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearIconURL()
+	})
+}
+
+// SetHomepageURL sets the "homepage_url" field.
+func (u *OAuthClientUpsertOne) SetHomepageURL(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetHomepageURL(v)
+	})
+}
+
+// UpdateHomepageURL sets the "homepage_url" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateHomepageURL() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateHomepageURL()
+	})
+}
+
+// ClearHomepageURL clears the value of the "homepage_url" field.
+func (u *OAuthClientUpsertOne) ClearHomepageURL() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearHomepageURL()
+	})
+}
+
+// SetPrivacyURL sets the "privacy_url" field.
+func (u *OAuthClientUpsertOne) SetPrivacyURL(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetPrivacyURL(v)
+	})
+}
+
+// UpdatePrivacyURL sets the "privacy_url" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdatePrivacyURL() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdatePrivacyURL()
+	})
+}
+
+// ClearPrivacyURL clears the value of the "privacy_url" field.
+func (u *OAuthClientUpsertOne) ClearPrivacyURL() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearPrivacyURL()
+	})
+}
+
+// SetTermsURL sets the "terms_url" field.
+func (u *OAuthClientUpsertOne) SetTermsURL(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetTermsURL(v)
+	})
+}
+
+// UpdateTermsURL sets the "terms_url" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateTermsURL() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateTermsURL()
+	})
+}
+
+// ClearTermsURL clears the value of the "terms_url" field.
+func (u *OAuthClientUpsertOne) ClearTermsURL() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearTermsURL()
 	})
 }
 
@@ -1181,6 +1852,223 @@ func (u *OAuthClientUpsertBulk) SetDisabled(v bool) *OAuthClientUpsertBulk {
 func (u *OAuthClientUpsertBulk) UpdateDisabled() *OAuthClientUpsertBulk {
 	return u.Update(func(s *OAuthClientUpsert) {
 		s.UpdateDisabled()
+	})
+}
+
+// SetClientType sets the "client_type" field.
+func (u *OAuthClientUpsertBulk) SetClientType(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetClientType(v)
+	})
+}
+
+// UpdateClientType sets the "client_type" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateClientType() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateClientType()
+	})
+}
+
+// SetAppType sets the "app_type" field.
+func (u *OAuthClientUpsertBulk) SetAppType(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetAppType(v)
+	})
+}
+
+// UpdateAppType sets the "app_type" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateAppType() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateAppType()
+	})
+}
+
+// SetTrustedFirstParty sets the "trusted_first_party" field.
+func (u *OAuthClientUpsertBulk) SetTrustedFirstParty(v bool) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetTrustedFirstParty(v)
+	})
+}
+
+// UpdateTrustedFirstParty sets the "trusted_first_party" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateTrustedFirstParty() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateTrustedFirstParty()
+	})
+}
+
+// SetDefaultScopes sets the "default_scopes" field.
+func (u *OAuthClientUpsertBulk) SetDefaultScopes(v []string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetDefaultScopes(v)
+	})
+}
+
+// UpdateDefaultScopes sets the "default_scopes" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateDefaultScopes() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateDefaultScopes()
+	})
+}
+
+// SetAllowedGroupIds sets the "allowed_group_ids" field.
+func (u *OAuthClientUpsertBulk) SetAllowedGroupIds(v []int64) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetAllowedGroupIds(v)
+	})
+}
+
+// UpdateAllowedGroupIds sets the "allowed_group_ids" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateAllowedGroupIds() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateAllowedGroupIds()
+	})
+}
+
+// ClearAllowedGroupIds clears the value of the "allowed_group_ids" field.
+func (u *OAuthClientUpsertBulk) ClearAllowedGroupIds() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearAllowedGroupIds()
+	})
+}
+
+// SetAllowedOrigins sets the "allowed_origins" field.
+func (u *OAuthClientUpsertBulk) SetAllowedOrigins(v []string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetAllowedOrigins(v)
+	})
+}
+
+// UpdateAllowedOrigins sets the "allowed_origins" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateAllowedOrigins() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateAllowedOrigins()
+	})
+}
+
+// SetLogoutRedirectUris sets the "logout_redirect_uris" field.
+func (u *OAuthClientUpsertBulk) SetLogoutRedirectUris(v []string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetLogoutRedirectUris(v)
+	})
+}
+
+// UpdateLogoutRedirectUris sets the "logout_redirect_uris" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateLogoutRedirectUris() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateLogoutRedirectUris()
+	})
+}
+
+// SetDeviceFlowEnabled sets the "device_flow_enabled" field.
+func (u *OAuthClientUpsertBulk) SetDeviceFlowEnabled(v bool) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetDeviceFlowEnabled(v)
+	})
+}
+
+// UpdateDeviceFlowEnabled sets the "device_flow_enabled" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateDeviceFlowEnabled() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateDeviceFlowEnabled()
+	})
+}
+
+// SetAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field.
+func (u *OAuthClientUpsertBulk) SetAllowRefreshWithoutOfflineAccess(v bool) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetAllowRefreshWithoutOfflineAccess(v)
+	})
+}
+
+// UpdateAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateAllowRefreshWithoutOfflineAccess() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateAllowRefreshWithoutOfflineAccess()
+	})
+}
+
+// SetIconURL sets the "icon_url" field.
+func (u *OAuthClientUpsertBulk) SetIconURL(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetIconURL(v)
+	})
+}
+
+// UpdateIconURL sets the "icon_url" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateIconURL() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateIconURL()
+	})
+}
+
+// ClearIconURL clears the value of the "icon_url" field.
+func (u *OAuthClientUpsertBulk) ClearIconURL() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearIconURL()
+	})
+}
+
+// SetHomepageURL sets the "homepage_url" field.
+func (u *OAuthClientUpsertBulk) SetHomepageURL(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetHomepageURL(v)
+	})
+}
+
+// UpdateHomepageURL sets the "homepage_url" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateHomepageURL() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateHomepageURL()
+	})
+}
+
+// ClearHomepageURL clears the value of the "homepage_url" field.
+func (u *OAuthClientUpsertBulk) ClearHomepageURL() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearHomepageURL()
+	})
+}
+
+// SetPrivacyURL sets the "privacy_url" field.
+func (u *OAuthClientUpsertBulk) SetPrivacyURL(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetPrivacyURL(v)
+	})
+}
+
+// UpdatePrivacyURL sets the "privacy_url" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdatePrivacyURL() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdatePrivacyURL()
+	})
+}
+
+// ClearPrivacyURL clears the value of the "privacy_url" field.
+func (u *OAuthClientUpsertBulk) ClearPrivacyURL() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearPrivacyURL()
+	})
+}
+
+// SetTermsURL sets the "terms_url" field.
+func (u *OAuthClientUpsertBulk) SetTermsURL(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetTermsURL(v)
+	})
+}
+
+// UpdateTermsURL sets the "terms_url" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateTermsURL() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateTermsURL()
+	})
+}
+
+// ClearTermsURL clears the value of the "terms_url" field.
+func (u *OAuthClientUpsertBulk) ClearTermsURL() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearTermsURL()
 	})
 }
 

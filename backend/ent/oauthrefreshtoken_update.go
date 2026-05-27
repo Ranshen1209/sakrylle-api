@@ -171,6 +171,165 @@ func (_u *OAuthRefreshTokenUpdate) ClearRotatedToHash() *OAuthRefreshTokenUpdate
 	return _u
 }
 
+// SetGrantID sets the "grant_id" field.
+func (_u *OAuthRefreshTokenUpdate) SetGrantID(v string) *OAuthRefreshTokenUpdate {
+	_u.mutation.SetGrantID(v)
+	return _u
+}
+
+// SetNillableGrantID sets the "grant_id" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdate) SetNillableGrantID(v *string) *OAuthRefreshTokenUpdate {
+	if v != nil {
+		_u.SetGrantID(*v)
+	}
+	return _u
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (_u *OAuthRefreshTokenUpdate) ClearGrantID() *OAuthRefreshTokenUpdate {
+	_u.mutation.ClearGrantID()
+	return _u
+}
+
+// SetTokenFamilyID sets the "token_family_id" field.
+func (_u *OAuthRefreshTokenUpdate) SetTokenFamilyID(v string) *OAuthRefreshTokenUpdate {
+	_u.mutation.SetTokenFamilyID(v)
+	return _u
+}
+
+// SetNillableTokenFamilyID sets the "token_family_id" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdate) SetNillableTokenFamilyID(v *string) *OAuthRefreshTokenUpdate {
+	if v != nil {
+		_u.SetTokenFamilyID(*v)
+	}
+	return _u
+}
+
+// ClearTokenFamilyID clears the value of the "token_family_id" field.
+func (_u *OAuthRefreshTokenUpdate) ClearTokenFamilyID() *OAuthRefreshTokenUpdate {
+	_u.mutation.ClearTokenFamilyID()
+	return _u
+}
+
+// SetGroupID sets the "group_id" field.
+func (_u *OAuthRefreshTokenUpdate) SetGroupID(v int64) *OAuthRefreshTokenUpdate {
+	_u.mutation.ResetGroupID()
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdate) SetNillableGroupID(v *int64) *OAuthRefreshTokenUpdate {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// AddGroupID adds value to the "group_id" field.
+func (_u *OAuthRefreshTokenUpdate) AddGroupID(v int64) *OAuthRefreshTokenUpdate {
+	_u.mutation.AddGroupID(v)
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *OAuthRefreshTokenUpdate) ClearGroupID() *OAuthRefreshTokenUpdate {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (_u *OAuthRefreshTokenUpdate) SetAllowedGroupsSnapshot(v []int64) *OAuthRefreshTokenUpdate {
+	_u.mutation.SetAllowedGroupsSnapshot(v)
+	return _u
+}
+
+// AppendAllowedGroupsSnapshot appends value to the "allowed_groups_snapshot" field.
+func (_u *OAuthRefreshTokenUpdate) AppendAllowedGroupsSnapshot(v []int64) *OAuthRefreshTokenUpdate {
+	_u.mutation.AppendAllowedGroupsSnapshot(v)
+	return _u
+}
+
+// SetDeviceID sets the "device_id" field.
+func (_u *OAuthRefreshTokenUpdate) SetDeviceID(v string) *OAuthRefreshTokenUpdate {
+	_u.mutation.SetDeviceID(v)
+	return _u
+}
+
+// SetNillableDeviceID sets the "device_id" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdate) SetNillableDeviceID(v *string) *OAuthRefreshTokenUpdate {
+	if v != nil {
+		_u.SetDeviceID(*v)
+	}
+	return _u
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (_u *OAuthRefreshTokenUpdate) ClearDeviceID() *OAuthRefreshTokenUpdate {
+	_u.mutation.ClearDeviceID()
+	return _u
+}
+
+// SetDeviceName sets the "device_name" field.
+func (_u *OAuthRefreshTokenUpdate) SetDeviceName(v string) *OAuthRefreshTokenUpdate {
+	_u.mutation.SetDeviceName(v)
+	return _u
+}
+
+// SetNillableDeviceName sets the "device_name" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdate) SetNillableDeviceName(v *string) *OAuthRefreshTokenUpdate {
+	if v != nil {
+		_u.SetDeviceName(*v)
+	}
+	return _u
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (_u *OAuthRefreshTokenUpdate) ClearDeviceName() *OAuthRefreshTokenUpdate {
+	_u.mutation.ClearDeviceName()
+	return _u
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (_u *OAuthRefreshTokenUpdate) SetLastUsedAt(v time.Time) *OAuthRefreshTokenUpdate {
+	_u.mutation.SetLastUsedAt(v)
+	return _u
+}
+
+// SetNillableLastUsedAt sets the "last_used_at" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdate) SetNillableLastUsedAt(v *time.Time) *OAuthRefreshTokenUpdate {
+	if v != nil {
+		_u.SetLastUsedAt(*v)
+	}
+	return _u
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (_u *OAuthRefreshTokenUpdate) ClearLastUsedAt() *OAuthRefreshTokenUpdate {
+	_u.mutation.ClearLastUsedAt()
+	return _u
+}
+
+// SetReuseDetectedAt sets the "reuse_detected_at" field.
+func (_u *OAuthRefreshTokenUpdate) SetReuseDetectedAt(v time.Time) *OAuthRefreshTokenUpdate {
+	_u.mutation.SetReuseDetectedAt(v)
+	return _u
+}
+
+// SetNillableReuseDetectedAt sets the "reuse_detected_at" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdate) SetNillableReuseDetectedAt(v *time.Time) *OAuthRefreshTokenUpdate {
+	if v != nil {
+		_u.SetReuseDetectedAt(*v)
+	}
+	return _u
+}
+
+// ClearReuseDetectedAt clears the value of the "reuse_detected_at" field.
+func (_u *OAuthRefreshTokenUpdate) ClearReuseDetectedAt() *OAuthRefreshTokenUpdate {
+	_u.mutation.ClearReuseDetectedAt()
+	return _u
+}
+
 // Mutation returns the OAuthRefreshTokenMutation object of the builder.
 func (_u *OAuthRefreshTokenUpdate) Mutation() *OAuthRefreshTokenMutation {
 	return _u.mutation
@@ -227,6 +386,26 @@ func (_u *OAuthRefreshTokenUpdate) check() error {
 	if v, ok := _u.mutation.RotatedToHash(); ok {
 		if err := oauthrefreshtoken.RotatedToHashValidator(v); err != nil {
 			return &ValidationError{Name: "rotated_to_hash", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.rotated_to_hash": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GrantID(); ok {
+		if err := oauthrefreshtoken.GrantIDValidator(v); err != nil {
+			return &ValidationError{Name: "grant_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.grant_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.TokenFamilyID(); ok {
+		if err := oauthrefreshtoken.TokenFamilyIDValidator(v); err != nil {
+			return &ValidationError{Name: "token_family_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.token_family_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DeviceID(); ok {
+		if err := oauthrefreshtoken.DeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "device_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.device_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DeviceName(); ok {
+		if err := oauthrefreshtoken.DeviceNameValidator(v); err != nil {
+			return &ValidationError{Name: "device_name", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.device_name": %w`, err)}
 		}
 	}
 	return nil
@@ -287,6 +466,59 @@ func (_u *OAuthRefreshTokenUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if _u.mutation.RotatedToHashCleared() {
 		_spec.ClearField(oauthrefreshtoken.FieldRotatedToHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.GrantID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldGrantID, field.TypeString, value)
+	}
+	if _u.mutation.GrantIDCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldGrantID, field.TypeString)
+	}
+	if value, ok := _u.mutation.TokenFamilyID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldTokenFamilyID, field.TypeString, value)
+	}
+	if _u.mutation.TokenFamilyIDCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldTokenFamilyID, field.TypeString)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupID(); ok {
+		_spec.AddField(oauthrefreshtoken.FieldGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.AllowedGroupsSnapshot(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldAllowedGroupsSnapshot, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedGroupsSnapshot(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthrefreshtoken.FieldAllowedGroupsSnapshot, value)
+		})
+	}
+	if value, ok := _u.mutation.DeviceID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldDeviceID, field.TypeString, value)
+	}
+	if _u.mutation.DeviceIDCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldDeviceID, field.TypeString)
+	}
+	if value, ok := _u.mutation.DeviceName(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldDeviceName, field.TypeString, value)
+	}
+	if _u.mutation.DeviceNameCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldDeviceName, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastUsedAt(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldLastUsedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastUsedAtCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldLastUsedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ReuseDetectedAt(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldReuseDetectedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ReuseDetectedAtCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldReuseDetectedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -450,6 +682,165 @@ func (_u *OAuthRefreshTokenUpdateOne) ClearRotatedToHash() *OAuthRefreshTokenUpd
 	return _u
 }
 
+// SetGrantID sets the "grant_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) SetGrantID(v string) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.SetGrantID(v)
+	return _u
+}
+
+// SetNillableGrantID sets the "grant_id" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdateOne) SetNillableGrantID(v *string) *OAuthRefreshTokenUpdateOne {
+	if v != nil {
+		_u.SetGrantID(*v)
+	}
+	return _u
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) ClearGrantID() *OAuthRefreshTokenUpdateOne {
+	_u.mutation.ClearGrantID()
+	return _u
+}
+
+// SetTokenFamilyID sets the "token_family_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) SetTokenFamilyID(v string) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.SetTokenFamilyID(v)
+	return _u
+}
+
+// SetNillableTokenFamilyID sets the "token_family_id" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdateOne) SetNillableTokenFamilyID(v *string) *OAuthRefreshTokenUpdateOne {
+	if v != nil {
+		_u.SetTokenFamilyID(*v)
+	}
+	return _u
+}
+
+// ClearTokenFamilyID clears the value of the "token_family_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) ClearTokenFamilyID() *OAuthRefreshTokenUpdateOne {
+	_u.mutation.ClearTokenFamilyID()
+	return _u
+}
+
+// SetGroupID sets the "group_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) SetGroupID(v int64) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.ResetGroupID()
+	_u.mutation.SetGroupID(v)
+	return _u
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdateOne) SetNillableGroupID(v *int64) *OAuthRefreshTokenUpdateOne {
+	if v != nil {
+		_u.SetGroupID(*v)
+	}
+	return _u
+}
+
+// AddGroupID adds value to the "group_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) AddGroupID(v int64) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.AddGroupID(v)
+	return _u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) ClearGroupID() *OAuthRefreshTokenUpdateOne {
+	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (_u *OAuthRefreshTokenUpdateOne) SetAllowedGroupsSnapshot(v []int64) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.SetAllowedGroupsSnapshot(v)
+	return _u
+}
+
+// AppendAllowedGroupsSnapshot appends value to the "allowed_groups_snapshot" field.
+func (_u *OAuthRefreshTokenUpdateOne) AppendAllowedGroupsSnapshot(v []int64) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.AppendAllowedGroupsSnapshot(v)
+	return _u
+}
+
+// SetDeviceID sets the "device_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) SetDeviceID(v string) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.SetDeviceID(v)
+	return _u
+}
+
+// SetNillableDeviceID sets the "device_id" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdateOne) SetNillableDeviceID(v *string) *OAuthRefreshTokenUpdateOne {
+	if v != nil {
+		_u.SetDeviceID(*v)
+	}
+	return _u
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (_u *OAuthRefreshTokenUpdateOne) ClearDeviceID() *OAuthRefreshTokenUpdateOne {
+	_u.mutation.ClearDeviceID()
+	return _u
+}
+
+// SetDeviceName sets the "device_name" field.
+func (_u *OAuthRefreshTokenUpdateOne) SetDeviceName(v string) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.SetDeviceName(v)
+	return _u
+}
+
+// SetNillableDeviceName sets the "device_name" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdateOne) SetNillableDeviceName(v *string) *OAuthRefreshTokenUpdateOne {
+	if v != nil {
+		_u.SetDeviceName(*v)
+	}
+	return _u
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (_u *OAuthRefreshTokenUpdateOne) ClearDeviceName() *OAuthRefreshTokenUpdateOne {
+	_u.mutation.ClearDeviceName()
+	return _u
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (_u *OAuthRefreshTokenUpdateOne) SetLastUsedAt(v time.Time) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.SetLastUsedAt(v)
+	return _u
+}
+
+// SetNillableLastUsedAt sets the "last_used_at" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdateOne) SetNillableLastUsedAt(v *time.Time) *OAuthRefreshTokenUpdateOne {
+	if v != nil {
+		_u.SetLastUsedAt(*v)
+	}
+	return _u
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (_u *OAuthRefreshTokenUpdateOne) ClearLastUsedAt() *OAuthRefreshTokenUpdateOne {
+	_u.mutation.ClearLastUsedAt()
+	return _u
+}
+
+// SetReuseDetectedAt sets the "reuse_detected_at" field.
+func (_u *OAuthRefreshTokenUpdateOne) SetReuseDetectedAt(v time.Time) *OAuthRefreshTokenUpdateOne {
+	_u.mutation.SetReuseDetectedAt(v)
+	return _u
+}
+
+// SetNillableReuseDetectedAt sets the "reuse_detected_at" field if the given value is not nil.
+func (_u *OAuthRefreshTokenUpdateOne) SetNillableReuseDetectedAt(v *time.Time) *OAuthRefreshTokenUpdateOne {
+	if v != nil {
+		_u.SetReuseDetectedAt(*v)
+	}
+	return _u
+}
+
+// ClearReuseDetectedAt clears the value of the "reuse_detected_at" field.
+func (_u *OAuthRefreshTokenUpdateOne) ClearReuseDetectedAt() *OAuthRefreshTokenUpdateOne {
+	_u.mutation.ClearReuseDetectedAt()
+	return _u
+}
+
 // Mutation returns the OAuthRefreshTokenMutation object of the builder.
 func (_u *OAuthRefreshTokenUpdateOne) Mutation() *OAuthRefreshTokenMutation {
 	return _u.mutation
@@ -519,6 +910,26 @@ func (_u *OAuthRefreshTokenUpdateOne) check() error {
 	if v, ok := _u.mutation.RotatedToHash(); ok {
 		if err := oauthrefreshtoken.RotatedToHashValidator(v); err != nil {
 			return &ValidationError{Name: "rotated_to_hash", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.rotated_to_hash": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GrantID(); ok {
+		if err := oauthrefreshtoken.GrantIDValidator(v); err != nil {
+			return &ValidationError{Name: "grant_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.grant_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.TokenFamilyID(); ok {
+		if err := oauthrefreshtoken.TokenFamilyIDValidator(v); err != nil {
+			return &ValidationError{Name: "token_family_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.token_family_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DeviceID(); ok {
+		if err := oauthrefreshtoken.DeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "device_id", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.device_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DeviceName(); ok {
+		if err := oauthrefreshtoken.DeviceNameValidator(v); err != nil {
+			return &ValidationError{Name: "device_name", err: fmt.Errorf(`ent: validator failed for field "OAuthRefreshToken.device_name": %w`, err)}
 		}
 	}
 	return nil
@@ -596,6 +1007,59 @@ func (_u *OAuthRefreshTokenUpdateOne) sqlSave(ctx context.Context) (_node *OAuth
 	}
 	if _u.mutation.RotatedToHashCleared() {
 		_spec.ClearField(oauthrefreshtoken.FieldRotatedToHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.GrantID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldGrantID, field.TypeString, value)
+	}
+	if _u.mutation.GrantIDCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldGrantID, field.TypeString)
+	}
+	if value, ok := _u.mutation.TokenFamilyID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldTokenFamilyID, field.TypeString, value)
+	}
+	if _u.mutation.TokenFamilyIDCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldTokenFamilyID, field.TypeString)
+	}
+	if value, ok := _u.mutation.GroupID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldGroupID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedGroupID(); ok {
+		_spec.AddField(oauthrefreshtoken.FieldGroupID, field.TypeInt64, value)
+	}
+	if _u.mutation.GroupIDCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldGroupID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.AllowedGroupsSnapshot(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldAllowedGroupsSnapshot, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedGroupsSnapshot(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthrefreshtoken.FieldAllowedGroupsSnapshot, value)
+		})
+	}
+	if value, ok := _u.mutation.DeviceID(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldDeviceID, field.TypeString, value)
+	}
+	if _u.mutation.DeviceIDCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldDeviceID, field.TypeString)
+	}
+	if value, ok := _u.mutation.DeviceName(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldDeviceName, field.TypeString, value)
+	}
+	if _u.mutation.DeviceNameCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldDeviceName, field.TypeString)
+	}
+	if value, ok := _u.mutation.LastUsedAt(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldLastUsedAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastUsedAtCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldLastUsedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ReuseDetectedAt(); ok {
+		_spec.SetField(oauthrefreshtoken.FieldReuseDetectedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ReuseDetectedAtCleared() {
+		_spec.ClearField(oauthrefreshtoken.FieldReuseDetectedAt, field.TypeTime)
 	}
 	_node = &OAuthRefreshToken{config: _u.config}
 	_spec.Assign = _node.assignValues

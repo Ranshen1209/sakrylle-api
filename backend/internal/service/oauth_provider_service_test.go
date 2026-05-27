@@ -165,6 +165,35 @@ func (s *stubRefreshRepo) ListActiveByUser(_ context.Context, userID int64, now 
 	return out, nil
 }
 
+// ── v2 (Workstream A interface additions) ──────────────────────────────────
+//
+// These shims keep the existing tests compiling against the new
+// OAuthRefreshTokenRepository interface. Workstream B replaces them with
+// real semantics when wiring grant/family revocation tests.
+
+func (s *stubRefreshRepo) GetRefreshTokenByHashForUpdate(_ context.Context, tokenHash string, _ time.Time) (*OAuthRefreshToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.tokens[tokenHash]
+	if !ok {
+		return nil, ErrOAuthRefreshTokenNotFound
+	}
+	cp := *row
+	return &cp, nil
+}
+
+func (s *stubRefreshRepo) RevokeRefreshTokensByGrantID(_ context.Context, _ string, _ time.Time) ([]int64, error) {
+	return nil, nil
+}
+
+func (s *stubRefreshRepo) RevokeRefreshTokensByTokenFamilyID(_ context.Context, _ string, _ time.Time) ([]int64, error) {
+	return nil, nil
+}
+
+func (s *stubRefreshRepo) RevokeRefreshTokensByUserAndClient(_ context.Context, _ int64, _ string, _ time.Time) ([]int64, error) {
+	return nil, nil
+}
+
 // stubAPIKeyRepo is a minimal in-memory APIKeyRepository for OAuth tests.
 type stubAPIKeyRepo struct {
 	mu     sync.Mutex

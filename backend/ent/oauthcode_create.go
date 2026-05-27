@@ -120,6 +120,68 @@ func (_c *OAuthCodeCreate) SetNillableUsedAt(v *time.Time) *OAuthCodeCreate {
 	return _c
 }
 
+// SetGroupID sets the "group_id" field.
+func (_c *OAuthCodeCreate) SetGroupID(v int64) *OAuthCodeCreate {
+	_c.mutation.SetGroupID(v)
+	return _c
+}
+
+// SetNillableGroupID sets the "group_id" field if the given value is not nil.
+func (_c *OAuthCodeCreate) SetNillableGroupID(v *int64) *OAuthCodeCreate {
+	if v != nil {
+		_c.SetGroupID(*v)
+	}
+	return _c
+}
+
+// SetGrantID sets the "grant_id" field.
+func (_c *OAuthCodeCreate) SetGrantID(v string) *OAuthCodeCreate {
+	_c.mutation.SetGrantID(v)
+	return _c
+}
+
+// SetNillableGrantID sets the "grant_id" field if the given value is not nil.
+func (_c *OAuthCodeCreate) SetNillableGrantID(v *string) *OAuthCodeCreate {
+	if v != nil {
+		_c.SetGrantID(*v)
+	}
+	return _c
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (_c *OAuthCodeCreate) SetAllowedGroupsSnapshot(v []int64) *OAuthCodeCreate {
+	_c.mutation.SetAllowedGroupsSnapshot(v)
+	return _c
+}
+
+// SetDeviceID sets the "device_id" field.
+func (_c *OAuthCodeCreate) SetDeviceID(v string) *OAuthCodeCreate {
+	_c.mutation.SetDeviceID(v)
+	return _c
+}
+
+// SetNillableDeviceID sets the "device_id" field if the given value is not nil.
+func (_c *OAuthCodeCreate) SetNillableDeviceID(v *string) *OAuthCodeCreate {
+	if v != nil {
+		_c.SetDeviceID(*v)
+	}
+	return _c
+}
+
+// SetDeviceName sets the "device_name" field.
+func (_c *OAuthCodeCreate) SetDeviceName(v string) *OAuthCodeCreate {
+	_c.mutation.SetDeviceName(v)
+	return _c
+}
+
+// SetNillableDeviceName sets the "device_name" field if the given value is not nil.
+func (_c *OAuthCodeCreate) SetNillableDeviceName(v *string) *OAuthCodeCreate {
+	if v != nil {
+		_c.SetDeviceName(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_c *OAuthCodeCreate) Mutation() *OAuthCodeMutation {
 	return _c.mutation
@@ -166,6 +228,10 @@ func (_c *OAuthCodeCreate) defaults() {
 	if _, ok := _c.mutation.CodeChallengeMethod(); !ok {
 		v := oauthcode.DefaultCodeChallengeMethod
 		_c.mutation.SetCodeChallengeMethod(v)
+	}
+	if _, ok := _c.mutation.AllowedGroupsSnapshot(); !ok {
+		v := oauthcode.DefaultAllowedGroupsSnapshot
+		_c.mutation.SetAllowedGroupsSnapshot(v)
 	}
 }
 
@@ -225,6 +291,24 @@ func (_c *OAuthCodeCreate) check() error {
 	}
 	if _, ok := _c.mutation.ExpiresAt(); !ok {
 		return &ValidationError{Name: "expires_at", err: errors.New(`ent: missing required field "OAuthCode.expires_at"`)}
+	}
+	if v, ok := _c.mutation.GrantID(); ok {
+		if err := oauthcode.GrantIDValidator(v); err != nil {
+			return &ValidationError{Name: "grant_id", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.grant_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.AllowedGroupsSnapshot(); !ok {
+		return &ValidationError{Name: "allowed_groups_snapshot", err: errors.New(`ent: missing required field "OAuthCode.allowed_groups_snapshot"`)}
+	}
+	if v, ok := _c.mutation.DeviceID(); ok {
+		if err := oauthcode.DeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "device_id", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.device_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.DeviceName(); ok {
+		if err := oauthcode.DeviceNameValidator(v); err != nil {
+			return &ValidationError{Name: "device_name", err: fmt.Errorf(`ent: validator failed for field "OAuthCode.device_name": %w`, err)}
+		}
 	}
 	return nil
 }
@@ -296,6 +380,26 @@ func (_c *OAuthCodeCreate) createSpec() (*OAuthCode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UsedAt(); ok {
 		_spec.SetField(oauthcode.FieldUsedAt, field.TypeTime, value)
 		_node.UsedAt = &value
+	}
+	if value, ok := _c.mutation.GroupID(); ok {
+		_spec.SetField(oauthcode.FieldGroupID, field.TypeInt64, value)
+		_node.GroupID = &value
+	}
+	if value, ok := _c.mutation.GrantID(); ok {
+		_spec.SetField(oauthcode.FieldGrantID, field.TypeString, value)
+		_node.GrantID = &value
+	}
+	if value, ok := _c.mutation.AllowedGroupsSnapshot(); ok {
+		_spec.SetField(oauthcode.FieldAllowedGroupsSnapshot, field.TypeJSON, value)
+		_node.AllowedGroupsSnapshot = value
+	}
+	if value, ok := _c.mutation.DeviceID(); ok {
+		_spec.SetField(oauthcode.FieldDeviceID, field.TypeString, value)
+		_node.DeviceID = &value
+	}
+	if value, ok := _c.mutation.DeviceName(); ok {
+		_spec.SetField(oauthcode.FieldDeviceName, field.TypeString, value)
+		_node.DeviceName = &value
 	}
 	return _node, _spec
 }
@@ -478,6 +582,96 @@ func (u *OAuthCodeUpsert) UpdateUsedAt() *OAuthCodeUpsert {
 // ClearUsedAt clears the value of the "used_at" field.
 func (u *OAuthCodeUpsert) ClearUsedAt() *OAuthCodeUpsert {
 	u.SetNull(oauthcode.FieldUsedAt)
+	return u
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *OAuthCodeUpsert) SetGroupID(v int64) *OAuthCodeUpsert {
+	u.Set(oauthcode.FieldGroupID, v)
+	return u
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsert) UpdateGroupID() *OAuthCodeUpsert {
+	u.SetExcluded(oauthcode.FieldGroupID)
+	return u
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *OAuthCodeUpsert) AddGroupID(v int64) *OAuthCodeUpsert {
+	u.Add(oauthcode.FieldGroupID, v)
+	return u
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *OAuthCodeUpsert) ClearGroupID() *OAuthCodeUpsert {
+	u.SetNull(oauthcode.FieldGroupID)
+	return u
+}
+
+// SetGrantID sets the "grant_id" field.
+func (u *OAuthCodeUpsert) SetGrantID(v string) *OAuthCodeUpsert {
+	u.Set(oauthcode.FieldGrantID, v)
+	return u
+}
+
+// UpdateGrantID sets the "grant_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsert) UpdateGrantID() *OAuthCodeUpsert {
+	u.SetExcluded(oauthcode.FieldGrantID)
+	return u
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (u *OAuthCodeUpsert) ClearGrantID() *OAuthCodeUpsert {
+	u.SetNull(oauthcode.FieldGrantID)
+	return u
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (u *OAuthCodeUpsert) SetAllowedGroupsSnapshot(v []int64) *OAuthCodeUpsert {
+	u.Set(oauthcode.FieldAllowedGroupsSnapshot, v)
+	return u
+}
+
+// UpdateAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field to the value that was provided on create.
+func (u *OAuthCodeUpsert) UpdateAllowedGroupsSnapshot() *OAuthCodeUpsert {
+	u.SetExcluded(oauthcode.FieldAllowedGroupsSnapshot)
+	return u
+}
+
+// SetDeviceID sets the "device_id" field.
+func (u *OAuthCodeUpsert) SetDeviceID(v string) *OAuthCodeUpsert {
+	u.Set(oauthcode.FieldDeviceID, v)
+	return u
+}
+
+// UpdateDeviceID sets the "device_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsert) UpdateDeviceID() *OAuthCodeUpsert {
+	u.SetExcluded(oauthcode.FieldDeviceID)
+	return u
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (u *OAuthCodeUpsert) ClearDeviceID() *OAuthCodeUpsert {
+	u.SetNull(oauthcode.FieldDeviceID)
+	return u
+}
+
+// SetDeviceName sets the "device_name" field.
+func (u *OAuthCodeUpsert) SetDeviceName(v string) *OAuthCodeUpsert {
+	u.Set(oauthcode.FieldDeviceName, v)
+	return u
+}
+
+// UpdateDeviceName sets the "device_name" field to the value that was provided on create.
+func (u *OAuthCodeUpsert) UpdateDeviceName() *OAuthCodeUpsert {
+	u.SetExcluded(oauthcode.FieldDeviceName)
+	return u
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (u *OAuthCodeUpsert) ClearDeviceName() *OAuthCodeUpsert {
+	u.SetNull(oauthcode.FieldDeviceName)
 	return u
 }
 
@@ -677,6 +871,111 @@ func (u *OAuthCodeUpsertOne) UpdateUsedAt() *OAuthCodeUpsertOne {
 func (u *OAuthCodeUpsertOne) ClearUsedAt() *OAuthCodeUpsertOne {
 	return u.Update(func(s *OAuthCodeUpsert) {
 		s.ClearUsedAt()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *OAuthCodeUpsertOne) SetGroupID(v int64) *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *OAuthCodeUpsertOne) AddGroupID(v int64) *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.AddGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsertOne) UpdateGroupID() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *OAuthCodeUpsertOne) ClearGroupID() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearGroupID()
+	})
+}
+
+// SetGrantID sets the "grant_id" field.
+func (u *OAuthCodeUpsertOne) SetGrantID(v string) *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetGrantID(v)
+	})
+}
+
+// UpdateGrantID sets the "grant_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsertOne) UpdateGrantID() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateGrantID()
+	})
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (u *OAuthCodeUpsertOne) ClearGrantID() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearGrantID()
+	})
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (u *OAuthCodeUpsertOne) SetAllowedGroupsSnapshot(v []int64) *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetAllowedGroupsSnapshot(v)
+	})
+}
+
+// UpdateAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field to the value that was provided on create.
+func (u *OAuthCodeUpsertOne) UpdateAllowedGroupsSnapshot() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateAllowedGroupsSnapshot()
+	})
+}
+
+// SetDeviceID sets the "device_id" field.
+func (u *OAuthCodeUpsertOne) SetDeviceID(v string) *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetDeviceID(v)
+	})
+}
+
+// UpdateDeviceID sets the "device_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsertOne) UpdateDeviceID() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateDeviceID()
+	})
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (u *OAuthCodeUpsertOne) ClearDeviceID() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearDeviceID()
+	})
+}
+
+// SetDeviceName sets the "device_name" field.
+func (u *OAuthCodeUpsertOne) SetDeviceName(v string) *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetDeviceName(v)
+	})
+}
+
+// UpdateDeviceName sets the "device_name" field to the value that was provided on create.
+func (u *OAuthCodeUpsertOne) UpdateDeviceName() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateDeviceName()
+	})
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (u *OAuthCodeUpsertOne) ClearDeviceName() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearDeviceName()
 	})
 }
 
@@ -1042,6 +1341,111 @@ func (u *OAuthCodeUpsertBulk) UpdateUsedAt() *OAuthCodeUpsertBulk {
 func (u *OAuthCodeUpsertBulk) ClearUsedAt() *OAuthCodeUpsertBulk {
 	return u.Update(func(s *OAuthCodeUpsert) {
 		s.ClearUsedAt()
+	})
+}
+
+// SetGroupID sets the "group_id" field.
+func (u *OAuthCodeUpsertBulk) SetGroupID(v int64) *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetGroupID(v)
+	})
+}
+
+// AddGroupID adds v to the "group_id" field.
+func (u *OAuthCodeUpsertBulk) AddGroupID(v int64) *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.AddGroupID(v)
+	})
+}
+
+// UpdateGroupID sets the "group_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsertBulk) UpdateGroupID() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateGroupID()
+	})
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (u *OAuthCodeUpsertBulk) ClearGroupID() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearGroupID()
+	})
+}
+
+// SetGrantID sets the "grant_id" field.
+func (u *OAuthCodeUpsertBulk) SetGrantID(v string) *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetGrantID(v)
+	})
+}
+
+// UpdateGrantID sets the "grant_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsertBulk) UpdateGrantID() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateGrantID()
+	})
+}
+
+// ClearGrantID clears the value of the "grant_id" field.
+func (u *OAuthCodeUpsertBulk) ClearGrantID() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearGrantID()
+	})
+}
+
+// SetAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field.
+func (u *OAuthCodeUpsertBulk) SetAllowedGroupsSnapshot(v []int64) *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetAllowedGroupsSnapshot(v)
+	})
+}
+
+// UpdateAllowedGroupsSnapshot sets the "allowed_groups_snapshot" field to the value that was provided on create.
+func (u *OAuthCodeUpsertBulk) UpdateAllowedGroupsSnapshot() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateAllowedGroupsSnapshot()
+	})
+}
+
+// SetDeviceID sets the "device_id" field.
+func (u *OAuthCodeUpsertBulk) SetDeviceID(v string) *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetDeviceID(v)
+	})
+}
+
+// UpdateDeviceID sets the "device_id" field to the value that was provided on create.
+func (u *OAuthCodeUpsertBulk) UpdateDeviceID() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateDeviceID()
+	})
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (u *OAuthCodeUpsertBulk) ClearDeviceID() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearDeviceID()
+	})
+}
+
+// SetDeviceName sets the "device_name" field.
+func (u *OAuthCodeUpsertBulk) SetDeviceName(v string) *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetDeviceName(v)
+	})
+}
+
+// UpdateDeviceName sets the "device_name" field to the value that was provided on create.
+func (u *OAuthCodeUpsertBulk) UpdateDeviceName() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateDeviceName()
+	})
+}
+
+// ClearDeviceName clears the value of the "device_name" field.
+func (u *OAuthCodeUpsertBulk) ClearDeviceName() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearDeviceName()
 	})
 }
 

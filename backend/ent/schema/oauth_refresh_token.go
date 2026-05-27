@@ -15,6 +15,11 @@ import (
 // api_key row that holds the matching access_token.
 //
 // Stored as SHA-256(token); rotation marks the old row revoked and inserts a new one.
+//
+// v2 (migration 145) adds grant/family identity, group binding, device labels,
+// and last_used / reuse_detected timestamps. After backfill, all newly created
+// rows MUST have non-empty grant_id, token_family_id, group_id, and
+// allowed_groups_snapshot. See §10.4.
 type OAuthRefreshToken struct {
 	ent.Schema
 }
@@ -55,6 +60,43 @@ func (OAuthRefreshToken) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("token_hash of the row that replaced this one (for replay detection)"),
+
+		// ── v2 (migration 145) ────────────────────────────────────────────
+
+		field.String("grant_id").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Comment("Grant identity (UUID). Stable across rotations; used for grant-level revoke"),
+		field.String("token_family_id").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Comment("Family identity (UUID). Stable across rotations; used for reuse-detection family revoke"),
+		field.Int64("group_id").
+			Optional().
+			Nillable().
+			Comment("Current group binding for this refresh token / access token pair"),
+		field.JSON("allowed_groups_snapshot", []int64{}).
+			Default([]int64{}).
+			Comment("Group IDs the user consented to for this grant; refresh may switch within this set"),
+		field.String("device_id").
+			MaxLen(128).
+			Optional().
+			Nillable(),
+		field.String("device_name").
+			MaxLen(200).
+			Optional().
+			Nillable(),
+		field.Time("last_used_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("reuse_detected_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
+			Comment("Set when refresh-token reuse triggered family revocation"),
 	}
 }
 
@@ -64,5 +106,7 @@ func (OAuthRefreshToken) Indexes() []ent.Index {
 		index.Fields("user_id"),
 		index.Fields("client_id"),
 		index.Fields("api_key_id"),
+		index.Fields("grant_id"),
+		index.Fields("token_family_id"),
 	}
 }

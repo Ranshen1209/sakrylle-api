@@ -204,6 +204,210 @@ func (_u *OAuthClientUpdate) SetNillableDisabled(v *bool) *OAuthClientUpdate {
 	return _u
 }
 
+// SetClientType sets the "client_type" field.
+func (_u *OAuthClientUpdate) SetClientType(v string) *OAuthClientUpdate {
+	_u.mutation.SetClientType(v)
+	return _u
+}
+
+// SetNillableClientType sets the "client_type" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableClientType(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetClientType(*v)
+	}
+	return _u
+}
+
+// SetAppType sets the "app_type" field.
+func (_u *OAuthClientUpdate) SetAppType(v string) *OAuthClientUpdate {
+	_u.mutation.SetAppType(v)
+	return _u
+}
+
+// SetNillableAppType sets the "app_type" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableAppType(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetAppType(*v)
+	}
+	return _u
+}
+
+// SetTrustedFirstParty sets the "trusted_first_party" field.
+func (_u *OAuthClientUpdate) SetTrustedFirstParty(v bool) *OAuthClientUpdate {
+	_u.mutation.SetTrustedFirstParty(v)
+	return _u
+}
+
+// SetNillableTrustedFirstParty sets the "trusted_first_party" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableTrustedFirstParty(v *bool) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetTrustedFirstParty(*v)
+	}
+	return _u
+}
+
+// SetDefaultScopes sets the "default_scopes" field.
+func (_u *OAuthClientUpdate) SetDefaultScopes(v []string) *OAuthClientUpdate {
+	_u.mutation.SetDefaultScopes(v)
+	return _u
+}
+
+// AppendDefaultScopes appends value to the "default_scopes" field.
+func (_u *OAuthClientUpdate) AppendDefaultScopes(v []string) *OAuthClientUpdate {
+	_u.mutation.AppendDefaultScopes(v)
+	return _u
+}
+
+// SetAllowedGroupIds sets the "allowed_group_ids" field.
+func (_u *OAuthClientUpdate) SetAllowedGroupIds(v []int64) *OAuthClientUpdate {
+	_u.mutation.SetAllowedGroupIds(v)
+	return _u
+}
+
+// AppendAllowedGroupIds appends value to the "allowed_group_ids" field.
+func (_u *OAuthClientUpdate) AppendAllowedGroupIds(v []int64) *OAuthClientUpdate {
+	_u.mutation.AppendAllowedGroupIds(v)
+	return _u
+}
+
+// ClearAllowedGroupIds clears the value of the "allowed_group_ids" field.
+func (_u *OAuthClientUpdate) ClearAllowedGroupIds() *OAuthClientUpdate {
+	_u.mutation.ClearAllowedGroupIds()
+	return _u
+}
+
+// SetAllowedOrigins sets the "allowed_origins" field.
+func (_u *OAuthClientUpdate) SetAllowedOrigins(v []string) *OAuthClientUpdate {
+	_u.mutation.SetAllowedOrigins(v)
+	return _u
+}
+
+// AppendAllowedOrigins appends value to the "allowed_origins" field.
+func (_u *OAuthClientUpdate) AppendAllowedOrigins(v []string) *OAuthClientUpdate {
+	_u.mutation.AppendAllowedOrigins(v)
+	return _u
+}
+
+// SetLogoutRedirectUris sets the "logout_redirect_uris" field.
+func (_u *OAuthClientUpdate) SetLogoutRedirectUris(v []string) *OAuthClientUpdate {
+	_u.mutation.SetLogoutRedirectUris(v)
+	return _u
+}
+
+// AppendLogoutRedirectUris appends value to the "logout_redirect_uris" field.
+func (_u *OAuthClientUpdate) AppendLogoutRedirectUris(v []string) *OAuthClientUpdate {
+	_u.mutation.AppendLogoutRedirectUris(v)
+	return _u
+}
+
+// SetDeviceFlowEnabled sets the "device_flow_enabled" field.
+func (_u *OAuthClientUpdate) SetDeviceFlowEnabled(v bool) *OAuthClientUpdate {
+	_u.mutation.SetDeviceFlowEnabled(v)
+	return _u
+}
+
+// SetNillableDeviceFlowEnabled sets the "device_flow_enabled" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableDeviceFlowEnabled(v *bool) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetDeviceFlowEnabled(*v)
+	}
+	return _u
+}
+
+// SetAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field.
+func (_u *OAuthClientUpdate) SetAllowRefreshWithoutOfflineAccess(v bool) *OAuthClientUpdate {
+	_u.mutation.SetAllowRefreshWithoutOfflineAccess(v)
+	return _u
+}
+
+// SetNillableAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableAllowRefreshWithoutOfflineAccess(v *bool) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetAllowRefreshWithoutOfflineAccess(*v)
+	}
+	return _u
+}
+
+// SetIconURL sets the "icon_url" field.
+func (_u *OAuthClientUpdate) SetIconURL(v string) *OAuthClientUpdate {
+	_u.mutation.SetIconURL(v)
+	return _u
+}
+
+// SetNillableIconURL sets the "icon_url" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableIconURL(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetIconURL(*v)
+	}
+	return _u
+}
+
+// ClearIconURL clears the value of the "icon_url" field.
+func (_u *OAuthClientUpdate) ClearIconURL() *OAuthClientUpdate {
+	_u.mutation.ClearIconURL()
+	return _u
+}
+
+// SetHomepageURL sets the "homepage_url" field.
+func (_u *OAuthClientUpdate) SetHomepageURL(v string) *OAuthClientUpdate {
+	_u.mutation.SetHomepageURL(v)
+	return _u
+}
+
+// SetNillableHomepageURL sets the "homepage_url" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableHomepageURL(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetHomepageURL(*v)
+	}
+	return _u
+}
+
+// ClearHomepageURL clears the value of the "homepage_url" field.
+func (_u *OAuthClientUpdate) ClearHomepageURL() *OAuthClientUpdate {
+	_u.mutation.ClearHomepageURL()
+	return _u
+}
+
+// SetPrivacyURL sets the "privacy_url" field.
+func (_u *OAuthClientUpdate) SetPrivacyURL(v string) *OAuthClientUpdate {
+	_u.mutation.SetPrivacyURL(v)
+	return _u
+}
+
+// SetNillablePrivacyURL sets the "privacy_url" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillablePrivacyURL(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetPrivacyURL(*v)
+	}
+	return _u
+}
+
+// ClearPrivacyURL clears the value of the "privacy_url" field.
+func (_u *OAuthClientUpdate) ClearPrivacyURL() *OAuthClientUpdate {
+	_u.mutation.ClearPrivacyURL()
+	return _u
+}
+
+// SetTermsURL sets the "terms_url" field.
+func (_u *OAuthClientUpdate) SetTermsURL(v string) *OAuthClientUpdate {
+	_u.mutation.SetTermsURL(v)
+	return _u
+}
+
+// SetNillableTermsURL sets the "terms_url" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableTermsURL(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetTermsURL(*v)
+	}
+	return _u
+}
+
+// ClearTermsURL clears the value of the "terms_url" field.
+func (_u *OAuthClientUpdate) ClearTermsURL() *OAuthClientUpdate {
+	_u.mutation.ClearTermsURL()
+	return _u
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_u *OAuthClientUpdate) Mutation() *OAuthClientMutation {
 	return _u.mutation
@@ -255,6 +459,16 @@ func (_u *OAuthClientUpdate) check() error {
 	if v, ok := _u.mutation.Name(); ok {
 		if err := oauthclient.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.name": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientType(); ok {
+		if err := oauthclient.ClientTypeValidator(v); err != nil {
+			return &ValidationError{Name: "client_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.client_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.AppType(); ok {
+		if err := oauthclient.AppTypeValidator(v); err != nil {
+			return &ValidationError{Name: "app_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.app_type": %w`, err)}
 		}
 	}
 	return nil
@@ -329,6 +543,80 @@ func (_u *OAuthClientUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.Disabled(); ok {
 		_spec.SetField(oauthclient.FieldDisabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ClientType(); ok {
+		_spec.SetField(oauthclient.FieldClientType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AppType(); ok {
+		_spec.SetField(oauthclient.FieldAppType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TrustedFirstParty(); ok {
+		_spec.SetField(oauthclient.FieldTrustedFirstParty, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DefaultScopes(); ok {
+		_spec.SetField(oauthclient.FieldDefaultScopes, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDefaultScopes(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldDefaultScopes, value)
+		})
+	}
+	if value, ok := _u.mutation.AllowedGroupIds(); ok {
+		_spec.SetField(oauthclient.FieldAllowedGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldAllowedGroupIds, value)
+		})
+	}
+	if _u.mutation.AllowedGroupIdsCleared() {
+		_spec.ClearField(oauthclient.FieldAllowedGroupIds, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.AllowedOrigins(); ok {
+		_spec.SetField(oauthclient.FieldAllowedOrigins, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedOrigins(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldAllowedOrigins, value)
+		})
+	}
+	if value, ok := _u.mutation.LogoutRedirectUris(); ok {
+		_spec.SetField(oauthclient.FieldLogoutRedirectUris, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedLogoutRedirectUris(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldLogoutRedirectUris, value)
+		})
+	}
+	if value, ok := _u.mutation.DeviceFlowEnabled(); ok {
+		_spec.SetField(oauthclient.FieldDeviceFlowEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowRefreshWithoutOfflineAccess(); ok {
+		_spec.SetField(oauthclient.FieldAllowRefreshWithoutOfflineAccess, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IconURL(); ok {
+		_spec.SetField(oauthclient.FieldIconURL, field.TypeString, value)
+	}
+	if _u.mutation.IconURLCleared() {
+		_spec.ClearField(oauthclient.FieldIconURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.HomepageURL(); ok {
+		_spec.SetField(oauthclient.FieldHomepageURL, field.TypeString, value)
+	}
+	if _u.mutation.HomepageURLCleared() {
+		_spec.ClearField(oauthclient.FieldHomepageURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.PrivacyURL(); ok {
+		_spec.SetField(oauthclient.FieldPrivacyURL, field.TypeString, value)
+	}
+	if _u.mutation.PrivacyURLCleared() {
+		_spec.ClearField(oauthclient.FieldPrivacyURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.TermsURL(); ok {
+		_spec.SetField(oauthclient.FieldTermsURL, field.TypeString, value)
+	}
+	if _u.mutation.TermsURLCleared() {
+		_spec.ClearField(oauthclient.FieldTermsURL, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -525,6 +813,210 @@ func (_u *OAuthClientUpdateOne) SetNillableDisabled(v *bool) *OAuthClientUpdateO
 	return _u
 }
 
+// SetClientType sets the "client_type" field.
+func (_u *OAuthClientUpdateOne) SetClientType(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetClientType(v)
+	return _u
+}
+
+// SetNillableClientType sets the "client_type" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableClientType(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetClientType(*v)
+	}
+	return _u
+}
+
+// SetAppType sets the "app_type" field.
+func (_u *OAuthClientUpdateOne) SetAppType(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetAppType(v)
+	return _u
+}
+
+// SetNillableAppType sets the "app_type" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableAppType(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetAppType(*v)
+	}
+	return _u
+}
+
+// SetTrustedFirstParty sets the "trusted_first_party" field.
+func (_u *OAuthClientUpdateOne) SetTrustedFirstParty(v bool) *OAuthClientUpdateOne {
+	_u.mutation.SetTrustedFirstParty(v)
+	return _u
+}
+
+// SetNillableTrustedFirstParty sets the "trusted_first_party" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableTrustedFirstParty(v *bool) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetTrustedFirstParty(*v)
+	}
+	return _u
+}
+
+// SetDefaultScopes sets the "default_scopes" field.
+func (_u *OAuthClientUpdateOne) SetDefaultScopes(v []string) *OAuthClientUpdateOne {
+	_u.mutation.SetDefaultScopes(v)
+	return _u
+}
+
+// AppendDefaultScopes appends value to the "default_scopes" field.
+func (_u *OAuthClientUpdateOne) AppendDefaultScopes(v []string) *OAuthClientUpdateOne {
+	_u.mutation.AppendDefaultScopes(v)
+	return _u
+}
+
+// SetAllowedGroupIds sets the "allowed_group_ids" field.
+func (_u *OAuthClientUpdateOne) SetAllowedGroupIds(v []int64) *OAuthClientUpdateOne {
+	_u.mutation.SetAllowedGroupIds(v)
+	return _u
+}
+
+// AppendAllowedGroupIds appends value to the "allowed_group_ids" field.
+func (_u *OAuthClientUpdateOne) AppendAllowedGroupIds(v []int64) *OAuthClientUpdateOne {
+	_u.mutation.AppendAllowedGroupIds(v)
+	return _u
+}
+
+// ClearAllowedGroupIds clears the value of the "allowed_group_ids" field.
+func (_u *OAuthClientUpdateOne) ClearAllowedGroupIds() *OAuthClientUpdateOne {
+	_u.mutation.ClearAllowedGroupIds()
+	return _u
+}
+
+// SetAllowedOrigins sets the "allowed_origins" field.
+func (_u *OAuthClientUpdateOne) SetAllowedOrigins(v []string) *OAuthClientUpdateOne {
+	_u.mutation.SetAllowedOrigins(v)
+	return _u
+}
+
+// AppendAllowedOrigins appends value to the "allowed_origins" field.
+func (_u *OAuthClientUpdateOne) AppendAllowedOrigins(v []string) *OAuthClientUpdateOne {
+	_u.mutation.AppendAllowedOrigins(v)
+	return _u
+}
+
+// SetLogoutRedirectUris sets the "logout_redirect_uris" field.
+func (_u *OAuthClientUpdateOne) SetLogoutRedirectUris(v []string) *OAuthClientUpdateOne {
+	_u.mutation.SetLogoutRedirectUris(v)
+	return _u
+}
+
+// AppendLogoutRedirectUris appends value to the "logout_redirect_uris" field.
+func (_u *OAuthClientUpdateOne) AppendLogoutRedirectUris(v []string) *OAuthClientUpdateOne {
+	_u.mutation.AppendLogoutRedirectUris(v)
+	return _u
+}
+
+// SetDeviceFlowEnabled sets the "device_flow_enabled" field.
+func (_u *OAuthClientUpdateOne) SetDeviceFlowEnabled(v bool) *OAuthClientUpdateOne {
+	_u.mutation.SetDeviceFlowEnabled(v)
+	return _u
+}
+
+// SetNillableDeviceFlowEnabled sets the "device_flow_enabled" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableDeviceFlowEnabled(v *bool) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetDeviceFlowEnabled(*v)
+	}
+	return _u
+}
+
+// SetAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field.
+func (_u *OAuthClientUpdateOne) SetAllowRefreshWithoutOfflineAccess(v bool) *OAuthClientUpdateOne {
+	_u.mutation.SetAllowRefreshWithoutOfflineAccess(v)
+	return _u
+}
+
+// SetNillableAllowRefreshWithoutOfflineAccess sets the "allow_refresh_without_offline_access" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableAllowRefreshWithoutOfflineAccess(v *bool) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetAllowRefreshWithoutOfflineAccess(*v)
+	}
+	return _u
+}
+
+// SetIconURL sets the "icon_url" field.
+func (_u *OAuthClientUpdateOne) SetIconURL(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetIconURL(v)
+	return _u
+}
+
+// SetNillableIconURL sets the "icon_url" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableIconURL(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetIconURL(*v)
+	}
+	return _u
+}
+
+// ClearIconURL clears the value of the "icon_url" field.
+func (_u *OAuthClientUpdateOne) ClearIconURL() *OAuthClientUpdateOne {
+	_u.mutation.ClearIconURL()
+	return _u
+}
+
+// SetHomepageURL sets the "homepage_url" field.
+func (_u *OAuthClientUpdateOne) SetHomepageURL(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetHomepageURL(v)
+	return _u
+}
+
+// SetNillableHomepageURL sets the "homepage_url" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableHomepageURL(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetHomepageURL(*v)
+	}
+	return _u
+}
+
+// ClearHomepageURL clears the value of the "homepage_url" field.
+func (_u *OAuthClientUpdateOne) ClearHomepageURL() *OAuthClientUpdateOne {
+	_u.mutation.ClearHomepageURL()
+	return _u
+}
+
+// SetPrivacyURL sets the "privacy_url" field.
+func (_u *OAuthClientUpdateOne) SetPrivacyURL(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetPrivacyURL(v)
+	return _u
+}
+
+// SetNillablePrivacyURL sets the "privacy_url" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillablePrivacyURL(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetPrivacyURL(*v)
+	}
+	return _u
+}
+
+// ClearPrivacyURL clears the value of the "privacy_url" field.
+func (_u *OAuthClientUpdateOne) ClearPrivacyURL() *OAuthClientUpdateOne {
+	_u.mutation.ClearPrivacyURL()
+	return _u
+}
+
+// SetTermsURL sets the "terms_url" field.
+func (_u *OAuthClientUpdateOne) SetTermsURL(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetTermsURL(v)
+	return _u
+}
+
+// SetNillableTermsURL sets the "terms_url" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableTermsURL(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetTermsURL(*v)
+	}
+	return _u
+}
+
+// ClearTermsURL clears the value of the "terms_url" field.
+func (_u *OAuthClientUpdateOne) ClearTermsURL() *OAuthClientUpdateOne {
+	_u.mutation.ClearTermsURL()
+	return _u
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_u *OAuthClientUpdateOne) Mutation() *OAuthClientMutation {
 	return _u.mutation
@@ -589,6 +1081,16 @@ func (_u *OAuthClientUpdateOne) check() error {
 	if v, ok := _u.mutation.Name(); ok {
 		if err := oauthclient.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.name": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientType(); ok {
+		if err := oauthclient.ClientTypeValidator(v); err != nil {
+			return &ValidationError{Name: "client_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.client_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.AppType(); ok {
+		if err := oauthclient.AppTypeValidator(v); err != nil {
+			return &ValidationError{Name: "app_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.app_type": %w`, err)}
 		}
 	}
 	return nil
@@ -680,6 +1182,80 @@ func (_u *OAuthClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuthClient
 	}
 	if value, ok := _u.mutation.Disabled(); ok {
 		_spec.SetField(oauthclient.FieldDisabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ClientType(); ok {
+		_spec.SetField(oauthclient.FieldClientType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.AppType(); ok {
+		_spec.SetField(oauthclient.FieldAppType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TrustedFirstParty(); ok {
+		_spec.SetField(oauthclient.FieldTrustedFirstParty, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DefaultScopes(); ok {
+		_spec.SetField(oauthclient.FieldDefaultScopes, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedDefaultScopes(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldDefaultScopes, value)
+		})
+	}
+	if value, ok := _u.mutation.AllowedGroupIds(); ok {
+		_spec.SetField(oauthclient.FieldAllowedGroupIds, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedGroupIds(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldAllowedGroupIds, value)
+		})
+	}
+	if _u.mutation.AllowedGroupIdsCleared() {
+		_spec.ClearField(oauthclient.FieldAllowedGroupIds, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.AllowedOrigins(); ok {
+		_spec.SetField(oauthclient.FieldAllowedOrigins, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedOrigins(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldAllowedOrigins, value)
+		})
+	}
+	if value, ok := _u.mutation.LogoutRedirectUris(); ok {
+		_spec.SetField(oauthclient.FieldLogoutRedirectUris, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedLogoutRedirectUris(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldLogoutRedirectUris, value)
+		})
+	}
+	if value, ok := _u.mutation.DeviceFlowEnabled(); ok {
+		_spec.SetField(oauthclient.FieldDeviceFlowEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowRefreshWithoutOfflineAccess(); ok {
+		_spec.SetField(oauthclient.FieldAllowRefreshWithoutOfflineAccess, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.IconURL(); ok {
+		_spec.SetField(oauthclient.FieldIconURL, field.TypeString, value)
+	}
+	if _u.mutation.IconURLCleared() {
+		_spec.ClearField(oauthclient.FieldIconURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.HomepageURL(); ok {
+		_spec.SetField(oauthclient.FieldHomepageURL, field.TypeString, value)
+	}
+	if _u.mutation.HomepageURLCleared() {
+		_spec.ClearField(oauthclient.FieldHomepageURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.PrivacyURL(); ok {
+		_spec.SetField(oauthclient.FieldPrivacyURL, field.TypeString, value)
+	}
+	if _u.mutation.PrivacyURLCleared() {
+		_spec.ClearField(oauthclient.FieldPrivacyURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.TermsURL(); ok {
+		_spec.SetField(oauthclient.FieldTermsURL, field.TypeString, value)
+	}
+	if _u.mutation.TermsURLCleared() {
+		_spec.ClearField(oauthclient.FieldTermsURL, field.TypeString)
 	}
 	_node = &OAuthClient{config: _u.config}
 	_spec.Assign = _node.assignValues
