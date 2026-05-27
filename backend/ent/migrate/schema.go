@@ -793,6 +793,108 @@ var (
 			},
 		},
 	}
+	// OauthAccessTokensColumns holds the columns for the "oauth_access_tokens" table.
+	OauthAccessTokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "api_key_id", Type: field.TypeInt64, Unique: true},
+		{Name: "grant_id", Type: field.TypeString, Size: 64},
+		{Name: "token_family_id", Type: field.TypeString, Size: 64},
+		{Name: "client_id", Type: field.TypeString, Size: 128},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "scopes", Type: field.TypeJSON},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "allowed_groups_snapshot", Type: field.TypeJSON},
+		{Name: "app_type", Type: field.TypeString, Size: 32, Default: "unknown"},
+		{Name: "device_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "device_name", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "issued_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_used_ip", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "last_used_user_agent", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// OauthAccessTokensTable holds the schema information for the "oauth_access_tokens" table.
+	OauthAccessTokensTable = &schema.Table{
+		Name:       "oauth_access_tokens",
+		Columns:    OauthAccessTokensColumns,
+		PrimaryKey: []*schema.Column{OauthAccessTokensColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oauthaccesstoken_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAccessTokensColumns[6]},
+			},
+			{
+				Name:    "oauthaccesstoken_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAccessTokensColumns[7]},
+			},
+			{
+				Name:    "oauthaccesstoken_grant_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAccessTokensColumns[4]},
+			},
+			{
+				Name:    "oauthaccesstoken_token_family_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAccessTokensColumns[5]},
+			},
+			{
+				Name:    "oauthaccesstoken_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAccessTokensColumns[15]},
+			},
+			{
+				Name:    "oauthaccesstoken_revoked_at",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAccessTokensColumns[19]},
+			},
+		},
+	}
+	// OauthAuthorizeTransactionsColumns holds the columns for the "oauth_authorize_transactions" table.
+	OauthAuthorizeTransactionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "transaction_id", Type: field.TypeString, Unique: true, Size: 96},
+		{Name: "csrf_hash", Type: field.TypeString, Size: 64},
+		{Name: "client_id", Type: field.TypeString, Size: 128},
+		{Name: "redirect_uri", Type: field.TypeString, Size: 2147483647},
+		{Name: "response_type", Type: field.TypeString, Size: 32, Default: "code"},
+		{Name: "scopes", Type: field.TypeJSON},
+		{Name: "allowed_groups_snapshot", Type: field.TypeJSON},
+		{Name: "state", Type: field.TypeString, Size: 2147483647},
+		{Name: "code_challenge", Type: field.TypeString, Size: 128},
+		{Name: "code_challenge_method", Type: field.TypeString, Size: 10, Default: "S256"},
+		{Name: "requested_group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "device_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "device_name", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "consumed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_ip", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "created_user_agent", Type: field.TypeString, Nullable: true, Size: 2147483647},
+	}
+	// OauthAuthorizeTransactionsTable holds the schema information for the "oauth_authorize_transactions" table.
+	OauthAuthorizeTransactionsTable = &schema.Table{
+		Name:       "oauth_authorize_transactions",
+		Columns:    OauthAuthorizeTransactionsColumns,
+		PrimaryKey: []*schema.Column{OauthAuthorizeTransactionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oauthauthorizetransaction_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAuthorizeTransactionsColumns[17]},
+			},
+			{
+				Name:    "oauthauthorizetransaction_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAuthorizeTransactionsColumns[5]},
+			},
+		},
+	}
 	// OauthClientsColumns holds the columns for the "oauth_clients" table.
 	OauthClientsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -808,6 +910,19 @@ var (
 		{Name: "access_token_ttl_seconds", Type: field.TypeInt, Default: 86400},
 		{Name: "refresh_token_ttl_seconds", Type: field.TypeInt, Default: 2592000},
 		{Name: "disabled", Type: field.TypeBool, Default: false},
+		{Name: "client_type", Type: field.TypeString, Size: 32, Default: "public"},
+		{Name: "app_type", Type: field.TypeString, Size: 32, Default: "unknown"},
+		{Name: "trusted_first_party", Type: field.TypeBool, Default: false},
+		{Name: "default_scopes", Type: field.TypeJSON},
+		{Name: "allowed_group_ids", Type: field.TypeJSON, Nullable: true},
+		{Name: "allowed_origins", Type: field.TypeJSON},
+		{Name: "logout_redirect_uris", Type: field.TypeJSON},
+		{Name: "device_flow_enabled", Type: field.TypeBool, Default: false},
+		{Name: "allow_refresh_without_offline_access", Type: field.TypeBool, Default: false},
+		{Name: "icon_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "homepage_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "privacy_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "terms_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
 	}
 	// OauthClientsTable holds the schema information for the "oauth_clients" table.
 	OauthClientsTable = &schema.Table{
@@ -836,6 +951,11 @@ var (
 		{Name: "code_challenge_method", Type: field.TypeString, Size: 10, Default: "S256"},
 		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "grant_id", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "allowed_groups_snapshot", Type: field.TypeJSON},
+		{Name: "device_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "device_name", Type: field.TypeString, Nullable: true, Size: 200},
 	}
 	// OauthCodesTable holds the schema information for the "oauth_codes" table.
 	OauthCodesTable = &schema.Table{
@@ -858,6 +978,76 @@ var (
 				Unique:  false,
 				Columns: []*schema.Column{OauthCodesColumns[4]},
 			},
+			{
+				Name:    "oauthcode_grant_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthCodesColumns[13]},
+			},
+		},
+	}
+	// OauthDeviceCodesColumns holds the columns for the "oauth_device_codes" table.
+	OauthDeviceCodesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "device_code_hash", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "user_code_hash", Type: field.TypeString, Size: 64},
+		{Name: "client_id", Type: field.TypeString, Size: 128},
+		{Name: "scopes", Type: field.TypeJSON},
+		{Name: "grant_id", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "device_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "device_name", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
+		{Name: "interval_seconds", Type: field.TypeInt, Default: 5},
+		{Name: "poll_count", Type: field.TypeInt, Default: 0},
+		{Name: "last_poll_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "slow_down_count", Type: field.TypeInt, Default: 0},
+		{Name: "failed_user_code_attempts", Type: field.TypeInt, Default: 0},
+		{Name: "approved_by_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "approved_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "denied_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "consumed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_ip", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "created_user_agent", Type: field.TypeString, Nullable: true, Size: 2147483647},
+	}
+	// OauthDeviceCodesTable holds the schema information for the "oauth_device_codes" table.
+	OauthDeviceCodesTable = &schema.Table{
+		Name:       "oauth_device_codes",
+		Columns:    OauthDeviceCodesColumns,
+		PrimaryKey: []*schema.Column{OauthDeviceCodesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "oauthdevicecode_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthDeviceCodesColumns[5]},
+			},
+			{
+				Name:    "oauthdevicecode_user_code_hash",
+				Unique:  false,
+				Columns: []*schema.Column{OauthDeviceCodesColumns[4]},
+			},
+			{
+				Name:    "oauthdevicecode_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OauthDeviceCodesColumns[21]},
+			},
+			{
+				Name:    "oauthdevicecode_approved_by_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthDeviceCodesColumns[17]},
+			},
+			{
+				Name:    "oauthdevicecode_status_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{OauthDeviceCodesColumns[11], OauthDeviceCodesColumns[21]},
+			},
+			{
+				Name:    "oauthdevicecode_grant_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthDeviceCodesColumns[7]},
+			},
 		},
 	}
 	// OauthRefreshTokensColumns holds the columns for the "oauth_refresh_tokens" table.
@@ -873,6 +1063,14 @@ var (
 		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "revoked_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "rotated_to_hash", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "grant_id", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "token_family_id", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "allowed_groups_snapshot", Type: field.TypeJSON},
+		{Name: "device_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "device_name", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "reuse_detected_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 	}
 	// OauthRefreshTokensTable holds the schema information for the "oauth_refresh_tokens" table.
 	OauthRefreshTokensTable = &schema.Table{
@@ -899,6 +1097,16 @@ var (
 				Name:    "oauthrefreshtoken_api_key_id",
 				Unique:  false,
 				Columns: []*schema.Column{OauthRefreshTokensColumns[6]},
+			},
+			{
+				Name:    "oauthrefreshtoken_grant_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthRefreshTokensColumns[11]},
+			},
+			{
+				Name:    "oauthrefreshtoken_token_family_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthRefreshTokensColumns[12]},
 			},
 		},
 	}
@@ -1899,8 +2107,11 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		OauthAccessTokensTable,
+		OauthAuthorizeTransactionsTable,
 		OauthClientsTable,
 		OauthCodesTable,
+		OauthDeviceCodesTable,
 		OauthRefreshTokensTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
@@ -1985,11 +2196,20 @@ func init() {
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
 	}
+	OauthAccessTokensTable.Annotation = &entsql.Annotation{
+		Table: "oauth_access_tokens",
+	}
+	OauthAuthorizeTransactionsTable.Annotation = &entsql.Annotation{
+		Table: "oauth_authorize_transactions",
+	}
 	OauthClientsTable.Annotation = &entsql.Annotation{
 		Table: "oauth_clients",
 	}
 	OauthCodesTable.Annotation = &entsql.Annotation{
 		Table: "oauth_codes",
+	}
+	OauthDeviceCodesTable.Annotation = &entsql.Annotation{
+		Table: "oauth_device_codes",
 	}
 	OauthRefreshTokensTable.Annotation = &entsql.Annotation{
 		Table: "oauth_refresh_tokens",
