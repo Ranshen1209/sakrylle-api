@@ -1172,6 +1172,41 @@ func (s *OAuthProviderService) LoadOAuthAccessMetadata(ctx context.Context, apiK
 	return meta, nil
 }
 
+// AllowedGroupsForUser returns the IDs of every active group the authenticated
+// user may bind. Wraps the GroupAccessPolicy interface so handlers can build
+// the §12.11 `allowed_groups` array without depending on internal types.
+//
+// Returns an empty slice (not nil) when the policy is unconfigured, so a JSON
+// encoder produces `[]` not `null`.
+func (s *OAuthProviderService) AllowedGroupsForUser(ctx context.Context, userID int64) ([]int64, error) {
+	if s.groupAccess == nil {
+		return []int64{}, nil
+	}
+	out, err := s.groupAccess.AllowedGroupsForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []int64{}
+	}
+	return out, nil
+}
+
+// LookupGroup returns a group by ID using the same repo the OAuth resolver
+// uses. Used by /v1/me to compose the `current_group` and `allowed_groups`
+// payloads without injecting GroupService into the OAuth handler.
+func (s *OAuthProviderService) LookupGroup(ctx context.Context, groupID int64) (*Group, error) {
+	if s.groupRepo == nil {
+		return nil, ErrOAuthInvalidGroup
+	}
+	return s.groupRepo.GetByID(ctx, groupID)
+}
+
+// LookupClient is the package-level export for the existing internal
+// LookupClient — see line 274. The exposed signature lets the handler render
+// `oauth.client_id` / `oauth.app_type` on /v1/me without importing the
+// repo layer directly. Existing usage in this file is unaffected.
+
 // TouchAccessTokenLastUsed updates last_used_at + last_used_ip + last_used_user_agent
 // with a 60-second per-token throttle (§11.6). Failures are logged at warn but
 // never propagate to the caller — gateway requests must not fail because the

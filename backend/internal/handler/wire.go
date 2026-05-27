@@ -116,10 +116,21 @@ func ProvideHandlers(
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	oauthProviderHandler *OAuthProviderHandler,
+	oauthDeviceHandler *OAuthDeviceHandler,
 	accountInfoHandler *AccountInfoHandler,
+	oauthProviderService *service.OAuthProviderService,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
+	// Wire OAuth provider service into account handler so /v1/me can compute
+	// allowed_groups and resolve OAuth metadata. Done here (not in
+	// NewAccountInfoHandler) so the existing constructor stays
+	// 2-argument and test harnesses don't need to be updated.
+	accountInfoHandler.SetOAuthService(oauthProviderService)
+	// Wire the device handler into the OAuth provider handler so the
+	// /oauth/token grant_type=device_code branch dispatches correctly. Same
+	// post-construction pattern as SetOAuthService above.
+	oauthProviderHandler.SetDeviceHandler(oauthDeviceHandler)
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,
@@ -138,6 +149,7 @@ func ProvideHandlers(
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		OAuthProvider:    oauthProviderHandler,
+		OAuthDevice:      oauthDeviceHandler,
 		Account:          accountInfoHandler,
 	}
 }
@@ -161,6 +173,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewOAuthProviderHandler,
+	NewOAuthDeviceHandler,
 	NewAccountInfoHandler,
 
 	// Admin handlers

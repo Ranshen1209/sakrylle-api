@@ -41,6 +41,7 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 		nil,
 		nil,
 		nil,
+		nil, // OAuthProviderService — nil-tolerant per RequireOAuthScope/RejectOAuthTokensForUnlistedResource
 		&config.Config{},
 	)
 

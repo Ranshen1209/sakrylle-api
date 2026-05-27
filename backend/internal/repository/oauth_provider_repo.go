@@ -807,6 +807,41 @@ func (r *oauthProviderRepository) IncrementDeviceCodeFailedAttempts(ctx context.
 	return newCount, err
 }
 
+// TouchDevicePoll persists last_poll_at + poll_count + interval_seconds +
+// slow_down_count after a polling decision. The service layer chooses the
+// values; this method is a single-row UPDATE under the same row lock the
+// poll path already takes via PollDeviceCodeForUpdate. Idempotent.
+func (r *oauthProviderRepository) TouchDevicePoll(
+	ctx context.Context,
+	deviceCodeHash string,
+	lastPollAt time.Time,
+	pollCount int,
+	intervalSeconds int,
+	slowDownCount int,
+) error {
+	return withTx(ctx, r.client, func(tx *dbent.Tx) error {
+		row, qerr := tx.OAuthDeviceCode.Query().
+			Where(oauthdevicecode.DeviceCodeHashEQ(deviceCodeHash)).
+			ForUpdate().
+			Only(ctx)
+		if qerr != nil {
+			if dbent.IsNotFound(qerr) {
+				return service.ErrOAuthDeviceCodeNotFound
+			}
+			return fmt.Errorf("lock oauth device code for touch poll: %w", qerr)
+		}
+		if _, uerr := row.Update().
+			SetLastPollAt(lastPollAt).
+			SetPollCount(pollCount).
+			SetIntervalSeconds(intervalSeconds).
+			SetSlowDownCount(slowDownCount).
+			Save(ctx); uerr != nil {
+			return fmt.Errorf("touch device code poll: %w", uerr)
+		}
+		return nil
+	})
+}
+
 // ── OAuthAuthorizeTransactionRepository ─────────────────────────────────────
 
 func (r *oauthProviderRepository) CreateAuthorizeTransaction(ctx context.Context, tx *service.OAuthAuthorizeTransaction) error {
