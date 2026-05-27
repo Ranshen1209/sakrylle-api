@@ -321,6 +321,12 @@ type OAuthDeviceCodeRepository interface {
 	// the new value. The service decides whether to flip status to denied
 	// (≥5 failed attempts).
 	IncrementDeviceCodeFailedAttempts(ctx context.Context, userCodeHash string, now time.Time) (int, error)
+	// TouchDevicePoll persists last_poll_at + poll_count + interval_seconds
+	// + slow_down_count for a given device_code_hash. The service layer is
+	// the source of truth for slow_down semantics; this is the persistence
+	// hook so a poll bumped to slow_down keeps that interval across
+	// processes/replicas. Idempotent and safe to call from any status.
+	TouchDevicePoll(ctx context.Context, deviceCodeHash string, lastPollAt time.Time, pollCount int, intervalSeconds int, slowDownCount int) error
 }
 
 // OAuthAuthorizeTransactionRepository owns the v2 oauth_authorize_transactions

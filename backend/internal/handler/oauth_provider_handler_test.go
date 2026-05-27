@@ -1217,3 +1217,279 @@ func TestRevokeGrant_DoesNotEchoInternalErrors(t *testing.T) {
 	require.NotContains(t, body, "sql:")
 	require.NotContains(t, body, "ent:")
 }
+
+// ── Phase 3 (§16): Metadata, Revoke, AuthorizedApps ─────────────────────────
+//
+// These tests exercise the new endpoints added in Phase 3. They reuse the
+// in-memory stubs already declared above for the v1 grant API; for endpoints
+// that depend on v2 oauth_access_tokens metadata (ListAuthorizedApps), we
+// inject an in-memory access repo stub.
+
+// ── Metadata (§12.1) ────────────────────────────────────────────────────────
+
+func TestMetadata_ReturnsAllRequiredFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodGet, "/.well-known/oauth-authorization-server", nil, "")
+	c.Request.Host = "sub.sakrylle.com"
+	h.Metadata(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+	require.Contains(t, rec.Header().Get("Cache-Control"), "max-age=60")
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+
+	// Required fields per §12.1.
+	require.NotEmpty(t, resp["issuer"])
+	issuer, _ := resp["issuer"].(string)
+	require.False(t, strings.HasSuffix(issuer, "/"), "issuer must not have trailing slash (RFC 8414)")
+	require.NotEmpty(t, resp["authorization_endpoint"])
+	require.NotEmpty(t, resp["token_endpoint"])
+	require.NotEmpty(t, resp["revocation_endpoint"])
+	require.NotEmpty(t, resp["device_authorization_endpoint"])
+	require.NotEmpty(t, resp["userinfo_endpoint"])
+
+	scopes, _ := resp["scopes_supported"].([]any)
+	require.Greater(t, len(scopes), 0)
+	// Spot check canonical scopes are advertised.
+	scopeSet := make(map[string]bool, len(scopes))
+	for _, s := range scopes {
+		if v, ok := s.(string); ok {
+			scopeSet[v] = true
+		}
+	}
+	require.True(t, scopeSet["models:read"])
+	require.True(t, scopeSet["images:create"])
+	require.True(t, scopeSet["responses:create"])
+	require.True(t, scopeSet["offline_access"])
+
+	grantTypes, _ := resp["grant_types_supported"].([]any)
+	require.Contains(t, grantTypes, "authorization_code")
+	require.Contains(t, grantTypes, "refresh_token")
+	require.Contains(t, grantTypes, "urn:ietf:params:oauth:grant-type:device_code")
+
+	codeMethods, _ := resp["code_challenge_methods_supported"].([]any)
+	require.Equal(t, []any{"S256"}, codeMethods, "S256 only — plain is forbidden")
+}
+
+// ── Revoke (§12.9) ──────────────────────────────────────────────────────────
+
+func TestRevoke_RejectsNonFormContentType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodPost, "/oauth/revoke",
+		[]byte(`{"token":"x"}`), "application/json")
+	h.Revoke(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code,
+		"§12.9: revoke must reject JSON content type")
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "invalid_request", resp["error"])
+}
+
+func TestRevoke_UnknownToken_IsIdempotentSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	form := url.Values{}
+	form.Set("token", "rt_unknown_token_xxx")
+	form.Set("client_id", testOAuthClientID)
+	c, rec := newGinTestContext(http.MethodPost, "/oauth/revoke",
+		[]byte(form.Encode()), "application/x-www-form-urlencoded")
+	h.Revoke(c)
+
+	require.Equal(t, http.StatusOK, rec.Code,
+		"RFC 7009: unknown token must return 200 (idempotency)")
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	require.Equal(t, "no-cache", rec.Header().Get("Pragma"))
+}
+
+func TestRevoke_RefreshToken_KillsGrantAndDoubleRevokeStillSucceeds(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	// Mint a grant + access/refresh pair.
+	const userID int64 = 444
+	verifier, challenge := pkceVerifierAndChallengeForHandler("verifier-revoke-test-aaaaaaaaaaaaaaaaaaaaaaaaaa")
+	approveBody, _ := json.Marshal(map[string]string{
+		"client_id":             testOAuthClientID,
+		"redirect_uri":          testOAuthRedirectURI,
+		"response_type":         "code",
+		"scope":                 "image_generation",
+		"state":                 "x",
+		"code_challenge":        challenge,
+		"code_challenge_method": "S256",
+		"decision":              "approve",
+	})
+	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", approveBody, "application/json")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.Approve(c)
+	require.Equal(t, http.StatusOK, rec.Code, "approve: %s", rec.Body.String())
+
+	var approveResp map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &approveResp))
+	parsed, _ := url.Parse(approveResp["redirect_to"])
+	code := parsed.Query().Get("code")
+
+	tokenForm := url.Values{}
+	tokenForm.Set("grant_type", "authorization_code")
+	tokenForm.Set("redirect_uri", testOAuthRedirectURI)
+	tokenForm.Set("code", code)
+	tokenForm.Set("code_verifier", verifier)
+	tokenForm.Set("client_id", testOAuthClientID)
+	c2, rec2 := newGinTestContext(http.MethodPost, "/oauth/token",
+		[]byte(tokenForm.Encode()), "application/x-www-form-urlencoded")
+	h.Token(c2)
+	require.Equal(t, http.StatusOK, rec2.Code, "token: %s", rec2.Body.String())
+	var tokenResp map[string]any
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &tokenResp))
+	refresh, _ := tokenResp["refresh_token"].(string)
+	require.NotEmpty(t, refresh)
+
+	// First revoke — succeeds.
+	revokeForm := url.Values{}
+	revokeForm.Set("token", refresh)
+	revokeForm.Set("token_type_hint", "refresh_token")
+	revokeForm.Set("client_id", testOAuthClientID)
+	c3, rec3 := newGinTestContext(http.MethodPost, "/oauth/revoke",
+		[]byte(revokeForm.Encode()), "application/x-www-form-urlencoded")
+	h.Revoke(c3)
+	require.Equal(t, http.StatusOK, rec3.Code)
+
+	// Second revoke of the same token — still 200 (idempotent).
+	c4, rec4 := newGinTestContext(http.MethodPost, "/oauth/revoke",
+		[]byte(revokeForm.Encode()), "application/x-www-form-urlencoded")
+	h.Revoke(c4)
+	require.Equal(t, http.StatusOK, rec4.Code,
+		"§12.9: re-revoking an already-revoked token must still return 200")
+}
+
+// ── Authorized Apps mounted endpoints (§12.10) ──────────────────────────────
+//
+// These don't go through the v2 access metadata path because the harness
+// doesn't wire one — the goal here is to lock in the auth + path-param
+// handling, not the join logic (covered in service tests where the v2 access
+// repo is exercised against a real DB).
+
+func TestListAuthorizedApps_Unauthenticated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodGet, "/api/v1/oauth/authorized-apps", nil, "")
+	h.ListAuthorizedApps(c)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestListAuthorizedApps_EmptyForUserWithNoGrants(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodGet, "/api/v1/oauth/authorized-apps", nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 7, Concurrency: 1})
+	h.ListAuthorizedApps(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Items, "items must be JSON array, never null")
+	require.Len(t, resp.Items, 0)
+}
+
+func TestRevokeAuthorizedApp_Unauthenticated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodDelete,
+		"/api/v1/oauth/authorized-apps/some-grant-id", nil, "")
+	c.Params = gin.Params{{Key: "grant_id", Value: "some-grant-id"}}
+	h.RevokeAuthorizedApp(c)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestRevokeAuthorizedApp_MissingGrantID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodDelete,
+		"/api/v1/oauth/authorized-apps/", nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1, Concurrency: 1})
+	c.Params = gin.Params{{Key: "grant_id", Value: ""}}
+	h.RevokeAuthorizedApp(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "invalid_request", resp["error"])
+}
+
+func TestRevokeAuthorizedApp_NotOwner_IsIdempotent(t *testing.T) {
+	// Per §12.10: revoking a grant that doesn't belong to the requesting
+	// user must NOT reveal whether the grant exists. The service swallows
+	// the not-owner case and returns nil; the handler returns 200.
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodDelete,
+		"/api/v1/oauth/authorized-apps/some-other-users-grant-id", nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1, Concurrency: 1})
+	c.Params = gin.Params{{Key: "grant_id", Value: "some-other-users-grant-id"}}
+	h.RevokeAuthorizedApp(c)
+
+	require.Equal(t, http.StatusOK, rec.Code,
+		"§12.10: missing/other-user grant must be idempotent — never disclose existence")
+}
+
+func TestRevokeAuthorizedClient_Unauthenticated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodDelete,
+		"/api/v1/oauth/authorized-apps/client/"+testOAuthClientID, nil, "")
+	c.Params = gin.Params{{Key: "client_id", Value: testOAuthClientID}}
+	h.RevokeAuthorizedClient(c)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestRevokeAuthorizedClient_HappyPath_ReturnsRevokedCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	const userID int64 = 555
+	mintAccessGrantForHandler(t, h, userID)
+
+	c, rec := newGinTestContext(http.MethodDelete,
+		"/api/v1/oauth/authorized-apps/client/"+testOAuthClientID, nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	c.Params = gin.Params{{Key: "client_id", Value: testOAuthClientID}}
+	h.RevokeAuthorizedClient(c)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.GreaterOrEqual(t, int(resp["revoked"].(float64)), 1,
+		"happy path: at least one grant should be revoked")
+}
+
+func TestRevokeAuthorizedClient_NoGrants_IsIdempotent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	c, rec := newGinTestContext(http.MethodDelete,
+		"/api/v1/oauth/authorized-apps/client/"+testOAuthClientID, nil, "")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 999, Concurrency: 1})
+	c.Params = gin.Params{{Key: "client_id", Value: testOAuthClientID}}
+	h.RevokeAuthorizedClient(c)
+
+	require.Equal(t, http.StatusOK, rec.Code,
+		"§12.10: idempotent for users with no grants for this client")
+}

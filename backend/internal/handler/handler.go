@@ -58,6 +58,7 @@ type Handlers struct {
 	PaymentWebhook   *PaymentWebhookHandler
 	AvailableChannel *AvailableChannelHandler
 	OAuthProvider    *OAuthProviderHandler
+	OAuthDevice      *OAuthDeviceHandler
 	Account          *AccountInfoHandler
 }
 
