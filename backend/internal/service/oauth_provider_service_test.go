@@ -165,11 +165,10 @@ func (s *stubRefreshRepo) ListActiveByUser(_ context.Context, userID int64, now 
 	return out, nil
 }
 
-// ── v2 (Workstream A interface additions) ──────────────────────────────────
+// ── v2 fake — grant / family / hash-lookup operations ─────────────────────
 //
-// These shims keep the existing tests compiling against the new
-// OAuthRefreshTokenRepository interface. Workstream B replaces them with
-// real semantics when wiring grant/family revocation tests.
+// In-memory fakes for the v2 OAuthRefreshTokenRepository surface. They
+// share the same map as the legacy stubs above so tests can mix flows.
 
 func (s *stubRefreshRepo) GetRefreshTokenByHashForUpdate(_ context.Context, tokenHash string, _ time.Time) (*OAuthRefreshToken, error) {
 	s.mu.Lock()
@@ -182,16 +181,58 @@ func (s *stubRefreshRepo) GetRefreshTokenByHashForUpdate(_ context.Context, toke
 	return &cp, nil
 }
 
-func (s *stubRefreshRepo) RevokeRefreshTokensByGrantID(_ context.Context, _ string, _ time.Time) ([]int64, error) {
-	return nil, nil
+func (s *stubRefreshRepo) RevokeRefreshTokensByGrantID(_ context.Context, grantID string, now time.Time) ([]int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []int64
+	for _, row := range s.tokens {
+		if row.GrantID == nil || *row.GrantID != grantID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		t := now
+		row.RevokedAt = &t
+		ids = append(ids, row.APIKeyID)
+	}
+	return ids, nil
 }
 
-func (s *stubRefreshRepo) RevokeRefreshTokensByTokenFamilyID(_ context.Context, _ string, _ time.Time) ([]int64, error) {
-	return nil, nil
+func (s *stubRefreshRepo) RevokeRefreshTokensByTokenFamilyID(_ context.Context, familyID string, now time.Time) ([]int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []int64
+	for _, row := range s.tokens {
+		if row.TokenFamilyID == nil || *row.TokenFamilyID != familyID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		t := now
+		row.RevokedAt = &t
+		ids = append(ids, row.APIKeyID)
+	}
+	return ids, nil
 }
 
-func (s *stubRefreshRepo) RevokeRefreshTokensByUserAndClient(_ context.Context, _ int64, _ string, _ time.Time) ([]int64, error) {
-	return nil, nil
+func (s *stubRefreshRepo) RevokeRefreshTokensByUserAndClient(_ context.Context, userID int64, clientID string, now time.Time) ([]int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ids []int64
+	for _, row := range s.tokens {
+		if row.UserID != userID || row.ClientID != clientID {
+			continue
+		}
+		if row.RevokedAt != nil {
+			continue
+		}
+		t := now
+		row.RevokedAt = &t
+		ids = append(ids, row.APIKeyID)
+	}
+	return ids, nil
 }
 
 // stubAPIKeyRepo is a minimal in-memory APIKeyRepository for OAuth tests.
@@ -364,6 +405,12 @@ func newServiceUnderTest(t *testing.T) (*OAuthProviderService, *stubAPIKeyRepo, 
 			DefaultGroupID:         &groupID,
 			AccessTokenTTLSeconds:  86400,
 			RefreshTokenTTLSeconds: 2592000,
+			// §7.4 / §10.1 / §1993: legacy compat — image-playground frontend
+			// has not yet migrated to request offline_access, so allow refresh
+			// issuance without it. Mirrors the prod row state set by the
+			// Sakrylle seed migration; a non-Sakrylle fork would set this to
+			// false and require offline_access.
+			AllowRefreshWithoutOfflineAccess: true,
 		},
 		"disabled-client": {
 			ClientID:     "disabled-client",
@@ -378,8 +425,75 @@ func newServiceUnderTest(t *testing.T) (*OAuthProviderService, *stubAPIKeyRepo, 
 		"oauth_provider_enabled": "true",
 		"oauth_default_group_id": "5",
 	}}
-	svc := NewOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, settingRepo, nil)
+	svc := newStubOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, settingRepo, nil)
 	return svc, apiKeyRepo, refreshRepo
+}
+
+// newStubOAuthProviderService is the test-only constructor that wraps the v2
+// signature. The legacy tests don't need access/device/authzTx repositories
+// or a GroupAccessPolicy, so we pass nils — the v2 surface methods that
+// require them have their own fixtures.
+func newStubOAuthProviderService(
+	clientRepo OAuthClientRepository,
+	codeRepo OAuthCodeRepository,
+	refreshRepo OAuthRefreshTokenRepository,
+	apiKeyRepo APIKeyRepository,
+	groupRepo GroupRepository,
+	settingRepo SettingRepository,
+	authCache APIKeyAuthCacheInvalidator,
+) *OAuthProviderService {
+	var oauthAPIKey OAuthAPIKeyRepository
+	if v, ok := apiKeyRepo.(OAuthAPIKeyRepository); ok {
+		oauthAPIKey = v
+	}
+	return NewOAuthProviderService(
+		clientRepo,
+		codeRepo,
+		refreshRepo,
+		nil, // accessRepo
+		nil, // deviceRepo
+		nil, // authzTxRepo
+		oauthAPIKeyOrAdapter(apiKeyRepo, oauthAPIKey),
+		groupRepo,
+		nil, // groupAccess
+		settingRepo,
+		authCache,
+	)
+}
+
+// oauthAPIKeyOrAdapter wraps a plain APIKeyRepository so the v2 constructor
+// signature (OAuthAPIKeyRepository) is satisfied in tests that don't need
+// batch-disable semantics. The fallback per-key disable path inside the
+// service uses the embedded APIKeyRepository.
+func oauthAPIKeyOrAdapter(base APIKeyRepository, oa OAuthAPIKeyRepository) OAuthAPIKeyRepository {
+	if oa != nil {
+		return oa
+	}
+	if base == nil {
+		return nil
+	}
+	return &testAPIKeyRepoAdapter{APIKeyRepository: base}
+}
+
+type testAPIKeyRepoAdapter struct {
+	APIKeyRepository
+}
+
+func (a *testAPIKeyRepoAdapter) DisableAPIKeysByIDsReturningKeys(ctx context.Context, ids []int64, now time.Time) ([]string, error) {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		key, err := a.GetByID(ctx, id)
+		if err != nil || key == nil {
+			continue
+		}
+		out = append(out, key.Key)
+		if key.Status == StatusAPIKeyDisabled {
+			continue
+		}
+		key.Status = StatusAPIKeyDisabled
+		_ = a.Update(ctx, key)
+	}
+	return out, nil
 }
 
 // ── tests ───────────────────────────────────────────────────────────────────
@@ -646,7 +760,7 @@ func TestPKCEFullFlow(t *testing.T) {
 
 	// Refresh: new access + new refresh, old refresh rotated.
 	oldRefreshHash := hashOAuthToken(tok.RefreshToken)
-	tok2, err := svc.RefreshAccessToken(ctx, client.ClientID, "", tok.RefreshToken)
+	tok2, err := svc.RefreshAccessToken(ctx, client.ClientID, "", tok.RefreshToken, nil)
 	if err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
@@ -667,7 +781,7 @@ func TestPKCEFullFlow(t *testing.T) {
 		t.Error("old refresh row should record rotation target")
 	}
 	// Replaying the old refresh fails.
-	if _, err := svc.RefreshAccessToken(ctx, client.ClientID, "", tok.RefreshToken); !errors.Is(err, ErrOAuthRefreshTokenRevoked) {
+	if _, err := svc.RefreshAccessToken(ctx, client.ClientID, "", tok.RefreshToken, nil); !errors.Is(err, ErrOAuthRefreshTokenRevoked) {
 		t.Fatalf("refresh replay: got err=%v, want ErrOAuthRefreshTokenRevoked", err)
 	}
 }
@@ -732,6 +846,11 @@ func newConfidentialServiceUnderTest(t *testing.T, secret string) *OAuthProvider
 			DefaultGroupID:         &groupID,
 			AccessTokenTTLSeconds:  86400,
 			RefreshTokenTTLSeconds: 2592000,
+			// §7.4 / §10.1: this fixture predates the offline_access scope
+			// gate; flip the legacy compat flag so the bcrypt-auth branch
+			// keeps emitting a refresh_token without forcing every test to
+			// thread offline_access through the AllowedScopes/Scopes lists.
+			AllowRefreshWithoutOfflineAccess: true,
 		},
 	}}
 	apiKeyRepo := newStubAPIKeyRepo()
@@ -740,7 +859,7 @@ func newConfidentialServiceUnderTest(t *testing.T, secret string) *OAuthProvider
 		"oauth_provider_enabled": "true",
 		"oauth_default_group_id": "5",
 	}}
-	return NewOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, settingRepo, nil)
+	return newStubOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, settingRepo, nil)
 }
 
 // TestExchangeAuthorizationCodeConfidentialClient covers the bcrypt-secret
@@ -1147,7 +1266,7 @@ func TestRevokeUserGrant_PublishesCacheInvalidationForEveryToken(t *testing.T) {
 		"oauth_default_group_id": "5",
 	}}
 	cache := &recordingAuthCacheInvalidator{}
-	svc := NewOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, settingRepo, cache)
+	svc := newStubOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, settingRepo, cache)
 
 	ctx := context.Background()
 	const userID int64 = 42
@@ -1225,7 +1344,7 @@ func TestRevokeUserGrant_InvalidatesCacheEvenWhenAPIKeyUpdateFails(t *testing.T)
 	apiKeyRepo := &updateFailingAPIKeyRepo{stubAPIKeyRepo: baseAPIKeyRepo}
 	refreshRepo := newStubRefreshRepo()
 	cache := &recordingAuthCacheInvalidator{}
-	svc := NewOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, &stubSettingRepo{values: map[string]string{}}, cache)
+	svc := newStubOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, &stubSettingRepo{values: map[string]string{}}, cache)
 
 	ctx := context.Background()
 	const userID int64 = 99

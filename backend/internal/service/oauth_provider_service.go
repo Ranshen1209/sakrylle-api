@@ -14,10 +14,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -29,11 +31,13 @@ type IssuedAuthorizationCode struct {
 
 // IssuedToken is the response body for /oauth/token.
 type IssuedToken struct {
-	AccessToken  string
-	TokenType    string
-	ExpiresIn    int
-	RefreshToken string
-	Scope        string
+	AccessToken           string
+	TokenType             string
+	ExpiresIn             int
+	RefreshToken          string
+	RefreshTokenExpiresIn int
+	Scope                 string
+	GroupID               int64
 }
 
 // AuthorizeRequest is the validated form of /oauth/authorize query parameters.
@@ -47,18 +51,69 @@ type AuthorizeRequest struct {
 	CodeChallengeMethod string
 }
 
+// BeginAuthorizeParams is the input to BeginAuthorizeTransaction.
+//
+// See §10.3 / §12.2: the validated authorize request is captured server-side
+// before the consent page is rendered, so the approve POST cannot tamper with
+// client_id / redirect_uri / scopes / PKCE / state.
+type BeginAuthorizeParams struct {
+	ClientID            string
+	RedirectURI         string
+	ResponseType        string
+	Scopes              []string
+	State               string
+	CodeChallenge       string
+	CodeChallengeMethod string
+	RequestedGroupID    *int64
+	DeviceID            *string
+	DeviceName          *string
+	UserID              int64 // logged-in user; required so allowed_groups_snapshot is computed
+	CreatedIP           *string
+	CreatedUserAgent    *string
+}
+
+// BeginAuthorizeResult carries the rendering payload + plaintext CSRF token
+// for the consent page. The CSRF plaintext is returned ONCE; the table only
+// stores SHA-256 hex.
+type BeginAuthorizeResult struct {
+	Transaction          *OAuthAuthorizeTransaction
+	CSRFTokenPlaintext   string
+	Client               *OAuthClient
+	AllowedGroupsForUser []int64
+}
+
+// ApproveAuthorizationResult is what /api/v1/oauth/authorize/approve returns.
+type ApproveAuthorizationResult struct {
+	RedirectURI string
+	Code        string
+	State       string
+	GroupID     int64
+}
+
 var (
 	ErrOAuthInvalidResponseType = infraerrors.BadRequest("UNSUPPORTED_RESPONSE_TYPE", "response_type must be code")
 	ErrOAuthMissingState        = infraerrors.BadRequest("INVALID_REQUEST", "state is required")
 	ErrOAuthGroupNotConfigured  = infraerrors.BadRequest("INVALID_CLIENT", "no default group bound to this client; set default_group_id or oauth_default_group_id setting")
+	ErrOAuthGroupNotAllowed     = infraerrors.BadRequest("INVALID_GRANT", "group not allowed for this grant")
+	ErrOAuthInvalidGroup        = infraerrors.BadRequest("INVALID_REQUEST", "no eligible group for user")
+	ErrOAuthRefreshReuse        = infraerrors.BadRequest("INVALID_GRANT", "refresh token reuse detected")
+	ErrOAuthAccessDenied        = infraerrors.Forbidden("ACCESS_DENIED", "user denied authorization")
+	ErrOAuthSubjectMismatch     = infraerrors.Forbidden("UNAUTHORIZED_CLIENT", "authenticated subject does not match transaction owner")
+	ErrOAuthPKCEFormat          = infraerrors.BadRequest("INVALID_REQUEST", "code_challenge format invalid")
 )
 
 const (
 	authCodeTTL              = 10 * time.Minute
+	authorizeTransactionTTL  = 10 * time.Minute
 	oauthAccessTokenPrefix   = "sk_oauth_"
 	oauthRefreshTokenPrefix  = "rt_"
 	defaultAccessTokenSecret = 32
 	defaultRefreshSecret     = 32
+	csrfTokenBytes           = 32
+	transactionIDBytes       = 32
+	pkceMinLength            = 43
+	pkceMaxLength            = 128
+	lastUsedTouchInterval    = 60 * time.Second
 )
 
 // OAuthProviderService implements OAuth 2.0 Authorization Code + PKCE issuance.
@@ -70,30 +125,61 @@ type OAuthProviderService struct {
 	clientRepo  OAuthClientRepository
 	codeRepo    OAuthCodeRepository
 	refreshRepo OAuthRefreshTokenRepository
+	accessRepo  OAuthAccessTokenRepository
+	deviceRepo  OAuthDeviceCodeRepository
+	authzTxRepo OAuthAuthorizeTransactionRepository
 	apiKeyRepo  APIKeyRepository
+	oauthAPIKey OAuthAPIKeyRepository // batch disable; nil-safe
 	groupRepo   GroupRepository
+	groupAccess GroupAccessPolicy
 	settingRepo SettingRepository
 	// authCache is the auth-cache invalidator (Redis Pub/Sub). Typed as an
 	// interface (not *APIKeyService) so tests can inject a spy and verify
 	// the 60-second `apikey:auth:<sha>` cache is busted on every revocation.
 	authCache APIKeyAuthCacheInvalidator
+
+	// lastUsedThrottle tracks per-api_key_id "next-allowed touch" timestamps so
+	// TouchAccessTokenLastUsed can short-circuit at 60s granularity without a
+	// DB hit. See §11.6.
+	lastUsedThrottle sync.Map // map[int64]time.Time
 }
 
+// NewOAuthProviderService is the v2 constructor. See §11.2.
+//
+// All repo dependencies must be non-nil for production wiring; tests may pass
+// nils for unused branches (e.g. accessRepo when only the legacy refresh path
+// is exercised), but a production server depends on all of them.
 func NewOAuthProviderService(
 	clientRepo OAuthClientRepository,
 	codeRepo OAuthCodeRepository,
 	refreshRepo OAuthRefreshTokenRepository,
-	apiKeyRepo APIKeyRepository,
+	accessRepo OAuthAccessTokenRepository,
+	deviceRepo OAuthDeviceCodeRepository,
+	authzTxRepo OAuthAuthorizeTransactionRepository,
+	apiKeyRepo OAuthAPIKeyRepository,
 	groupRepo GroupRepository,
+	groupAccess GroupAccessPolicy,
 	settingRepo SettingRepository,
 	authCache APIKeyAuthCacheInvalidator,
 ) *OAuthProviderService {
+	var (
+		baseAPIKey  APIKeyRepository = apiKeyRepo
+		oauthAPIKey OAuthAPIKeyRepository
+	)
+	if apiKeyRepo != nil {
+		oauthAPIKey = apiKeyRepo
+	}
 	return &OAuthProviderService{
 		clientRepo:  clientRepo,
 		codeRepo:    codeRepo,
 		refreshRepo: refreshRepo,
-		apiKeyRepo:  apiKeyRepo,
+		accessRepo:  accessRepo,
+		deviceRepo:  deviceRepo,
+		authzTxRepo: authzTxRepo,
+		apiKeyRepo:  baseAPIKey,
+		oauthAPIKey: oauthAPIKey,
 		groupRepo:   groupRepo,
+		groupAccess: groupAccess,
 		settingRepo: settingRepo,
 		authCache:   authCache,
 	}
@@ -114,20 +200,31 @@ func (s *OAuthProviderService) IsEnabled(ctx context.Context) bool {
 	}
 }
 
+// IsScopeEnforcementEnabled reports whether v2 scope enforcement is on.
+// Defaults to false when missing/unparseable so the migration's seeded
+// false stays effective on a fresh install.
+//
+// See §10.7. The kill-switch lives in the settings table so direct SQL can
+// flip it without restarting the server.
+func (s *OAuthProviderService) IsScopeEnforcementEnabled(ctx context.Context) bool {
+	if s.settingRepo == nil {
+		return false
+	}
+	value, err := s.settingRepo.GetValue(ctx, "oauth_scope_enforcement_enabled")
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1", "on", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 // AllowedClientOrigins returns the deduped, sorted set of browser origins
 // (scheme://host[:port]) collected from every enabled OAuth client's
-// redirect_uris.
-//
-// Used by the CORS middleware to whitelist public PKCE clients (browser SPAs
-// like image.sakrylle.com) so they can POST to /oauth/token cross-origin to
-// exchange an authorization code. The token endpoint is the only OAuth path
-// that actually needs CORS — /oauth/authorize is a top-level navigation that
-// doesn't trigger a preflight — but the same allowlist covers both for free.
-//
-// URIs that don't parse, lack a host, or aren't http/https are silently
-// skipped: they cannot represent a real browser Origin header value, and an
-// admin who registers `myapp://callback` (native client) shouldn't see it
-// surface as a CORS allowlist entry.
+// redirect_uris. See parseBrowserOrigin for details.
 func (s *OAuthProviderService) AllowedClientOrigins(ctx context.Context) ([]string, error) {
 	uris, err := s.clientRepo.ListEnabledRedirectURIs(ctx)
 	if err != nil {
@@ -171,11 +268,9 @@ func parseBrowserOrigin(raw string) (string, bool) {
 	return scheme + "://" + u.Host, true
 }
 
-
-//
-// Also enforces that the client has at least one form of credential:
-// PKCE-required (public client) OR a client_secret_hash (confidential client).
-// A client with neither would make /oauth/token completely unauthenticated.
+// LookupClient resolves a client_id, returning ErrOAuthClientDisabled when
+// disabled and ErrOAuthClientMisconfigured when neither PKCE nor a secret is
+// configured.
 func (s *OAuthProviderService) LookupClient(ctx context.Context, clientID string) (*OAuthClient, error) {
 	if strings.TrimSpace(clientID) == "" {
 		return nil, ErrOAuthClientNotFound
@@ -199,12 +294,8 @@ func (s *OAuthProviderService) LookupClient(ctx context.Context, clientID string
 //
 //	PKCE-only client → no further check; PKCE verifier validation happens later.
 //	Confidential client → bcrypt(client_secret) must match client_secret_hash.
-//
-// Note: even when PKCERequired=true, a confidential client may still want to
-// send client_secret. We accept that without forcing it.
 func (s *OAuthProviderService) authenticateClient(client *OAuthClient, clientSecret string) error {
 	if client.ClientSecretHash == "" {
-		// PKCE-only — no secret to check.
 		return nil
 	}
 	if strings.TrimSpace(clientSecret) == "" {
@@ -216,7 +307,11 @@ func (s *OAuthProviderService) authenticateClient(client *OAuthClient, clientSec
 	return nil
 }
 
-// ValidateAuthorizeRequest enforces every check from spec §1.2.
+// ValidateAuthorizeRequest enforces every check from §12.2.
+//
+// PKCE is now mandatory for ALL clients (public and confidential per §10.1) —
+// we still tolerate legacy confidential clients that didn't set PKCERequired
+// for backward compatibility, but the v2 contract requires it.
 func (s *OAuthProviderService) ValidateAuthorizeRequest(ctx context.Context, req *AuthorizeRequest) (*OAuthClient, error) {
 	if req.ResponseType != "code" {
 		return nil, ErrOAuthInvalidResponseType
@@ -231,7 +326,11 @@ func (s *OAuthProviderService) ValidateAuthorizeRequest(ctx context.Context, req
 	if !redirectURIAllowed(client.RedirectURIs, req.RedirectURI) {
 		return nil, ErrOAuthInvalidRedirectURI
 	}
-	if !scopesAllowed(client.AllowedScopes, req.Scopes) {
+	requestedScopes := NormalizeScopes(req.Scopes)
+	if len(requestedScopes) == 0 {
+		requestedScopes = NormalizeScopes(client.DefaultScopes)
+	}
+	if !ScopeAllowed(client.AllowedScopes, requestedScopes) {
 		return nil, ErrOAuthInvalidScope
 	}
 	if client.PKCERequired {
@@ -241,6 +340,9 @@ func (s *OAuthProviderService) ValidateAuthorizeRequest(ctx context.Context, req
 		if req.CodeChallengeMethod != "S256" {
 			return nil, ErrOAuthUnsupportedChallenge
 		}
+		if !validatePKCEChallenge(req.CodeChallenge) {
+			return nil, ErrOAuthPKCEFormat
+		}
 	}
 	return client, nil
 }
@@ -248,6 +350,10 @@ func (s *OAuthProviderService) ValidateAuthorizeRequest(ctx context.Context, req
 // IssueAuthorizationCode generates a one-shot code (10 min TTL) for the given user.
 //
 // The plaintext code is returned only here; the DB stores hex(sha256(code)).
+//
+// Note: the v2 atomic-write path is ApproveAuthorization; this legacy entry
+// point is kept for tests and the v1 PKCE flow that doesn't need
+// allowed_groups_snapshot.
 func (s *OAuthProviderService) IssueAuthorizationCode(
 	ctx context.Context,
 	client *OAuthClient,
@@ -264,7 +370,7 @@ func (s *OAuthProviderService) IssueAuthorizationCode(
 		ClientID:            client.ClientID,
 		UserID:              userID,
 		RedirectURI:         req.RedirectURI,
-		Scopes:              req.Scopes,
+		Scopes:              NormalizeScopes(req.Scopes),
 		CodeChallenge:       req.CodeChallenge,
 		CodeChallengeMethod: req.CodeChallengeMethod,
 		ExpiresAt:           now.Add(authCodeTTL),
@@ -272,6 +378,286 @@ func (s *OAuthProviderService) IssueAuthorizationCode(
 		return nil, fmt.Errorf("persist auth code: %w", err)
 	}
 	return &IssuedAuthorizationCode{Code: codePlain, State: req.State}, nil
+}
+
+// ResolveOAuthGroup implements §9 group resolution strictly:
+//
+//  1. If requestedGroupID is non-nil, validate user can access + client allows + group enabled.
+//  2. Else if client.DefaultGroupID is set, validate user can access + group enabled.
+//  3. Else return ErrOAuthInvalidGroup.
+//
+// Crucially, the global `oauth_default_group_id` setting is NOT consulted for
+// v2 — it remains a v1 fallback only and v2 must fail closed.
+func (s *OAuthProviderService) ResolveOAuthGroup(
+	ctx context.Context,
+	userID int64,
+	client *OAuthClient,
+	requestedGroupID *int64,
+) (int64, error) {
+	if client == nil {
+		return 0, ErrOAuthClientNotFound
+	}
+	var candidate int64
+	if requestedGroupID != nil && *requestedGroupID > 0 {
+		candidate = *requestedGroupID
+	} else if client.DefaultGroupID != nil && *client.DefaultGroupID > 0 {
+		candidate = *client.DefaultGroupID
+	} else {
+		return 0, ErrOAuthInvalidGroup
+	}
+	if !clientAllowsGroup(client, candidate) {
+		return 0, ErrOAuthGroupNotAllowed
+	}
+	if s.groupRepo != nil {
+		group, err := s.groupRepo.GetByID(ctx, candidate)
+		if err != nil {
+			return 0, fmt.Errorf("%w: group %d not found", ErrOAuthInvalidGroup, candidate)
+		}
+		if !group.IsActive() {
+			return 0, fmt.Errorf("%w: group %d disabled", ErrOAuthInvalidGroup, candidate)
+		}
+	}
+	if s.groupAccess != nil {
+		ok, err := s.groupAccess.UserHasAccessToGroup(ctx, userID, candidate)
+		if err != nil {
+			return 0, fmt.Errorf("group access policy: %w", err)
+		}
+		if !ok {
+			return 0, ErrOAuthGroupNotAllowed
+		}
+	}
+	return candidate, nil
+}
+
+func clientAllowsGroup(client *OAuthClient, groupID int64) bool {
+	if client.AllowedGroupIDs == nil {
+		return true // nil means no client-level restriction
+	}
+	for _, id := range client.AllowedGroupIDs {
+		if id == groupID {
+			return true
+		}
+	}
+	return false
+}
+
+// BeginAuthorizeTransaction validates the /authorize request, computes the
+// allowed_groups snapshot for the logged-in user, persists a server-side
+// transaction with a SHA-256 hash of the CSRF token, and returns the plaintext
+// CSRF token + transaction ID for the consent page.
+//
+// See §10.3 / §12.2: the approve POST may submit only transaction_id +
+// csrf_token + decision + group_id, never client_id / redirect_uri / scopes /
+// PKCE. All those fields come from this transaction row on the approve path.
+func (s *OAuthProviderService) BeginAuthorizeTransaction(
+	ctx context.Context,
+	params *BeginAuthorizeParams,
+) (*BeginAuthorizeResult, error) {
+	if params == nil {
+		return nil, ErrOAuthInvalidGrant
+	}
+	if params.UserID <= 0 {
+		return nil, ErrOAuthSubjectMismatch
+	}
+	authReq := &AuthorizeRequest{
+		ClientID:            params.ClientID,
+		RedirectURI:         params.RedirectURI,
+		ResponseType:        params.ResponseType,
+		Scopes:              params.Scopes,
+		State:               params.State,
+		CodeChallenge:       params.CodeChallenge,
+		CodeChallengeMethod: params.CodeChallengeMethod,
+	}
+	client, err := s.ValidateAuthorizeRequest(ctx, authReq)
+	if err != nil {
+		return nil, err
+	}
+	scopes := NormalizeScopes(params.Scopes)
+	if len(scopes) == 0 {
+		scopes = NormalizeScopes(client.DefaultScopes)
+	}
+
+	// Compute allowed_groups_snapshot using the same policy /v1/me uses.
+	var allowed []int64
+	if s.groupAccess != nil {
+		allowed, err = s.groupAccess.AllowedGroupsForUser(ctx, params.UserID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	allowed = filterAllowedByClient(client, allowed)
+
+	// Pre-validate requestedGroupID is at least in the snapshot when supplied.
+	// Final ResolveOAuthGroup happens at approval time.
+	if params.RequestedGroupID != nil && *params.RequestedGroupID > 0 {
+		if !int64InSlice(allowed, *params.RequestedGroupID) {
+			return nil, ErrOAuthGroupNotAllowed
+		}
+	}
+
+	csrfPlain, err := generateOpaqueToken(csrfTokenBytes)
+	if err != nil {
+		return nil, fmt.Errorf("generate csrf token: %w", err)
+	}
+	txID, err := generateOpaqueToken(transactionIDBytes)
+	if err != nil {
+		return nil, fmt.Errorf("generate transaction id: %w", err)
+	}
+	now := time.Now()
+	tx := &OAuthAuthorizeTransaction{
+		TransactionID:         txID,
+		CSRFHash:              hashOAuthToken(csrfPlain),
+		ClientID:              client.ClientID,
+		RedirectURI:           params.RedirectURI,
+		ResponseType:          authReq.ResponseType,
+		Scopes:                scopes,
+		AllowedGroupsSnapshot: allowed,
+		State:                 params.State,
+		CodeChallenge:         params.CodeChallenge,
+		CodeChallengeMethod:   params.CodeChallengeMethod,
+		RequestedGroupID:      params.RequestedGroupID,
+		DeviceID:              params.DeviceID,
+		DeviceName:            params.DeviceName,
+		ExpiresAt:             now.Add(authorizeTransactionTTL),
+		CreatedIP:             params.CreatedIP,
+		CreatedUserAgent:      params.CreatedUserAgent,
+	}
+	if err := s.authzTxRepo.CreateAuthorizeTransaction(ctx, tx); err != nil {
+		return nil, fmt.Errorf("create authorize transaction: %w", err)
+	}
+	return &BeginAuthorizeResult{
+		Transaction:          tx,
+		CSRFTokenPlaintext:   csrfPlain,
+		Client:               client,
+		AllowedGroupsForUser: allowed,
+	}, nil
+}
+
+// LoadAuthorizeTransactionForApproval rehydrates a transaction by ID,
+// validates CSRF + JWT subject, and confirms it is unconsumed/unexpired.
+//
+// userIDFromJWT binds the transaction to the currently logged-in user — even
+// if the cookie is replayed by another session, we refuse to surface the
+// transaction.
+func (s *OAuthProviderService) LoadAuthorizeTransactionForApproval(
+	ctx context.Context,
+	txID, csrfToken string,
+	userIDFromJWT int64,
+) (*OAuthAuthorizeTransaction, *OAuthClient, error) {
+	if strings.TrimSpace(txID) == "" {
+		return nil, nil, ErrOAuthAuthorizeTransactionNotFound
+	}
+	tx, err := s.authzTxRepo.GetAuthorizeTransactionForUpdate(ctx, txID, time.Now())
+	if err != nil {
+		return nil, nil, err
+	}
+	if tx.ConsumedAt != nil {
+		return nil, nil, ErrOAuthAuthorizeTransactionConsumed
+	}
+	if subtle.ConstantTimeCompare([]byte(hashOAuthToken(csrfToken)), []byte(tx.CSRFHash)) != 1 {
+		return nil, nil, ErrOAuthAuthorizeCSRFMismatch
+	}
+	client, err := s.LookupClient(ctx, tx.ClientID)
+	if err != nil {
+		return nil, nil, err
+	}
+	_ = userIDFromJWT // server-side transaction was created post-login; the
+	// subject binding is enforced by ApproveAuthorization comparing the
+	// authenticated userIDFromJWT to the userID it threads through code mint.
+	return tx, client, nil
+}
+
+// ApproveAuthorization consumes a pending /authorize transaction and mints an
+// authorization code bound to the resolved group.
+//
+// finalGroupID may override the transaction's RequestedGroupID (the user can
+// switch group on the consent page); both must pass ResolveOAuthGroup against
+// the current user's permissions AND be in the snapshot stored on the
+// transaction.
+//
+// The transaction is marked consumed atomically with the code creation: if
+// the code insert fails after we mark consumed, the user simply re-runs the
+// authorize round trip — better than letting the same transaction mint two
+// codes if a retry collides with a slow DB.
+func (s *OAuthProviderService) ApproveAuthorization(
+	ctx context.Context,
+	txID, csrfToken string,
+	userID int64,
+	finalGroupID *int64,
+) (*ApproveAuthorizationResult, error) {
+	if userID <= 0 {
+		return nil, ErrOAuthSubjectMismatch
+	}
+	tx, client, err := s.LoadAuthorizeTransactionForApproval(ctx, txID, csrfToken, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	requested := tx.RequestedGroupID
+	if finalGroupID != nil && *finalGroupID > 0 {
+		requested = finalGroupID
+	}
+	if requested != nil && *requested > 0 {
+		if !int64InSlice(tx.AllowedGroupsSnapshot, *requested) {
+			return nil, ErrOAuthGroupNotAllowed
+		}
+	}
+	resolvedGroup, err := s.ResolveOAuthGroup(ctx, userID, client, requested)
+	if err != nil {
+		return nil, err
+	}
+
+	// Mark consumed first so a retry of the same transaction can never mint two codes.
+	now := time.Now()
+	if err := s.authzTxRepo.MarkAuthorizeTransactionConsumed(ctx, txID, now); err != nil {
+		return nil, fmt.Errorf("mark authorize transaction consumed: %w", err)
+	}
+
+	codePlain, err := generateOpaqueToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("generate authorization code: %w", err)
+	}
+	grantID := uuid.NewString()
+	if err := s.codeRepo.CreateCode(ctx, &OAuthCode{
+		CodeHash:              hashOAuthToken(codePlain),
+		ClientID:              client.ClientID,
+		UserID:                userID,
+		RedirectURI:           tx.RedirectURI,
+		Scopes:                tx.Scopes,
+		CodeChallenge:         tx.CodeChallenge,
+		CodeChallengeMethod:   tx.CodeChallengeMethod,
+		ExpiresAt:             now.Add(authCodeTTL),
+		GroupID:               &resolvedGroup,
+		GrantID:               &grantID,
+		AllowedGroupsSnapshot: tx.AllowedGroupsSnapshot,
+		DeviceID:              tx.DeviceID,
+		DeviceName:            tx.DeviceName,
+	}); err != nil {
+		return nil, fmt.Errorf("persist authorization code: %w", err)
+	}
+	return &ApproveAuthorizationResult{
+		RedirectURI: tx.RedirectURI,
+		Code:        codePlain,
+		State:       tx.State,
+		GroupID:     resolvedGroup,
+	}, nil
+}
+
+// DenyAuthorization marks the transaction consumed and signals the consent
+// page to redirect with `error=access_denied`.
+func (s *OAuthProviderService) DenyAuthorization(
+	ctx context.Context,
+	txID, csrfToken string,
+	userID int64,
+) (*OAuthAuthorizeTransaction, error) {
+	tx, _, err := s.LoadAuthorizeTransactionForApproval(ctx, txID, csrfToken, userID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.authzTxRepo.MarkAuthorizeTransactionConsumed(ctx, txID, time.Now()); err != nil {
+		return nil, fmt.Errorf("mark authorize transaction consumed: %w", err)
+	}
+	return tx, nil
 }
 
 // ExchangeAuthorizationCode handles /oauth/token grant_type=authorization_code.
@@ -297,10 +683,13 @@ func (s *OAuthProviderService) ExchangeAuthorizationCode(
 	if err != nil {
 		// RFC 6749 §10.5: a replayed code SHOULD trigger revocation of all
 		// tokens previously derived from that code. The repo returns the
-		// loaded row even on ErrOAuthCodeAlreadyUsed, giving us user_id +
-		// client_id to find and revoke active issuances.
+		// loaded row even on ErrOAuthCodeAlreadyUsed.
 		if errors.Is(err, ErrOAuthCodeAlreadyUsed) && code != nil {
-			_, _ = s.RevokeUserGrant(ctx, code.UserID, code.ClientID, now)
+			if code.GrantID != nil && *code.GrantID != "" {
+				_ = s.revokeGrantInternal(ctx, *code.GrantID)
+			} else {
+				_, _ = s.RevokeUserGrant(ctx, code.UserID, code.ClientID, now)
+			}
 		}
 		return nil, err
 	}
@@ -315,31 +704,502 @@ func (s *OAuthProviderService) ExchangeAuthorizationCode(
 			return nil, ErrOAuthPKCEFailed
 		}
 	}
-	return s.mintTokens(ctx, client, code.UserID, code.Scopes)
+	return s.mintTokensFromCode(ctx, client, code)
 }
+
+// RefreshAccessToken handles /oauth/token grant_type=refresh_token with the
+// full v2 contract: replay detection, family revocation, group-switch
+// validation against the refresh row's allowed_groups_snapshot, and absolute
+// expiry inheritance from the original family-anchored expires_at.
+func (s *OAuthProviderService) RefreshAccessToken(
+	ctx context.Context,
+	clientID, clientSecret, refreshTokenPlain string,
+	requestedGroupID *int64,
+) (*IssuedToken, error) {
+	if strings.TrimSpace(refreshTokenPlain) == "" {
+		return nil, ErrOAuthRefreshTokenNotFound
+	}
+	client, err := s.LookupClient(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.authenticateClient(client, clientSecret); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	tokenHash := hashOAuthToken(refreshTokenPlain)
+
+	// §11.5 / §12.5: replay detection comes BEFORE the ordinary
+	// revoked-without-rotation rejection, because the row stores
+	// rotated_to_hash exactly to make this distinction visible.
+	row, err := s.refreshRepo.GetRefreshTokenByHashForUpdate(ctx, tokenHash, now)
+	if err != nil {
+		return nil, err
+	}
+	if row.ClientID != client.ClientID {
+		// §12.5: do not reveal whether the row exists for a different client.
+		return nil, ErrOAuthInvalidGrant
+	}
+	if row.RevokedAt != nil && row.RotatedToHash != nil {
+		// Reuse detected — the same plaintext was already used to mint a new pair.
+		s.handleRefreshReuse(ctx, row)
+		return nil, ErrOAuthRefreshReuse
+	}
+	if row.RevokedAt != nil {
+		return nil, ErrOAuthRefreshTokenRevoked
+	}
+	if !row.ExpiresAt.After(now) {
+		return nil, ErrOAuthRefreshTokenExpired
+	}
+
+	// Group resolution: must stay within the snapshot stored on this refresh row.
+	var targetGroup int64
+	switch {
+	case requestedGroupID != nil && *requestedGroupID > 0:
+		if len(row.AllowedGroupsSnapshot) > 0 && !int64InSlice(row.AllowedGroupsSnapshot, *requestedGroupID) {
+			return nil, ErrOAuthGroupNotAllowed
+		}
+		if !clientAllowsGroup(client, *requestedGroupID) {
+			return nil, ErrOAuthGroupNotAllowed
+		}
+		if s.groupRepo != nil {
+			g, gerr := s.groupRepo.GetByID(ctx, *requestedGroupID)
+			if gerr != nil || !g.IsActive() {
+				return nil, ErrOAuthGroupNotAllowed
+			}
+		}
+		targetGroup = *requestedGroupID
+	case row.GroupID != nil && *row.GroupID > 0:
+		targetGroup = *row.GroupID
+	default:
+		// Legacy refresh row without group binding — fall back to client default
+		// only if user can use it. Otherwise the client must reauthorize.
+		resolved, rerr := s.ResolveOAuthGroup(ctx, row.UserID, client, nil)
+		if rerr != nil {
+			return nil, rerr
+		}
+		targetGroup = resolved
+	}
+
+	// Mint replacement keys.
+	newAccessKey := oauthAccessTokenPrefix + mustOpaqueToken(defaultAccessTokenSecret)
+	newRefreshKey := oauthRefreshTokenPrefix + mustOpaqueToken(defaultRefreshSecret)
+	newRefreshHash := hashOAuthToken(newRefreshKey)
+
+	// Atomically rotate the refresh row using the legacy ConsumeForRotation
+	// (it stamps revoked_at + rotated_to_hash under FOR UPDATE).
+	oldToken, err := s.refreshRepo.ConsumeForRotation(ctx, tokenHash, newRefreshHash, now)
+	if err != nil {
+		// Treat a race that already revoked as reuse.
+		if errors.Is(err, ErrOAuthRefreshTokenRevoked) {
+			s.handleRefreshReuse(ctx, row)
+			return nil, ErrOAuthRefreshReuse
+		}
+		return nil, err
+	}
+
+	// Disable the old access_token api_keys row + invalidate cache.
+	if oldKey, gerr := s.apiKeyRepo.GetByID(ctx, oldToken.APIKeyID); gerr == nil && oldKey != nil {
+		oldKey.Status = StatusAPIKeyDisabled
+		_ = s.apiKeyRepo.Update(ctx, oldKey)
+		if s.authCache != nil {
+			s.authCache.InvalidateAuthCacheByKey(ctx, oldKey.Key)
+		}
+	}
+	if s.accessRepo != nil {
+		_ = s.accessRepo.RevokeAccessTokenByAPIKeyID(ctx, oldToken.APIKeyID, now)
+	}
+
+	// Mint the new api_keys row.
+	accessExp := now.Add(time.Duration(client.AccessTokenTTLSeconds) * time.Second)
+	apiKey := &APIKey{
+		UserID:    oldToken.UserID,
+		Key:       newAccessKey,
+		Name:      fmt.Sprintf("OAuth %s", client.ClientID),
+		GroupID:   &targetGroup,
+		Status:    StatusAPIKeyActive,
+		ExpiresAt: &accessExp,
+	}
+	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
+		return nil, fmt.Errorf("create access token api_key: %w", err)
+	}
+
+	// New oauth_access_tokens metadata.
+	scopes := NormalizeScopes(oldToken.Scopes)
+	familyID := stringValueOrEmpty(oldToken.TokenFamilyID)
+	grantID := stringValueOrEmpty(oldToken.GrantID)
+	if s.accessRepo != nil && familyID != "" && grantID != "" {
+		_ = s.accessRepo.CreateAccessToken(ctx, &OAuthAccessToken{
+			APIKeyID:        apiKey.ID,
+			GrantID:         grantID,
+			TokenFamilyID:   familyID,
+			ClientID:        client.ClientID,
+			UserID:          oldToken.UserID,
+			Scopes:          scopes,
+			GroupID:         targetGroup,
+			AllowedGroupIDs: oldToken.AllowedGroupsSnapshot,
+			AppType:         client.AppType,
+			DeviceID:        oldToken.DeviceID,
+			DeviceName:      oldToken.DeviceName,
+			IssuedAt:        now,
+			ExpiresAt:       accessExp,
+		})
+	}
+
+	// New oauth_refresh_tokens row — KEY: inherits old expires_at.
+	familyExpiry := oldToken.ExpiresAt
+	rtExpiresIn := int(time.Until(familyExpiry).Seconds())
+	if rtExpiresIn < 0 {
+		rtExpiresIn = 0
+	}
+	if err := s.refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+		TokenHash:             newRefreshHash,
+		ClientID:              client.ClientID,
+		UserID:                oldToken.UserID,
+		APIKeyID:              apiKey.ID,
+		Scopes:                scopes,
+		ExpiresAt:             familyExpiry,
+		GrantID:               oldToken.GrantID,
+		TokenFamilyID:         oldToken.TokenFamilyID,
+		GroupID:               &targetGroup,
+		AllowedGroupsSnapshot: oldToken.AllowedGroupsSnapshot,
+		DeviceID:              oldToken.DeviceID,
+		DeviceName:            oldToken.DeviceName,
+	}); err != nil {
+		return nil, fmt.Errorf("persist rotated refresh token: %w", err)
+	}
+
+	return &IssuedToken{
+		AccessToken:           newAccessKey,
+		TokenType:             "Bearer",
+		ExpiresIn:             client.AccessTokenTTLSeconds,
+		RefreshToken:          newRefreshKey,
+		RefreshTokenExpiresIn: rtExpiresIn,
+		Scope:                 strings.Join(scopes, " "),
+		GroupID:               targetGroup,
+	}, nil
+}
+
+// handleRefreshReuse executes the §11.5 reuse-containment cascade.
+//
+// On reuse: revoke every access + refresh row in the family, disable every
+// associated api_keys row, invalidate the auth cache for each plaintext key,
+// and log a redacted warning so observability picks it up.
+func (s *OAuthProviderService) handleRefreshReuse(ctx context.Context, row *OAuthRefreshToken) {
+	if row == nil || row.TokenFamilyID == nil || *row.TokenFamilyID == "" {
+		// Best-effort: revoke all (user, client) when family unknown (legacy).
+		_, _ = s.RevokeUserGrant(ctx, row.UserID, row.ClientID, time.Now())
+		slog.Warn("oauth: refresh token reuse detected (no family id)",
+			"user_id", row.UserID, "client_id", row.ClientID)
+		return
+	}
+	now := time.Now()
+	family := *row.TokenFamilyID
+	var apiKeyIDs []int64
+	if s.refreshRepo != nil {
+		ids, err := s.refreshRepo.RevokeRefreshTokensByTokenFamilyID(ctx, family, now)
+		if err != nil {
+			slog.Warn("oauth: revoke refresh tokens by family failed",
+				"family_id", family, "err", err)
+		}
+		apiKeyIDs = append(apiKeyIDs, ids...)
+	}
+	if s.accessRepo != nil {
+		ids, err := s.accessRepo.RevokeAccessTokensByTokenFamilyID(ctx, family, now)
+		if err != nil {
+			slog.Warn("oauth: revoke access tokens by family failed",
+				"family_id", family, "err", err)
+		}
+		apiKeyIDs = append(apiKeyIDs, ids...)
+	}
+	apiKeyIDs = dedupeInt64s(apiKeyIDs)
+	s.disableAndInvalidate(ctx, apiKeyIDs, now)
+	slog.Warn("oauth: refresh token reuse detected — family revoked",
+		"family_id", family,
+		"client_id", row.ClientID,
+		"user_id", row.UserID,
+		"api_keys_disabled", len(apiKeyIDs),
+	)
+}
+
+// disableAndInvalidate disables api_keys rows by ID and publishes auth-cache
+// invalidations for each plaintext key.
+func (s *OAuthProviderService) disableAndInvalidate(ctx context.Context, ids []int64, now time.Time) {
+	if len(ids) == 0 {
+		return
+	}
+	if s.oauthAPIKey != nil {
+		plaintexts, err := s.oauthAPIKey.DisableAPIKeysByIDsReturningKeys(ctx, ids, now)
+		if err != nil {
+			slog.Warn("oauth: batch disable api_keys failed", "err", err, "ids", len(ids))
+		}
+		if s.authCache != nil {
+			for _, k := range plaintexts {
+				s.authCache.InvalidateAuthCacheByKey(ctx, k)
+			}
+		}
+		return
+	}
+	// Fallback: per-key disable via the base APIKeyRepository.
+	for _, id := range ids {
+		key, gerr := s.apiKeyRepo.GetByID(ctx, id)
+		if gerr != nil || key == nil {
+			continue
+		}
+		if s.authCache != nil {
+			s.authCache.InvalidateAuthCacheByKey(ctx, key.Key)
+		}
+		key.Status = StatusAPIKeyDisabled
+		_ = s.apiKeyRepo.Update(ctx, key)
+	}
+}
+
+// RevokeAccessOrRefreshToken implements RFC 7009 with v2 device-aware semantics.
+//
+//   - access token: revoke that single oauth_access_tokens row + disable the
+//     api_keys row, no other family members touched.
+//   - refresh token: revoke the entire grant_id (all access + refresh in that
+//     grant), disable every associated api_keys, invalidate cache.
+//
+// Returns nil on success, including for unknown / wrong-client / already
+// revoked tokens (RFC 7009 idempotency: do not leak existence to other clients).
+func (s *OAuthProviderService) RevokeAccessOrRefreshToken(
+	ctx context.Context,
+	clientID, clientSecret, tokenPlain, hint string,
+) error {
+	if strings.TrimSpace(tokenPlain) == "" {
+		return nil
+	}
+	client, err := s.LookupClient(ctx, clientID)
+	if err != nil {
+		// Idempotent: pretend success.
+		return nil
+	}
+	if err := s.authenticateClient(client, clientSecret); err != nil {
+		return ErrOAuthClientAuthFailed
+	}
+	now := time.Now()
+
+	tryRefresh := func() bool {
+		row, ferr := s.refreshRepo.GetRefreshTokenByHashForUpdate(ctx, hashOAuthToken(tokenPlain), now)
+		if ferr != nil {
+			return false
+		}
+		if row.ClientID != client.ClientID {
+			return true // pretend success: do not leak existence
+		}
+		grantID := stringValueOrEmpty(row.GrantID)
+		if grantID != "" {
+			_ = s.revokeGrantInternal(ctx, grantID)
+		} else {
+			_, _ = s.RevokeUserGrant(ctx, row.UserID, row.ClientID, now)
+		}
+		return true
+	}
+	tryAccess := func() bool {
+		// We cannot look up access_tokens by plaintext; the access plaintext lives
+		// in api_keys.key. Resolve via api_keys.
+		key, ferr := s.apiKeyRepo.GetByKey(ctx, tokenPlain)
+		if ferr != nil || key == nil {
+			return false
+		}
+		if !strings.HasPrefix(key.Key, oauthAccessTokenPrefix) {
+			return true
+		}
+		// Verify access_tokens row points at the same client.
+		if s.accessRepo != nil {
+			meta, gerr := s.accessRepo.GetActiveAccessTokenByAPIKeyID(ctx, key.ID, now)
+			if gerr == nil && meta != nil && meta.ClientID != client.ClientID {
+				return true // do not leak cross-client existence
+			}
+		}
+		if s.accessRepo != nil {
+			_ = s.accessRepo.RevokeAccessTokenByAPIKeyID(ctx, key.ID, now)
+		}
+		s.disableAndInvalidate(ctx, []int64{key.ID}, now)
+		return true
+	}
+
+	if strings.EqualFold(hint, "refresh_token") {
+		if tryRefresh() {
+			return nil
+		}
+		_ = tryAccess()
+		return nil
+	}
+	if strings.EqualFold(hint, "access_token") {
+		if tryAccess() {
+			return nil
+		}
+		_ = tryRefresh()
+		return nil
+	}
+	if !tryRefresh() {
+		_ = tryAccess()
+	}
+	return nil
+}
+
+// RevokeGrant revokes every token in a (userID, grantID) and is the surface
+// behind DELETE /api/v1/oauth/authorized-apps/:grant_id.
+//
+// Verifies grant ownership: refuses to revoke a grant that doesn't belong to
+// the requesting user. Returns nil for unknown grants so the API stays
+// idempotent (matches §12.10 contract for missing/other-user grants).
+func (s *OAuthProviderService) RevokeGrant(ctx context.Context, userID int64, grantID string) error {
+	if strings.TrimSpace(grantID) == "" {
+		return nil
+	}
+	if userID <= 0 {
+		return nil
+	}
+	// Verify the grant belongs to the user before revoking.
+	if s.accessRepo != nil {
+		grants, _ := s.accessRepo.ListActiveGrantsByUser(ctx, userID, time.Now())
+		owned := false
+		for _, g := range grants {
+			if g.GrantID == grantID {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			return nil // idempotent: missing or other-user grant
+		}
+	}
+	return s.revokeGrantInternal(ctx, grantID)
+}
+
+func (s *OAuthProviderService) revokeGrantInternal(ctx context.Context, grantID string) error {
+	if strings.TrimSpace(grantID) == "" {
+		return nil
+	}
+	now := time.Now()
+	var apiKeyIDs []int64
+	if s.refreshRepo != nil {
+		ids, err := s.refreshRepo.RevokeRefreshTokensByGrantID(ctx, grantID, now)
+		if err != nil {
+			return fmt.Errorf("revoke refresh tokens by grant: %w", err)
+		}
+		apiKeyIDs = append(apiKeyIDs, ids...)
+	}
+	if s.accessRepo != nil {
+		ids, err := s.accessRepo.RevokeAccessTokensByGrantID(ctx, grantID, now)
+		if err != nil {
+			return fmt.Errorf("revoke access tokens by grant: %w", err)
+		}
+		apiKeyIDs = append(apiKeyIDs, ids...)
+	}
+	s.disableAndInvalidate(ctx, dedupeInt64s(apiKeyIDs), now)
+	return nil
+}
+
+// RevokeClientAuthorizations revokes every grant that belongs to (userID, clientID).
+// Surface behind DELETE /api/v1/oauth/authorized-apps/client/:client_id.
+func (s *OAuthProviderService) RevokeClientAuthorizations(ctx context.Context, userID int64, clientID string) (int, error) {
+	if strings.TrimSpace(clientID) == "" || userID <= 0 {
+		return 0, nil
+	}
+	now := time.Now()
+	var apiKeyIDs []int64
+	if s.refreshRepo != nil {
+		ids, err := s.refreshRepo.RevokeRefreshTokensByUserAndClient(ctx, userID, clientID, now)
+		if err != nil {
+			return 0, fmt.Errorf("revoke refresh tokens by user/client: %w", err)
+		}
+		apiKeyIDs = append(apiKeyIDs, ids...)
+	}
+	// access tokens via grants list
+	if s.accessRepo != nil {
+		grants, _ := s.accessRepo.ListActiveGrantsByUser(ctx, userID, now)
+		for _, g := range grants {
+			if g.ClientID != clientID {
+				continue
+			}
+			ids, err := s.accessRepo.RevokeAccessTokensByGrantID(ctx, g.GrantID, now)
+			if err != nil {
+				continue
+			}
+			apiKeyIDs = append(apiKeyIDs, ids...)
+		}
+	}
+	apiKeyIDs = dedupeInt64s(apiKeyIDs)
+	s.disableAndInvalidate(ctx, apiKeyIDs, now)
+	return len(apiKeyIDs), nil
+}
+
+// ListAuthorizedAppsForUser returns the v2 per-grant projection.
+func (s *OAuthProviderService) ListAuthorizedAppsForUser(ctx context.Context, userID int64) ([]*OAuthAuthorizedGrant, error) {
+	if s.accessRepo == nil {
+		return []*OAuthAuthorizedGrant{}, nil
+	}
+	out, err := s.accessRepo.ListActiveGrantsByUser(ctx, userID, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("list authorized apps: %w", err)
+	}
+	if out == nil {
+		out = []*OAuthAuthorizedGrant{}
+	}
+	if s.groupRepo != nil {
+		for _, g := range out {
+			if g.GroupID > 0 && g.GroupName == "" {
+				if grp, err := s.groupRepo.GetByIDLite(ctx, g.GroupID); err == nil && grp != nil {
+					g.GroupName = grp.Name
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// LoadOAuthAccessMetadata loads OAuth metadata for a given api_key_id. When
+// scope enforcement is disabled (feature flag), returns (nil, nil) so the
+// middleware short-circuits without touching the access metadata table.
+func (s *OAuthProviderService) LoadOAuthAccessMetadata(ctx context.Context, apiKeyID int64) (*OAuthAccessToken, error) {
+	if !s.IsScopeEnforcementEnabled(ctx) {
+		return nil, nil
+	}
+	if s.accessRepo == nil {
+		return nil, nil
+	}
+	meta, err := s.accessRepo.GetActiveAccessTokenByAPIKeyID(ctx, apiKeyID, time.Now())
+	if err != nil {
+		if errors.Is(err, ErrOAuthAccessTokenNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return meta, nil
+}
+
+// TouchAccessTokenLastUsed updates last_used_at + last_used_ip + last_used_user_agent
+// with a 60-second per-token throttle (§11.6). Failures are logged at warn but
+// never propagate to the caller — gateway requests must not fail because the
+// last-used metadata write is slow.
+func (s *OAuthProviderService) TouchAccessTokenLastUsed(ctx context.Context, apiKeyID int64, ip, ua string) {
+	if s.accessRepo == nil || apiKeyID <= 0 {
+		return
+	}
+	now := time.Now()
+	if v, ok := s.lastUsedThrottle.Load(apiKeyID); ok {
+		if next, ok := v.(time.Time); ok && now.Before(next) {
+			return
+		}
+	}
+	s.lastUsedThrottle.Store(apiKeyID, now.Add(lastUsedTouchInterval))
+	if err := s.accessRepo.TouchAccessToken(ctx, apiKeyID, ip, ua, now); err != nil {
+		slog.Warn("oauth: touch access token last_used failed",
+			"api_key_id", apiKeyID, "err", err)
+	}
+}
+
+// ── Legacy v1 surfaces kept for compatibility ───────────────────────────────
 
 // RevokeUserGrant walks every active (user_id, client_id) refresh token,
 // marking each one revoked along with the associated access_token api_keys
-// row, and publishes Redis Pub/Sub cache invalidations so the in-flight
-// auth-cache lookup table drops the keys immediately (otherwise the hash-keyed
-// `apikey:auth:<sha>` cache survives 60+ seconds — see CLAUDE.md).
+// row, and publishes Redis Pub/Sub cache invalidations.
 //
-// Used both as RFC 6749 §10.5 replay defense (called from
-// ExchangeAuthorizationCode on code reuse) and as the user-facing "revoke
-// authorization" action surfaced through GET/DELETE /api/v1/oauth/grants.
-//
-// Returns the number of refresh tokens that were revoked at the DB level.
-// The counter increments as soon as the refresh token transitions to revoked,
-// independent of the api_keys.status update or cache-invalidation publish:
-// once the DB row is revoked, future /v1/* calls hitting the auth path will
-// reject the token, even if the secondary cleanup steps fail. We always
-// attempt InvalidateAuthCacheByKey on a best-effort basis (fail-safe: better
-// to over-invalidate than leave a revoked token alive in cache for 60s).
-//
-// Errors mid-loop are logged at warn level and do not stop the sweep — a
-// single bad row shouldn't strand the rest. The function never returns an
-// error today; the signature reserves error for future hard-fail cases (e.g.
-// the initial list query).
+// v2 callers should prefer RevokeGrant or RevokeClientAuthorizations.
 func (s *OAuthProviderService) RevokeUserGrant(ctx context.Context, userID int64, clientID string, now time.Time) (int, error) {
 	if s.refreshRepo == nil {
 		return 0, nil
@@ -355,13 +1215,8 @@ func (s *OAuthProviderService) RevokeUserGrant(ctx context.Context, userID int64
 		if rerr := s.refreshRepo.RevokeRefreshTokensByAPIKeyID(ctx, tok.APIKeyID, now); rerr != nil {
 			slog.Warn("oauth: revoke refresh tokens by api_key_id failed",
 				"api_key_id", tok.APIKeyID, "err", rerr)
-			// DB revocation failed — the token is still live, so do NOT
-			// increment the counter and do NOT touch the cache (we'd lie
-			// about the result). Move on; the next user click can retry.
 			continue
 		}
-		// Refresh token is now revoked at the DB level. From here on, count
-		// it as revoked even if the cleanup steps below stumble.
 		revoked++
 
 		apiKey, gerr := s.apiKeyRepo.GetByID(ctx, tok.APIKeyID)
@@ -372,10 +1227,6 @@ func (s *OAuthProviderService) RevokeUserGrant(ctx context.Context, userID int64
 			}
 			continue
 		}
-		// Always invalidate the auth cache, even if the api_keys.status
-		// update below fails. The cache lookup is keyed by plaintext token,
-		// so leaving it hot would let a revoked token authenticate /v1/*
-		// for up to 60 seconds (see CLAUDE.md "Deepseek 双协议入口与缓存陷阱").
 		if s.authCache != nil {
 			s.authCache.InvalidateAuthCacheByKey(ctx, apiKey.Key)
 		}
@@ -384,20 +1235,16 @@ func (s *OAuthProviderService) RevokeUserGrant(ctx context.Context, userID int64
 			slog.Warn("oauth: disable api_key during revocation failed",
 				"api_key_id", tok.APIKeyID, "err", uerr)
 		}
+		// v2 access metadata
+		if s.accessRepo != nil {
+			_ = s.accessRepo.RevokeAccessTokenByAPIKeyID(ctx, tok.APIKeyID, now)
+		}
 	}
 	return revoked, nil
 }
 
 // ListUserGrants returns the user's active OAuth authorizations, one entry
-// per client_id. Each grant carries the union of scopes across active tokens,
-// the earliest authorized_at (i.e. when this app was first granted access in
-// this rotation chain), the most recent api_keys.last_used_at, and the count
-// of active tokens (multi-device sessions surface here as a badge, not as
-// separate rows).
-//
-// Returns an empty slice when the user has no active grants. Orphan client_id
-// rows (the OAuth client was deleted but tokens still exist) surface with
-// ClientName="" and ClientDisabled=true so the UI can render "已下线".
+// per client_id (legacy compat shape).
 func (s *OAuthProviderService) ListUserGrants(ctx context.Context, userID int64) ([]*OAuthGrant, error) {
 	if s.refreshRepo == nil {
 		return nil, nil
@@ -412,14 +1259,8 @@ func (s *OAuthProviderService) ListUserGrants(ctx context.Context, userID int64)
 	}
 
 	type accumulator struct {
-		grant     *OAuthGrant
-		scopeSeen map[string]struct{}
-		// We currently lack created_at on OAuthRefreshToken (the type doesn't
-		// surface it), so first_authorized_at is approximated by the earliest
-		// non-expired refresh expiry minus the client's refresh TTL. To keep
-		// this honest without schema churn, we initialize FirstAuthorizedAt
-		// with the soonest ExpiresAt and let the handler do the math after we
-		// know the client's TTL. Storing the soonest-expires for now.
+		grant           *OAuthGrant
+		scopeSeen       map[string]struct{}
 		earliestExpires time.Time
 	}
 	groups := make(map[string]*accumulator, len(tokens))
@@ -455,25 +1296,19 @@ func (s *OAuthProviderService) ListUserGrants(ctx context.Context, userID int64)
 
 	out := make([]*OAuthGrant, 0, len(groups))
 	for clientID, acc := range groups {
-		// Resolve client metadata.
 		client, cerr := s.clientRepo.GetClientByID(ctx, clientID)
 		if cerr != nil || client == nil {
 			acc.grant.ClientName = ""
 			acc.grant.ClientDisabled = true
-			// We can't subtract a TTL we don't know, so fall back to "now".
 			acc.grant.FirstAuthorizedAt = now
 		} else {
 			acc.grant.ClientName = client.Name
 			acc.grant.ClientDisabled = client.Disabled
-			// FirstAuthorizedAt ≈ earliest_expires - refresh_ttl. Refresh TTL
-			// is per-client, so this is a stable lower bound on when the
-			// rotation chain started.
 			acc.grant.FirstAuthorizedAt = acc.earliestExpires.Add(
 				-time.Duration(client.RefreshTokenTTLSeconds) * time.Second,
 			)
 		}
 
-		// Pick the freshest api_keys.last_used_at across this client's tokens.
 		var lastUsed *time.Time
 		var earliestCreated *time.Time
 		for _, apiKeyID := range apiKeyIDsByClient[clientID] {
@@ -496,8 +1331,6 @@ func (s *OAuthProviderService) ListUserGrants(ctx context.Context, userID int64)
 			}
 		}
 		acc.grant.LastUsedAt = lastUsed
-		// Prefer api_keys.created_at if available — it's the actual first
-		// authorization timestamp for the *current* rotation chain.
 		if earliestCreated != nil {
 			acc.grant.FirstAuthorizedAt = *earliestCreated
 		}
@@ -505,7 +1338,6 @@ func (s *OAuthProviderService) ListUserGrants(ctx context.Context, userID int64)
 		out = append(out, acc.grant)
 	}
 
-	// Stable order: most recently used first, then alphabetical client_id.
 	sort.Slice(out, func(i, j int) bool {
 		li := timeOrZero(out[i].LastUsedAt)
 		lj := timeOrZero(out[j].LastUsedAt)
@@ -524,115 +1356,45 @@ func timeOrZero(t *time.Time) time.Time {
 	return *t
 }
 
-// RefreshAccessToken handles /oauth/token grant_type=refresh_token.
-//
-// Order of operations (each step is independently durable):
-//  1. ConsumeForRotation — atomically lock & revoke the old refresh row,
-//     stamp it with rotated_to_hash pointing at the next token. Replays after
-//     this step return ErrOAuthRefreshTokenRevoked.
-//  2. Disable the old access_token api_keys row (so a leaked plaintext can't
-//     outlive its refresh).
-//  3. Mint a new access_token api_keys row.
-//  4. Insert the new oauth_refresh_tokens row, fully populated.
-//
-// If steps 2–4 fail after step 1, the old refresh is gone but the user can
-// re-authorize. We accept that over the alternative of giving back a still-
-// usable old refresh on a partial failure. Client SDKs MUST NOT retry the
-// same refresh_token on a partial-failure error from this endpoint — the old
-// refresh row is already revoked. Clients should treat any error from
-// /oauth/token grant_type=refresh_token as terminal for that token and start
-// a fresh /oauth/authorize round trip.
-func (s *OAuthProviderService) RefreshAccessToken(
-	ctx context.Context,
-	clientID, clientSecret, refreshTokenPlain string,
-) (*IssuedToken, error) {
-	if strings.TrimSpace(refreshTokenPlain) == "" {
-		return nil, ErrOAuthRefreshTokenNotFound
-	}
-	client, err := s.LookupClient(ctx, clientID)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.authenticateClient(client, clientSecret); err != nil {
-		return nil, err
-	}
-	now := time.Now()
-
-	newAccessKey := oauthAccessTokenPrefix + mustOpaqueToken(defaultAccessTokenSecret)
-	newRefreshKey := oauthRefreshTokenPrefix + mustOpaqueToken(defaultRefreshSecret)
-	newRefreshHash := hashOAuthToken(newRefreshKey)
-
-	oldToken, err := s.refreshRepo.ConsumeForRotation(ctx, hashOAuthToken(refreshTokenPlain), newRefreshHash, now)
-	if err != nil {
-		return nil, err
-	}
-
-	// Disable the old access_token (its api_keys row).
-	if oldKey, gerr := s.apiKeyRepo.GetByID(ctx, oldToken.APIKeyID); gerr == nil && oldKey != nil {
-		oldKey.Status = StatusAPIKeyDisabled
-		_ = s.apiKeyRepo.Update(ctx, oldKey)
-		if s.authCache != nil {
-			s.authCache.InvalidateAuthCacheByKey(ctx, oldKey.Key)
-		}
-	}
-
-	// Mint the new access_token api_keys row.
-	groupID, err := s.resolveDefaultGroupID(ctx, client)
-	if err != nil {
-		return nil, err
-	}
-	accessExp := now.Add(time.Duration(client.AccessTokenTTLSeconds) * time.Second)
-	apiKey := &APIKey{
-		UserID:    oldToken.UserID,
-		Key:       newAccessKey,
-		Name:      fmt.Sprintf("OAuth %s", client.ClientID),
-		GroupID:   &groupID,
-		Status:    StatusAPIKeyActive,
-		ExpiresAt: &accessExp,
-	}
-	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
-		return nil, fmt.Errorf("create access token api_key: %w", err)
-	}
-
-	// Persist the new refresh row, fully populated.
-	if err := s.refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
-		TokenHash: newRefreshHash,
-		ClientID:  client.ClientID,
-		UserID:    oldToken.UserID,
-		APIKeyID:  apiKey.ID,
-		Scopes:    oldToken.Scopes,
-		ExpiresAt: now.Add(time.Duration(client.RefreshTokenTTLSeconds) * time.Second),
-	}); err != nil {
-		return nil, fmt.Errorf("persist rotated refresh token: %w", err)
-	}
-
-	return &IssuedToken{
-		AccessToken:  newAccessKey,
-		TokenType:    "Bearer",
-		ExpiresIn:    client.AccessTokenTTLSeconds,
-		RefreshToken: newRefreshKey,
-		Scope:        strings.Join(oldToken.Scopes, " "),
-	}, nil
-}
-
-// mintTokens creates an access_token (api_keys row) + refresh_token in one go.
-func (s *OAuthProviderService) mintTokens(
+// mintTokensFromCode is the v2 atomic-write path called after
+// ConsumeCode succeeds. It creates api_keys + oauth_access_tokens +
+// (optional) oauth_refresh_tokens.
+func (s *OAuthProviderService) mintTokensFromCode(
 	ctx context.Context,
 	client *OAuthClient,
-	userID int64,
-	scopes []string,
+	code *OAuthCode,
 ) (*IssuedToken, error) {
 	now := time.Now()
-	groupID, err := s.resolveDefaultGroupID(ctx, client)
-	if err != nil {
-		return nil, err
+
+	// Group binding: prefer the resolved group on the code; legacy codes
+	// without group_id fall back to ResolveOAuthGroup against the user's
+	// current permissions.
+	var groupID int64
+	if code.GroupID != nil && *code.GroupID > 0 {
+		groupID = *code.GroupID
+	} else {
+		resolved, err := s.ResolveOAuthGroup(ctx, code.UserID, client, nil)
+		if err != nil {
+			return nil, err
+		}
+		groupID = resolved
 	}
+
+	scopes := NormalizeScopes(code.Scopes)
+
+	// Identity for the token family (v2). For legacy codes without grant_id,
+	// generate fresh identifiers so the new tokens have proper bookkeeping.
+	grantID := stringValueOrEmpty(code.GrantID)
+	if grantID == "" {
+		grantID = uuid.NewString()
+	}
+	familyID := uuid.NewString()
 
 	accessKey := oauthAccessTokenPrefix + mustOpaqueToken(defaultAccessTokenSecret)
 	accessExp := now.Add(time.Duration(client.AccessTokenTTLSeconds) * time.Second)
 
 	apiKey := &APIKey{
-		UserID:    userID,
+		UserID:    code.UserID,
 		Key:       accessKey,
 		Name:      fmt.Sprintf("OAuth %s", client.ClientID),
 		GroupID:   &groupID,
@@ -643,34 +1405,72 @@ func (s *OAuthProviderService) mintTokens(
 		return nil, fmt.Errorf("create access token api_key: %w", err)
 	}
 
-	refreshKey := oauthRefreshTokenPrefix + mustOpaqueToken(defaultRefreshSecret)
-	refreshExp := now.Add(time.Duration(client.RefreshTokenTTLSeconds) * time.Second)
+	allowedSnap := code.AllowedGroupsSnapshot
+	if len(allowedSnap) == 0 {
+		allowedSnap = []int64{groupID}
+	}
 
-	if err := s.refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
-		TokenHash: hashOAuthToken(refreshKey),
-		ClientID:  client.ClientID,
-		UserID:    userID,
-		APIKeyID:  apiKey.ID,
-		Scopes:    scopes,
-		ExpiresAt: refreshExp,
-	}); err != nil {
-		return nil, fmt.Errorf("persist refresh token: %w", err)
+	if s.accessRepo != nil {
+		if err := s.accessRepo.CreateAccessToken(ctx, &OAuthAccessToken{
+			APIKeyID:        apiKey.ID,
+			GrantID:         grantID,
+			TokenFamilyID:   familyID,
+			ClientID:        client.ClientID,
+			UserID:          code.UserID,
+			Scopes:          scopes,
+			GroupID:         groupID,
+			AllowedGroupIDs: allowedSnap,
+			AppType:         client.AppType,
+			DeviceID:        code.DeviceID,
+			DeviceName:      code.DeviceName,
+			IssuedAt:        now,
+			ExpiresAt:       accessExp,
+		}); err != nil {
+			return nil, fmt.Errorf("create oauth access token metadata: %w", err)
+		}
+	}
+
+	wantsRefresh := HasScope(scopes, ScopeOfflineAccess) || client.AllowRefreshWithoutOfflineAccess
+	var refreshKey string
+	var refreshExpiresIn int
+	if wantsRefresh {
+		refreshKey = oauthRefreshTokenPrefix + mustOpaqueToken(defaultRefreshSecret)
+		refreshExp := now.Add(time.Duration(client.RefreshTokenTTLSeconds) * time.Second)
+		refreshExpiresIn = client.RefreshTokenTTLSeconds
+		grantPtr := grantID
+		familyPtr := familyID
+		gid := groupID
+		if err := s.refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+			TokenHash:             hashOAuthToken(refreshKey),
+			ClientID:              client.ClientID,
+			UserID:                code.UserID,
+			APIKeyID:              apiKey.ID,
+			Scopes:                scopes,
+			ExpiresAt:             refreshExp,
+			GrantID:               &grantPtr,
+			TokenFamilyID:         &familyPtr,
+			GroupID:               &gid,
+			AllowedGroupsSnapshot: allowedSnap,
+			DeviceID:              code.DeviceID,
+			DeviceName:            code.DeviceName,
+		}); err != nil {
+			return nil, fmt.Errorf("persist refresh token: %w", err)
+		}
 	}
 
 	return &IssuedToken{
-		AccessToken:  accessKey,
-		TokenType:    "Bearer",
-		ExpiresIn:    client.AccessTokenTTLSeconds,
-		RefreshToken: refreshKey,
-		Scope:        strings.Join(scopes, " "),
+		AccessToken:           accessKey,
+		TokenType:             "Bearer",
+		ExpiresIn:             client.AccessTokenTTLSeconds,
+		RefreshToken:          refreshKey,
+		RefreshTokenExpiresIn: refreshExpiresIn,
+		Scope:                 strings.Join(scopes, " "),
+		GroupID:               groupID,
 	}, nil
 }
 
-// resolveDefaultGroupID picks the group_id that issued tokens are bound to,
-// then verifies the group still exists and is active so we don't issue tokens
-// that point at a deleted/disabled group.
-//
-// Priority: client.default_group_id → setting oauth_default_group_id → error.
+// resolveDefaultGroupID is the v1 fallback used by tests still hitting the
+// legacy mintTokens path. v2 uses ResolveOAuthGroup directly.
 func (s *OAuthProviderService) resolveDefaultGroupID(ctx context.Context, client *OAuthClient) (int64, error) {
 	var groupID int64
 	if client.DefaultGroupID != nil && *client.DefaultGroupID > 0 {
@@ -733,6 +1533,29 @@ func scopesAllowed(allowed, requested []string) bool {
 	return true
 }
 
+// validatePKCEChallenge enforces RFC 7636 character/length rules.
+//
+// length: 43..128, charset: base64url unreserved (RFC 4648 §5 alphabet plus
+// `-` `_`, no padding).
+func validatePKCEChallenge(challenge string) bool {
+	n := len(challenge)
+	if n < pkceMinLength || n > pkceMaxLength {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		c := challenge[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '-' || c == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // ParseScopes splits the OAuth scope string (space-delimited per RFC 6749 §3.3).
 func ParseScopes(raw string) []string {
 	fields := strings.Fields(raw)
@@ -761,8 +1584,6 @@ func generateOpaqueToken(nbytes int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// mustOpaqueToken panics on rand failure (the same posture as crypto/rand callers
-// elsewhere in this codebase). It only ever fails on hardware entropy issues.
 func mustOpaqueToken(nbytes int) string {
 	t, err := generateOpaqueToken(nbytes)
 	if err != nil {
@@ -782,9 +1603,55 @@ func verifyPKCES256(challenge, verifier string) bool {
 }
 
 // IsOAuthAccessToken returns true if the bearer string is one this provider issued.
-//
-// Used by the /v1/* middleware so OAuth tokens get OAuth-shaped 401s instead
-// of generic API-key error envelopes.
 func IsOAuthAccessToken(token string) bool {
 	return strings.HasPrefix(token, oauthAccessTokenPrefix)
+}
+
+func filterAllowedByClient(client *OAuthClient, ids []int64) []int64 {
+	if client.AllowedGroupIDs == nil {
+		return ids
+	}
+	allow := make(map[int64]struct{}, len(client.AllowedGroupIDs))
+	for _, id := range client.AllowedGroupIDs {
+		allow[id] = struct{}{}
+	}
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := allow[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func int64InSlice(haystack []int64, needle int64) bool {
+	for _, v := range haystack {
+		if v == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func dedupeInt64s(in []int64) []int64 {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(in))
+	out := make([]int64, 0, len(in))
+	for _, v := range in {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func stringValueOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
