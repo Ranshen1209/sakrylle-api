@@ -135,6 +135,13 @@ docs/*
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/legal/
 !docs/legal/*.md
+!docs/OAUTH_CLIENT_INTEGRATION.md
+!docs/OAUTH_V2_DESIGN.md
+!docs/OAUTH_V2_INTEGRATION.md
+!docs/OAUTH_V2_ERROR_REFERENCE.md
+!docs/OAUTH_V2_DEVICE_FLOW_CLI_GUIDE.md
+!docs/OAUTH_V2_SCOPE_MIGRATION.md
+!docs/OAUTH_V2_FIRST_PARTY_SECURITY_CHECKLIST.md
 .serena/
 .codex/
 frontend/coverage/
