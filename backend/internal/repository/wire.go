@@ -104,6 +104,7 @@ var ProviderSet = wire.NewSet(
 	NewOAuthDeviceCodeRepo,
 	NewOAuthAuthorizeTransactionRepo,
 	NewOAuthAPIKeyRepository,
+	NewOAuthTokenMintRepo,
 
 	// Cache implementations
 	NewGatewayCache,

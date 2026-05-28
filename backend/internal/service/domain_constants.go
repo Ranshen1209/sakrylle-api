@@ -132,6 +132,11 @@ const (
 	SettingKeyPromoCodeEnabled                 = "promo_code_enabled"                  // 是否启用优惠码功能
 	SettingKeyPasswordResetEnabled             = "password_reset_enabled"              // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                      = "frontend_url"                        // 前端基础URL，用于生成邮件中的重置密码链接
+	// SettingKeyOAuthIssuer is the canonical OAuth issuer URL key (per migration
+	// 145). Read with priority: oauth_issuer → frontend_url → request scheme://host
+	// fallback. Discovery (RFC 8414) and device flow §12.7 verification_uri must
+	// agree, so both code paths resolve through SettingService.GetOAuthIssuer.
+	SettingKeyOAuthIssuer                      = "oauth_issuer"                        // OAuth provider canonical issuer URL (deployment-specific, not seeded)
 	SettingKeyInvitationCodeEnabled            = "invitation_code_enabled"             // 是否启用邀请码注册
 	SettingKeyAffiliateEnabled                 = "affiliate_enabled"                   // 邀请返利功能总开关
 	SettingKeyAffiliateRebateRate              = "affiliate_rebate_rate"               // 邀请返利比例（百分比，0-100）
