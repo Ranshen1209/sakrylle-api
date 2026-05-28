@@ -63,6 +63,27 @@ func (_u *OAuthAuthorizeTransactionUpdate) SetNillableCsrfHash(v *string) *OAuth
 	return _u
 }
 
+// SetUserID sets the "user_id" field.
+func (_u *OAuthAuthorizeTransactionUpdate) SetUserID(v int64) *OAuthAuthorizeTransactionUpdate {
+	_u.mutation.ResetUserID()
+	_u.mutation.SetUserID(v)
+	return _u
+}
+
+// SetNillableUserID sets the "user_id" field if the given value is not nil.
+func (_u *OAuthAuthorizeTransactionUpdate) SetNillableUserID(v *int64) *OAuthAuthorizeTransactionUpdate {
+	if v != nil {
+		_u.SetUserID(*v)
+	}
+	return _u
+}
+
+// AddUserID adds value to the "user_id" field.
+func (_u *OAuthAuthorizeTransactionUpdate) AddUserID(v int64) *OAuthAuthorizeTransactionUpdate {
+	_u.mutation.AddUserID(v)
+	return _u
+}
+
 // SetClientID sets the "client_id" field.
 func (_u *OAuthAuthorizeTransactionUpdate) SetClientID(v string) *OAuthAuthorizeTransactionUpdate {
 	_u.mutation.SetClientID(v)
@@ -429,6 +450,12 @@ func (_u *OAuthAuthorizeTransactionUpdate) sqlSave(ctx context.Context) (_node i
 	if value, ok := _u.mutation.CsrfHash(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldCsrfHash, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.UserID(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedUserID(); ok {
+		_spec.AddField(oauthauthorizetransaction.FieldUserID, field.TypeInt64, value)
+	}
 	if value, ok := _u.mutation.ClientID(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldClientID, field.TypeString, value)
 	}
@@ -556,6 +583,27 @@ func (_u *OAuthAuthorizeTransactionUpdateOne) SetNillableCsrfHash(v *string) *OA
 	if v != nil {
 		_u.SetCsrfHash(*v)
 	}
+	return _u
+}
+
+// SetUserID sets the "user_id" field.
+func (_u *OAuthAuthorizeTransactionUpdateOne) SetUserID(v int64) *OAuthAuthorizeTransactionUpdateOne {
+	_u.mutation.ResetUserID()
+	_u.mutation.SetUserID(v)
+	return _u
+}
+
+// SetNillableUserID sets the "user_id" field if the given value is not nil.
+func (_u *OAuthAuthorizeTransactionUpdateOne) SetNillableUserID(v *int64) *OAuthAuthorizeTransactionUpdateOne {
+	if v != nil {
+		_u.SetUserID(*v)
+	}
+	return _u
+}
+
+// AddUserID adds value to the "user_id" field.
+func (_u *OAuthAuthorizeTransactionUpdateOne) AddUserID(v int64) *OAuthAuthorizeTransactionUpdateOne {
+	_u.mutation.AddUserID(v)
 	return _u
 }
 
@@ -954,6 +1002,12 @@ func (_u *OAuthAuthorizeTransactionUpdateOne) sqlSave(ctx context.Context) (_nod
 	}
 	if value, ok := _u.mutation.CsrfHash(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldCsrfHash, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UserID(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedUserID(); ok {
+		_spec.AddField(oauthauthorizetransaction.FieldUserID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.ClientID(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldClientID, field.TypeString, value)

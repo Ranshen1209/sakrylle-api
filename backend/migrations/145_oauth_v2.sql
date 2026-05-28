@@ -80,6 +80,24 @@ CREATE INDEX IF NOT EXISTS idx_oauth_authorize_transactions_expires_at
 CREATE INDEX IF NOT EXISTS idx_oauth_authorize_transactions_client_id
     ON oauth_authorize_transactions(client_id);
 
+-- Sanity guard against clock skew or accidental backdating: when consumed_at
+-- is set, it must be >= created_at. The table has no status enum (consumption
+-- is implied by consumed_at IS NOT NULL), so this is the strongest invariant
+-- the schema supports. Service-layer locking still does the heavy lifting for
+-- atomic single-consumption; this is defence in depth at the storage tier.
+-- Wrapped in DO block because PostgreSQL has no "ADD CONSTRAINT IF NOT EXISTS".
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'oauth_authorize_transactions_consumed_at_monotonic_check'
+    ) THEN
+        ALTER TABLE oauth_authorize_transactions
+            ADD CONSTRAINT oauth_authorize_transactions_consumed_at_monotonic_check
+            CHECK (consumed_at IS NULL OR consumed_at >= created_at);
+    END IF;
+END$$;
+
 -- ── 10.4: Extend oauth_refresh_tokens ──────────────────────────────────────
 
 ALTER TABLE oauth_refresh_tokens
@@ -318,9 +336,14 @@ BEGIN
 END$$;
 
 -- ── 10.7: Settings seeds (operator flips production values) ────────────────
+--
+-- oauth_issuer is intentionally NOT seeded here: it is deployment-specific
+-- (e.g. https://sub.sakrylle.com vs other forks) and seeding a default would
+-- leak one operator's hostname into every fork's discovery document.
+-- Operators MUST set oauth_issuer per deployment via settings UPSERT or a
+-- deployment-specific seed file (cf. migration 144_oauth_seed_sakrylle.sql).
 
 INSERT INTO settings (key, value, updated_at) VALUES
-    ('oauth_issuer', 'https://sub.sakrylle.com', NOW()),
     -- Default OFF in migration; operator flips to true after smoke per §15.2.
     ('oauth_scope_enforcement_enabled', 'false', NOW()),
     ('oauth_device_flow_enabled', 'true', NOW()),

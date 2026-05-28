@@ -1,3 +1,15 @@
+// Package migrations text-only structural tests for migration 145.
+//
+// SCOPE: these tests scan the embedded SQL string for required tokens and
+// idempotency markers. They do NOT execute the migration against a real
+// PostgreSQL instance — there is no testcontainer dependency in this package
+// by design (keeps `go test ./...` fast and offline-friendly).
+//
+// Real execution validation happens during deploy: `migrations.Apply` runs
+// the SQL on container start (see backend/internal/setup), and the staging
+// deploy runbook requires a smoke pass before flipping production. There is
+// currently no `make migrate-up` CI target — if one is added later, point
+// the comment here at it.
 package migrations
 
 import (
@@ -108,7 +120,12 @@ func TestMigration145OAuthV2EmbedsAllRequiredSchema(t *testing.T) {
 
 	// §10.7: settings seeded with ON CONFLICT DO NOTHING. Enforcement off
 	// in migration; operator flips after smoke per §15.2.
-	require.Contains(t, sql, "('oauth_issuer'")
+	//
+	// oauth_issuer is intentionally NOT seeded: it is deployment-specific
+	// and seeding "https://sub.sakrylle.com" would leak Sakrylle's hostname
+	// into every fork's discovery document. This is a negative assertion to
+	// guard against re-introduction in a rebase.
+	require.NotContains(t, sql, "('oauth_issuer'", "oauth_issuer must be set per deployment, not seeded in generic migration 145")
 	require.Contains(t, sql, "('oauth_scope_enforcement_enabled', 'false'")
 	require.Contains(t, sql, "('oauth_device_flow_enabled', 'true'")
 	require.Contains(t, sql, "('oauth_v2_ui_enabled', 'false'")
@@ -123,6 +140,12 @@ func TestMigration145OAuthV2EmbedsAllRequiredSchema(t *testing.T) {
 	require.Contains(t, sql, "DELETE FROM oauth_authorize_transactions")
 	require.Contains(t, sql, "DELETE FROM oauth_device_codes")
 
+	// FIX 3: §10.3 CHECK constraint enforcing consumed_at >= created_at on
+	// oauth_authorize_transactions. Defence-in-depth against clock skew or
+	// accidental backdating that would slip past service-layer locks.
+	require.Contains(t, sql, "oauth_authorize_transactions_consumed_at_monotonic_check")
+	require.Contains(t, sql, "consumed_at IS NULL OR consumed_at >= created_at")
+
 	// Forward-only / idempotency invariants: no DROP TABLE, no
 	// non-idempotent INSERT, no ALTER without IF NOT EXISTS for new cols.
 	require.NotContains(t, sql, "DROP TABLE")
@@ -132,6 +155,23 @@ func TestMigration145OAuthV2EmbedsAllRequiredSchema(t *testing.T) {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "ADD COLUMN ") && !strings.Contains(trimmed, "IF NOT EXISTS") {
 			t.Fatalf("non-idempotent ADD COLUMN in migration 145: %q", trimmed)
+		}
+	}
+	// Every CREATE TABLE for v2-introduced tables must carry IF NOT EXISTS
+	// so the migration can be re-run safely against partially-applied state.
+	for _, line := range strings.Split(sql, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "CREATE TABLE ") && !strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("non-idempotent CREATE TABLE in migration 145: %q", trimmed)
+		}
+	}
+	// Every CREATE INDEX must carry IF NOT EXISTS for the same reason.
+	// CREATE UNIQUE INDEX is also covered by the prefix check.
+	for _, line := range strings.Split(sql, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if (strings.HasPrefix(trimmed, "CREATE INDEX ") || strings.HasPrefix(trimmed, "CREATE UNIQUE INDEX ")) &&
+			!strings.Contains(trimmed, "IF NOT EXISTS") {
+			t.Fatalf("non-idempotent CREATE INDEX in migration 145: %q", trimmed)
 		}
 	}
 }

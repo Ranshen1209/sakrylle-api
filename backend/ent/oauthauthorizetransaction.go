@@ -26,6 +26,8 @@ type OAuthAuthorizeTransaction struct {
 	TransactionID string `json:"transaction_id,omitempty"`
 	// SHA-256(plaintext CSRF); plaintext is returned only in rendered consent page
 	CsrfHash string `json:"csrf_hash,omitempty"`
+	// Authenticated user id captured at /authorize time; approve must reject mismatched JWT subject
+	UserID int64 `json:"user_id,omitempty"`
 	// ClientID holds the value of the "client_id" field.
 	ClientID string `json:"client_id,omitempty"`
 	// RedirectURI holds the value of the "redirect_uri" field.
@@ -66,7 +68,7 @@ func (*OAuthAuthorizeTransaction) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case oauthauthorizetransaction.FieldScopes, oauthauthorizetransaction.FieldAllowedGroupsSnapshot:
 			values[i] = new([]byte)
-		case oauthauthorizetransaction.FieldID, oauthauthorizetransaction.FieldRequestedGroupID:
+		case oauthauthorizetransaction.FieldID, oauthauthorizetransaction.FieldUserID, oauthauthorizetransaction.FieldRequestedGroupID:
 			values[i] = new(sql.NullInt64)
 		case oauthauthorizetransaction.FieldTransactionID, oauthauthorizetransaction.FieldCsrfHash, oauthauthorizetransaction.FieldClientID, oauthauthorizetransaction.FieldRedirectURI, oauthauthorizetransaction.FieldResponseType, oauthauthorizetransaction.FieldState, oauthauthorizetransaction.FieldCodeChallenge, oauthauthorizetransaction.FieldCodeChallengeMethod, oauthauthorizetransaction.FieldDeviceID, oauthauthorizetransaction.FieldDeviceName, oauthauthorizetransaction.FieldCreatedIP, oauthauthorizetransaction.FieldCreatedUserAgent:
 			values[i] = new(sql.NullString)
@@ -116,6 +118,12 @@ func (_m *OAuthAuthorizeTransaction) assignValues(columns []string, values []any
 				return fmt.Errorf("unexpected type %T for field csrf_hash", values[i])
 			} else if value.Valid {
 				_m.CsrfHash = value.String
+			}
+		case oauthauthorizetransaction.FieldUserID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field user_id", values[i])
+			} else if value.Valid {
+				_m.UserID = value.Int64
 			}
 		case oauthauthorizetransaction.FieldClientID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -264,6 +272,9 @@ func (_m *OAuthAuthorizeTransaction) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("csrf_hash=")
 	builder.WriteString(_m.CsrfHash)
+	builder.WriteString(", ")
+	builder.WriteString("user_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
 	builder.WriteString(", ")
 	builder.WriteString("client_id=")
 	builder.WriteString(_m.ClientID)

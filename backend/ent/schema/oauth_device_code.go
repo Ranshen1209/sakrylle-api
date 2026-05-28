@@ -50,7 +50,7 @@ func (OAuthDeviceCode) Fields() []ent.Field {
 		field.String("user_code_hash").
 			MaxLen(64).
 			NotEmpty().
-			Comment("SHA-256(user_code); partial unique index in DB covers pending+approved"),
+			Comment("SHA-256(user_code); partial unique index in DB covers pending+approved only — see migration 145 (idx_oauth_device_codes_user_code_active_unique). Ent cannot express partial indexes natively, so the constraint lives in SQL only."),
 		field.String("client_id").
 			MaxLen(128).
 			NotEmpty(),

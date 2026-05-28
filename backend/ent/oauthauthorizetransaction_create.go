@@ -62,6 +62,12 @@ func (_c *OAuthAuthorizeTransactionCreate) SetCsrfHash(v string) *OAuthAuthorize
 	return _c
 }
 
+// SetUserID sets the "user_id" field.
+func (_c *OAuthAuthorizeTransactionCreate) SetUserID(v int64) *OAuthAuthorizeTransactionCreate {
+	_c.mutation.SetUserID(v)
+	return _c
+}
+
 // SetClientID sets the "client_id" field.
 func (_c *OAuthAuthorizeTransactionCreate) SetClientID(v string) *OAuthAuthorizeTransactionCreate {
 	_c.mutation.SetClientID(v)
@@ -301,6 +307,9 @@ func (_c *OAuthAuthorizeTransactionCreate) check() error {
 			return &ValidationError{Name: "csrf_hash", err: fmt.Errorf(`ent: validator failed for field "OAuthAuthorizeTransaction.csrf_hash": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.UserID(); !ok {
+		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "OAuthAuthorizeTransaction.user_id"`)}
+	}
 	if _, ok := _c.mutation.ClientID(); !ok {
 		return &ValidationError{Name: "client_id", err: errors.New(`ent: missing required field "OAuthAuthorizeTransaction.client_id"`)}
 	}
@@ -410,6 +419,10 @@ func (_c *OAuthAuthorizeTransactionCreate) createSpec() (*OAuthAuthorizeTransact
 	if value, ok := _c.mutation.CsrfHash(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldCsrfHash, field.TypeString, value)
 		_node.CsrfHash = value
+	}
+	if value, ok := _c.mutation.UserID(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldUserID, field.TypeInt64, value)
+		_node.UserID = value
 	}
 	if value, ok := _c.mutation.ClientID(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldClientID, field.TypeString, value)
@@ -556,6 +569,24 @@ func (u *OAuthAuthorizeTransactionUpsert) SetCsrfHash(v string) *OAuthAuthorizeT
 // UpdateCsrfHash sets the "csrf_hash" field to the value that was provided on create.
 func (u *OAuthAuthorizeTransactionUpsert) UpdateCsrfHash() *OAuthAuthorizeTransactionUpsert {
 	u.SetExcluded(oauthauthorizetransaction.FieldCsrfHash)
+	return u
+}
+
+// SetUserID sets the "user_id" field.
+func (u *OAuthAuthorizeTransactionUpsert) SetUserID(v int64) *OAuthAuthorizeTransactionUpsert {
+	u.Set(oauthauthorizetransaction.FieldUserID, v)
+	return u
+}
+
+// UpdateUserID sets the "user_id" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsert) UpdateUserID() *OAuthAuthorizeTransactionUpsert {
+	u.SetExcluded(oauthauthorizetransaction.FieldUserID)
+	return u
+}
+
+// AddUserID adds v to the "user_id" field.
+func (u *OAuthAuthorizeTransactionUpsert) AddUserID(v int64) *OAuthAuthorizeTransactionUpsert {
+	u.Add(oauthauthorizetransaction.FieldUserID, v)
 	return u
 }
 
@@ -865,6 +896,27 @@ func (u *OAuthAuthorizeTransactionUpsertOne) SetCsrfHash(v string) *OAuthAuthori
 func (u *OAuthAuthorizeTransactionUpsertOne) UpdateCsrfHash() *OAuthAuthorizeTransactionUpsertOne {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.UpdateCsrfHash()
+	})
+}
+
+// SetUserID sets the "user_id" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) SetUserID(v int64) *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.SetUserID(v)
+	})
+}
+
+// AddUserID adds v to the "user_id" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) AddUserID(v int64) *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.AddUserID(v)
+	})
+}
+
+// UpdateUserID sets the "user_id" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsertOne) UpdateUserID() *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.UpdateUserID()
 	})
 }
 
@@ -1377,6 +1429,27 @@ func (u *OAuthAuthorizeTransactionUpsertBulk) SetCsrfHash(v string) *OAuthAuthor
 func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateCsrfHash() *OAuthAuthorizeTransactionUpsertBulk {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.UpdateCsrfHash()
+	})
+}
+
+// SetUserID sets the "user_id" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) SetUserID(v int64) *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.SetUserID(v)
+	})
+}
+
+// AddUserID adds v to the "user_id" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) AddUserID(v int64) *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.AddUserID(v)
+	})
+}
+
+// UpdateUserID sets the "user_id" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateUserID() *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.UpdateUserID()
 	})
 }
 

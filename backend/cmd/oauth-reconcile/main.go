@@ -38,9 +38,14 @@ const (
 	// row has no associated refresh-token row. Mirrors migration 145.
 	legacyDefaultClientID = "sakrylle-image-playground"
 
-	// legacyDefaultScopes is the canonical legacy scope bundle assigned to
-	// rows that have no stored scopes. Matches §15.4 / migration 145.
-	legacyDefaultScopes = `["image_generation", "balance:read", "models:read"]`
+	// legacyDefaultScopes is the canonical scope bundle assigned to rows that
+	// have no stored scopes. Uses canonical v2 identifiers (see
+	// internal/service/oauth_scopes.go: ScopeImagesCreate /
+	// ScopeAccountBalanceRead / ScopeModelsRead) so post-apply rows do NOT
+	// re-trigger fallbackScopesQuery's legacy "image_generation" detector.
+	// NormalizeScopes still rewrites legacy aliases on existing rows, but new
+	// inserts now skip the legacy step entirely.
+	legacyDefaultScopes = `["images:create", "account:balance:read", "models:read"]`
 
 	// reportSampleLimit caps how many redacted IDs we print per category.
 	reportSampleLimit = 10
