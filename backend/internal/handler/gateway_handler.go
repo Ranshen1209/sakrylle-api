@@ -16,11 +16,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -990,11 +993,6 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	ownedBy := platformOwnedBy(platform)
 
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
-	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-		availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(platform), apiKey.Group.ModelsListConfig.Models)
-		writeCustomModelsList(c, platform, availableModels)
-		return
-	}
 
 	// Per docs/SAKRYLLE_API_SPEC.md §3, surface allow_image_generation so
 	// OAuth clients (image.sakrylle.com) can filter the model list.
@@ -1004,8 +1002,37 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		allowImage = apiKey.Group.AllowImageGeneration
 	}
 
-	models := make([]gin.H, 0, len(availableModels))
-	for _, modelID := range availableModels {
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
+		availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(platform), apiKey.Group.ModelsListConfig.Models)
+		writeCustomModelsList(c, platform, availableModels, ownedBy, emitImageFlag, allowImage)
+		return
+	}
+
+	// 不走硬编码 fallback：availableModels 为空时返回空 list，避免泄露未配置的模型（见 CLAUDE.md）。
+	writeCustomModelsList(c, platform, availableModels, ownedBy, emitImageFlag, allowImage)
+}
+
+// platformOwnedBy 把内部 platform 标识转成 OpenAI 兼容客户端期望的 owned_by。
+// 缺这个字段会让 CherryStudio 等客户端按 channel UUID 分组，UI 显示成乱码。
+func platformOwnedBy(platform string) string {
+	switch platform {
+	case service.PlatformOpenAI:
+		return "openai"
+	case service.PlatformGemini:
+		return "google"
+	default:
+		return "anthropic"
+	}
+}
+
+const (
+	defaultModelCreatedAtUnix    = int64(1704067200) // 2024-01-01T00:00:00Z
+	defaultModelCreatedAtRFC3339 = "2024-01-01T00:00:00Z"
+)
+
+func writeModelsList(c *gin.Context, modelIDs []string, ownedBy string, emitImageFlag, allowImage bool) {
+	models := make([]gin.H, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
 		entry := gin.H{
 			"id":           modelID,
 			"object":       "model",
@@ -1026,71 +1053,46 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	})
 }
 
-// platformOwnedBy 把内部 platform 标识转成 OpenAI 兼容客户端期望的 owned_by。
-func platformOwnedBy(platform string) string {
-	switch platform {
-	case service.PlatformOpenAI:
-		return "openai"
-	case service.PlatformGemini:
-		return "google"
-	default:
-		return "anthropic"
-	}
-}
-
-const (
-	defaultModelCreatedAtUnix    = int64(1704067200) // 2024-01-01T00:00:00Z
-	defaultModelCreatedAtRFC3339 = "2024-01-01T00:00:00Z"
-)
-
-func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
+func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string, ownedBy string, emitImageFlag, allowImage bool) {
 	if platform == service.PlatformOpenAI {
-		writeOpenAIModelsList(c, modelIDs)
+		writeOpenAIModelsList(c, modelIDs, emitImageFlag, allowImage)
 		return
 	}
-	writeModelsList(c, platform, modelIDs)
+	writeModelsList(c, modelIDs, ownedBy, emitImageFlag, allowImage)
 }
 
-func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
-	ownedBy := platformOwnedBy(platform)
-	models := make([]gin.H, 0, len(modelIDs))
-	for _, modelID := range modelIDs {
-		models = append(models, gin.H{
-			"id":           modelID,
-			"object":       "model",
-			"type":         "model",
-			"display_name": modelID,
-			"owned_by":     ownedBy,
-			"created":      defaultModelCreatedAtUnix,
-			"created_at":   defaultModelCreatedAtRFC3339,
-		})
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   models,
-	})
-}
-
-func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
+func writeOpenAIModelsList(c *gin.Context, modelIDs []string, emitImageFlag, allowImage bool) {
 	defaultsByID := make(map[string]openai.Model, len(openai.DefaultModels))
 	for _, model := range openai.DefaultModels {
 		defaultsByID[model.ID] = model
 	}
 
-	models := make([]openai.Model, 0, len(modelIDs))
+	models := make([]gin.H, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
+		var entry gin.H
 		if model, ok := defaultsByID[modelID]; ok {
-			models = append(models, model)
-			continue
+			entry = gin.H{
+				"id":           model.ID,
+				"object":       model.Object,
+				"created":      model.Created,
+				"owned_by":     model.OwnedBy,
+				"type":         model.Type,
+				"display_name": model.DisplayName,
+			}
+		} else {
+			entry = gin.H{
+				"id":           modelID,
+				"object":       "model",
+				"created":      int64(1704067200),
+				"owned_by":     "openai",
+				"type":         "model",
+				"display_name": modelID,
+			}
 		}
-		models = append(models, openai.Model{
-			ID:          modelID,
-			Object:      "model",
-			Created:     1704067200,
-			OwnedBy:     "openai",
-			Type:        "model",
-			DisplayName: modelID,
-		})
+		if emitImageFlag {
+			entry["allow_image_generation"] = allowImage
+		}
+		models = append(models, entry)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
@@ -1174,8 +1176,6 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return ids
 	}
 }
-
-
 // AntigravityModels 返回 Antigravity 支持的全部模型
 // GET /antigravity/models
 func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
