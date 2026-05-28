@@ -257,3 +257,30 @@ Before a new first-party client ships:
   must publish on `auth:cache:invalidate` (full plaintext API key) AND
   `oauth:cache:invalidate` (envelope JSON). Skipping either leaves
   zombie tokens for ~60s.
+
+---
+
+## 14. Device flow brute-force defense (§10.6 clarification)
+
+The §10.6 baseline mentions a per-code 5-strikes lockout via
+`failed_user_code_attempts`. In practice that counter is **only**
+incremented when a wrong guess happens to hash to a real `user_code_hash`
+— which never happens for adversarial guesses, because the attacker
+doesn't know the canonical user code. The counter exists for defense in
+depth against a stale row that gets repeatedly mis-routed at the service
+layer (e.g. ResolveOAuthGroup failures), not as the primary brute-force
+guard.
+
+The **real** brute-force defense for device flow on Sakrylle is the
+per-IP rate limit on the verification endpoints (see
+`internal/server/routes/oauth_device.go`):
+
+| Endpoint | Limit | Window | Failure mode |
+|---|---|---|---|
+| `POST /oauth/device/code` | 10 | 1 min | fail-close |
+| `GET  /oauth/device` | 30 | 1 min | fail-close |
+| `POST /api/v1/oauth/device/approve` | 5 | 15 min | fail-close |
+| `POST /api/v1/oauth/device/deny` | 5 | 15 min | fail-close |
+
+If you fork the routing, preserve those limits — the user-code lockout
+counter is not a substitute.

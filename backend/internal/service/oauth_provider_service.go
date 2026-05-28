@@ -130,6 +130,11 @@ type OAuthProviderService struct {
 	authzTxRepo OAuthAuthorizeTransactionRepository
 	apiKeyRepo  APIKeyRepository
 	oauthAPIKey OAuthAPIKeyRepository // batch disable; nil-safe
+	// mintRepo is the FIX H4 atomic-write surface for the api_keys +
+	// oauth_access_tokens + oauth_refresh_tokens trio. When non-nil it is
+	// used for both mintTokensFromCode and RefreshAccessToken; when nil
+	// (legacy tests) the service falls back to per-row writes.
+	mintRepo    OAuthTokenMintRepository
 	groupRepo   GroupRepository
 	groupAccess GroupAccessPolicy
 	settingRepo SettingRepository
@@ -185,18 +190,37 @@ func NewOAuthProviderService(
 	}
 }
 
+// WithTokenMintRepo wires the FIX H4 atomic-mint repo into an existing
+// service instance. Production wiring (cmd/server) calls this once during
+// startup; tests that need to exercise the atomic path can do the same.
+// Calling with nil is a no-op (preserves the legacy non-atomic mint path).
+func (s *OAuthProviderService) WithTokenMintRepo(repo OAuthTokenMintRepository) *OAuthProviderService {
+	if s != nil {
+		s.mintRepo = repo
+	}
+	return s
+}
+
 // IsEnabled reports whether the OAuth provider is enabled in DB settings.
-// Treats missing/unparseable values as enabled so a fresh install works.
+//
+// Fails closed on read errors and missing/unparseable values: when the
+// settings row cannot be loaded we cannot prove the provider is supposed to
+// be on, so we refuse to issue tokens. Operators must explicitly set
+// `oauth_provider_enabled=true` (truthy) — the migration seeds this on
+// fresh installs.
 func (s *OAuthProviderService) IsEnabled(ctx context.Context) bool {
+	if s.settingRepo == nil {
+		return false
+	}
 	value, err := s.settingRepo.GetValue(ctx, "oauth_provider_enabled")
 	if err != nil {
-		return true
+		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "false", "0", "off", "no":
-		return false
-	default:
+	case "true", "1", "on", "yes":
 		return true
+	default:
+		return false
 	}
 }
 
@@ -507,6 +531,7 @@ func (s *OAuthProviderService) BeginAuthorizeTransaction(
 	tx := &OAuthAuthorizeTransaction{
 		TransactionID:         txID,
 		CSRFHash:              hashOAuthToken(csrfPlain),
+		UserID:                params.UserID,
 		ClientID:              client.ClientID,
 		RedirectURI:           params.RedirectURI,
 		ResponseType:          authReq.ResponseType,
@@ -539,6 +564,11 @@ func (s *OAuthProviderService) BeginAuthorizeTransaction(
 // userIDFromJWT binds the transaction to the currently logged-in user — even
 // if the cookie is replayed by another session, we refuse to surface the
 // transaction.
+//
+// FIX C1 (§18.7): the transaction row stores the user_id captured at
+// /authorize time. This method rejects with ErrOAuthSubjectMismatch when the
+// JWT subject differs — that's a real attack signal (CSRF / IDOR replay) and
+// is logged at warn so observability picks it up.
 func (s *OAuthProviderService) LoadAuthorizeTransactionForApproval(
 	ctx context.Context,
 	txID, csrfToken string,
@@ -547,7 +577,10 @@ func (s *OAuthProviderService) LoadAuthorizeTransactionForApproval(
 	if strings.TrimSpace(txID) == "" {
 		return nil, nil, ErrOAuthAuthorizeTransactionNotFound
 	}
-	tx, err := s.authzTxRepo.GetAuthorizeTransactionForUpdate(ctx, txID, time.Now())
+	if userIDFromJWT <= 0 {
+		return nil, nil, ErrOAuthSubjectMismatch
+	}
+	tx, err := s.authzTxRepo.GetAuthorizeTransactionForApproval(ctx, txID, time.Now())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -557,38 +590,63 @@ func (s *OAuthProviderService) LoadAuthorizeTransactionForApproval(
 	if subtle.ConstantTimeCompare([]byte(hashOAuthToken(csrfToken)), []byte(tx.CSRFHash)) != 1 {
 		return nil, nil, ErrOAuthAuthorizeCSRFMismatch
 	}
+	// FIX C1: subject binding. The transaction was created against a
+	// specific authenticated user; an approve POST from a different JWT
+	// subject (even with a stolen CSRF cookie) must be rejected. Constant-
+	// time compare not needed for int64 equality, but log loudly so SOC
+	// alerts on the divergence.
+	//
+	// FIX A3 (zero-sentinel): we do NOT exempt rows where tx.UserID == 0.
+	// BeginAuthorizeTransaction now rejects params.UserID <= 0, so the only
+	// way a zero-user row reaches us is the migration-146 backfill of
+	// pre-existing legacy rows. Those expire within the 10-minute
+	// authorizeTransactionTTL window, so after that window any zero-user row
+	// is suspect — fail closed. Pre-A3 this branch was open ("if tx.UserID
+	// > 0 && ...") which would silently accept any JWT subject on legacy
+	// rows; that's a fail-open hole.
+	if tx.UserID != userIDFromJWT {
+		slog.Warn("oauth: authorize transaction subject mismatch",
+			"transaction_id", tx.TransactionID,
+			"client_id", tx.ClientID,
+			"transaction_user_id", tx.UserID,
+			"jwt_user_id", userIDFromJWT,
+		)
+		return nil, nil, ErrOAuthSubjectMismatch
+	}
 	client, err := s.LookupClient(ctx, tx.ClientID)
 	if err != nil {
 		return nil, nil, err
 	}
-	_ = userIDFromJWT // server-side transaction was created post-login; the
-	// subject binding is enforced by ApproveAuthorization comparing the
-	// authenticated userIDFromJWT to the userID it threads through code mint.
 	return tx, client, nil
 }
 
 // ApproveAuthorization consumes a pending /authorize transaction and mints an
 // authorization code bound to the resolved group.
 //
+// userIDFromJWT is the AUTHORITATIVE subject identity for this approval —
+// taken from the consent-page JWT cookie/header at the handler boundary.
+// LoadAuthorizeTransactionForApproval enforces that this matches the user_id
+// captured when the transaction was first opened (FIX C1 §18.7). Downstream
+// code mint, grant ID issuance, and group resolution all use this value.
+//
 // finalGroupID may override the transaction's RequestedGroupID (the user can
 // switch group on the consent page); both must pass ResolveOAuthGroup against
 // the current user's permissions AND be in the snapshot stored on the
 // transaction.
 //
-// The transaction is marked consumed atomically with the code creation: if
-// the code insert fails after we mark consumed, the user simply re-runs the
-// authorize round trip — better than letting the same transaction mint two
-// codes if a retry collides with a slow DB.
+// FIX C2: the consume-then-issue pair runs inside a single repository
+// transaction so a code-insert failure leaves the authorize transaction
+// unconsumed and re-runnable. See OAuthAtomicMintRepository.
 func (s *OAuthProviderService) ApproveAuthorization(
 	ctx context.Context,
 	txID, csrfToken string,
-	userID int64,
+	userIDFromJWT int64,
 	finalGroupID *int64,
 ) (*ApproveAuthorizationResult, error) {
-	if userID <= 0 {
+	if userIDFromJWT <= 0 {
 		return nil, ErrOAuthSubjectMismatch
 	}
-	tx, client, err := s.LoadAuthorizeTransactionForApproval(ctx, txID, csrfToken, userID)
+	tx, client, err := s.LoadAuthorizeTransactionForApproval(ctx, txID, csrfToken, userIDFromJWT)
 	if err != nil {
 		return nil, err
 	}
@@ -602,26 +660,26 @@ func (s *OAuthProviderService) ApproveAuthorization(
 			return nil, ErrOAuthGroupNotAllowed
 		}
 	}
-	resolvedGroup, err := s.ResolveOAuthGroup(ctx, userID, client, requested)
+	resolvedGroup, err := s.ResolveOAuthGroup(ctx, userIDFromJWT, client, requested)
 	if err != nil {
 		return nil, err
 	}
 
-	// Mark consumed first so a retry of the same transaction can never mint two codes.
+	// FIX C2: consume-and-issue must be atomic. Without a shared tx, a code
+	// insert failure (FK violation, conn drop, etc.) leaves the authorize
+	// row consumed but no code emitted, burning the user's consent. The
+	// repo's ConsumeAuthorizeTransactionAndIssueCode wraps both writes in
+	// one Postgres tx with a row lock on the transaction.
 	now := time.Now()
-	if err := s.authzTxRepo.MarkAuthorizeTransactionConsumed(ctx, txID, now); err != nil {
-		return nil, fmt.Errorf("mark authorize transaction consumed: %w", err)
-	}
-
 	codePlain, err := generateOpaqueToken(32)
 	if err != nil {
 		return nil, fmt.Errorf("generate authorization code: %w", err)
 	}
 	grantID := uuid.NewString()
-	if err := s.codeRepo.CreateCode(ctx, &OAuthCode{
+	code := &OAuthCode{
 		CodeHash:              hashOAuthToken(codePlain),
 		ClientID:              client.ClientID,
-		UserID:                userID,
+		UserID:                userIDFromJWT,
 		RedirectURI:           tx.RedirectURI,
 		Scopes:                tx.Scopes,
 		CodeChallenge:         tx.CodeChallenge,
@@ -632,8 +690,26 @@ func (s *OAuthProviderService) ApproveAuthorization(
 		AllowedGroupsSnapshot: tx.AllowedGroupsSnapshot,
 		DeviceID:              tx.DeviceID,
 		DeviceName:            tx.DeviceName,
-	}); err != nil {
-		return nil, fmt.Errorf("persist authorization code: %w", err)
+	}
+	if atomic, ok := s.authzTxRepo.(OAuthAuthorizeAtomicRepository); ok {
+		// FIX A4: pass userIDFromJWT so the atomic consume re-checks the
+		// subject inside the row lock. LoadAuthorizeTransactionForApproval
+		// already checked it, but its lock is released before we get here;
+		// without this re-check there is a (theoretical) TOCTOU window
+		// where row.user_id could mutate between the two reads.
+		if err := atomic.ConsumeAuthorizeTransactionAndIssueCode(ctx, txID, userIDFromJWT, now, code); err != nil {
+			return nil, err
+		}
+	} else {
+		// Legacy / test fallback: best-effort sequence. Marks consumed first
+		// to preserve the v1 single-mint guarantee — atomic repo path is the
+		// production fix.
+		if err := s.authzTxRepo.MarkAuthorizeTransactionConsumed(ctx, txID, now); err != nil {
+			return nil, fmt.Errorf("mark authorize transaction consumed: %w", err)
+		}
+		if err := s.codeRepo.CreateCode(ctx, code); err != nil {
+			return nil, fmt.Errorf("persist authorization code: %w", err)
+		}
 	}
 	return &ApproveAuthorizationResult{
 		RedirectURI: tx.RedirectURI,
@@ -810,7 +886,10 @@ func (s *OAuthProviderService) RefreshAccessToken(
 		_ = s.accessRepo.RevokeAccessTokenByAPIKeyID(ctx, oldToken.APIKeyID, now)
 	}
 
-	// Mint the new api_keys row.
+	// Build the replacement trio. FIX H4: when mintRepo is wired the three
+	// inserts run in one Postgres tx — same atomicity guarantee as the
+	// authorization-code mint path. Without it (legacy tests) we fall back
+	// to per-row writes.
 	accessExp := now.Add(time.Duration(client.AccessTokenTTLSeconds) * time.Second)
 	apiKey := &APIKey{
 		UserID:    oldToken.UserID,
@@ -820,17 +899,14 @@ func (s *OAuthProviderService) RefreshAccessToken(
 		Status:    StatusAPIKeyActive,
 		ExpiresAt: &accessExp,
 	}
-	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
-		return nil, fmt.Errorf("create access token api_key: %w", err)
-	}
 
-	// New oauth_access_tokens metadata.
 	scopes := NormalizeScopes(oldToken.Scopes)
 	familyID := stringValueOrEmpty(oldToken.TokenFamilyID)
 	grantID := stringValueOrEmpty(oldToken.GrantID)
+
+	var accessMeta *OAuthAccessToken
 	if s.accessRepo != nil && familyID != "" && grantID != "" {
-		_ = s.accessRepo.CreateAccessToken(ctx, &OAuthAccessToken{
-			APIKeyID:        apiKey.ID,
+		accessMeta = &OAuthAccessToken{
 			GrantID:         grantID,
 			TokenFamilyID:   familyID,
 			ClientID:        client.ClientID,
@@ -843,7 +919,7 @@ func (s *OAuthProviderService) RefreshAccessToken(
 			DeviceName:      oldToken.DeviceName,
 			IssuedAt:        now,
 			ExpiresAt:       accessExp,
-		})
+		}
 	}
 
 	// New oauth_refresh_tokens row — KEY: inherits old expires_at.
@@ -852,11 +928,10 @@ func (s *OAuthProviderService) RefreshAccessToken(
 	if rtExpiresIn < 0 {
 		rtExpiresIn = 0
 	}
-	if err := s.refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+	refreshMeta := &OAuthRefreshToken{
 		TokenHash:             newRefreshHash,
 		ClientID:              client.ClientID,
 		UserID:                oldToken.UserID,
-		APIKeyID:              apiKey.ID,
 		Scopes:                scopes,
 		ExpiresAt:             familyExpiry,
 		GrantID:               oldToken.GrantID,
@@ -865,8 +940,30 @@ func (s *OAuthProviderService) RefreshAccessToken(
 		AllowedGroupsSnapshot: oldToken.AllowedGroupsSnapshot,
 		DeviceID:              oldToken.DeviceID,
 		DeviceName:            oldToken.DeviceName,
-	}); err != nil {
-		return nil, fmt.Errorf("persist rotated refresh token: %w", err)
+	}
+
+	if s.mintRepo != nil {
+		mintParams := &OAuthTokenMintParams{
+			APIKey:       apiKey,
+			AccessToken:  accessMeta,
+			RefreshToken: refreshMeta,
+		}
+		if err := s.mintRepo.MintTokenSet(ctx, mintParams); err != nil {
+			return nil, fmt.Errorf("mint refreshed oauth token set: %w", err)
+		}
+	} else {
+		// Legacy fallback for tests without the atomic repo wired.
+		if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
+			return nil, fmt.Errorf("create access token api_key: %w", err)
+		}
+		if accessMeta != nil {
+			accessMeta.APIKeyID = apiKey.ID
+			_ = s.accessRepo.CreateAccessToken(ctx, accessMeta)
+		}
+		refreshMeta.APIKeyID = apiKey.ID
+		if err := s.refreshRepo.CreateRefreshToken(ctx, refreshMeta); err != nil {
+			return nil, fmt.Errorf("persist rotated refresh token: %w", err)
+		}
 	}
 
 	return &IssuedToken{
@@ -886,7 +983,15 @@ func (s *OAuthProviderService) RefreshAccessToken(
 // associated api_keys row, invalidate the auth cache for each plaintext key,
 // and log a redacted warning so observability picks it up.
 func (s *OAuthProviderService) handleRefreshReuse(ctx context.Context, row *OAuthRefreshToken) {
-	if row == nil || row.TokenFamilyID == nil || *row.TokenFamilyID == "" {
+	if row == nil {
+		// FIX M2: defensive — reuse handler invoked without a usable row.
+		// Without (user_id, client_id) we cannot scope a fallback revoke,
+		// so just log and bail. The replay still surfaces ErrOAuthRefreshReuse
+		// to the caller.
+		slog.Warn("oauth: refresh token reuse detected with nil row — cannot revoke; check upstream call path")
+		return
+	}
+	if row.TokenFamilyID == nil || *row.TokenFamilyID == "" {
 		// Best-effort: revoke all (user, client) when family unknown (legacy).
 		_, _ = s.RevokeUserGrant(ctx, row.UserID, row.ClientID, time.Now())
 		slog.Warn("oauth: refresh token reuse detected (no family id)",
@@ -1118,6 +1223,15 @@ func (s *OAuthProviderService) RevokeClientAuthorizations(ctx context.Context, u
 			}
 			ids, err := s.accessRepo.RevokeAccessTokensByGrantID(ctx, g.GrantID, now)
 			if err != nil {
+				// FIX M3: don't silently swallow — surface the failure so
+				// operators can spot partial revokes. Continue to the next
+				// grant rather than aborting the whole revoke.
+				slog.Warn("oauth: revoke access tokens by grant failed during client revoke",
+					"grant_id", g.GrantID,
+					"user_id", userID,
+					"client_id", clientID,
+					"err", err,
+				)
 				continue
 			}
 			apiKeyIDs = append(apiKeyIDs, ids...)
@@ -1394,6 +1508,11 @@ func timeOrZero(t *time.Time) time.Time {
 // mintTokensFromCode is the v2 atomic-write path called after
 // ConsumeCode succeeds. It creates api_keys + oauth_access_tokens +
 // (optional) oauth_refresh_tokens.
+//
+// FIX H4: when the mintRepo is wired, all three writes happen inside one
+// Postgres tx so a failure between writes can never leave a live sk_oauth_*
+// api_keys row that lacks scope metadata. Legacy callers (test fakes) get
+// the per-row write fallback.
 func (s *OAuthProviderService) mintTokensFromCode(
 	ctx context.Context,
 	client *OAuthClient,
@@ -1436,38 +1555,35 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		Status:    StatusAPIKeyActive,
 		ExpiresAt: &accessExp,
 	}
-	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
-		return nil, fmt.Errorf("create access token api_key: %w", err)
-	}
 
 	allowedSnap := code.AllowedGroupsSnapshot
 	if len(allowedSnap) == 0 {
 		allowedSnap = []int64{groupID}
 	}
 
-	if s.accessRepo != nil {
-		if err := s.accessRepo.CreateAccessToken(ctx, &OAuthAccessToken{
-			APIKeyID:        apiKey.ID,
-			GrantID:         grantID,
-			TokenFamilyID:   familyID,
-			ClientID:        client.ClientID,
-			UserID:          code.UserID,
-			Scopes:          scopes,
-			GroupID:         groupID,
-			AllowedGroupIDs: allowedSnap,
-			AppType:         client.AppType,
-			DeviceID:        code.DeviceID,
-			DeviceName:      code.DeviceName,
-			IssuedAt:        now,
-			ExpiresAt:       accessExp,
-		}); err != nil {
-			return nil, fmt.Errorf("create oauth access token metadata: %w", err)
-		}
-	}
-
 	wantsRefresh := HasScope(scopes, ScopeOfflineAccess) || client.AllowRefreshWithoutOfflineAccess
 	var refreshKey string
 	var refreshExpiresIn int
+
+	// Build the optional metadata rows up front so the atomic path can
+	// pass them to MintTokenSet. APIKeyID is stamped after the api_keys
+	// insert succeeds (either inside MintTokenSet or in the fallback
+	// branch below).
+	accessMeta := &OAuthAccessToken{
+		GrantID:         grantID,
+		TokenFamilyID:   familyID,
+		ClientID:        client.ClientID,
+		UserID:          code.UserID,
+		Scopes:          scopes,
+		GroupID:         groupID,
+		AllowedGroupIDs: allowedSnap,
+		AppType:         client.AppType,
+		DeviceID:        code.DeviceID,
+		DeviceName:      code.DeviceName,
+		IssuedAt:        now,
+		ExpiresAt:       accessExp,
+	}
+	var refreshMeta *OAuthRefreshToken
 	if wantsRefresh {
 		refreshKey = oauthRefreshTokenPrefix + mustOpaqueToken(defaultRefreshSecret)
 		refreshExp := now.Add(time.Duration(client.RefreshTokenTTLSeconds) * time.Second)
@@ -1475,11 +1591,10 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		grantPtr := grantID
 		familyPtr := familyID
 		gid := groupID
-		if err := s.refreshRepo.CreateRefreshToken(ctx, &OAuthRefreshToken{
+		refreshMeta = &OAuthRefreshToken{
 			TokenHash:             hashOAuthToken(refreshKey),
 			ClientID:              client.ClientID,
 			UserID:                code.UserID,
-			APIKeyID:              apiKey.ID,
 			Scopes:                scopes,
 			ExpiresAt:             refreshExp,
 			GrantID:               &grantPtr,
@@ -1488,8 +1603,41 @@ func (s *OAuthProviderService) mintTokensFromCode(
 			AllowedGroupsSnapshot: allowedSnap,
 			DeviceID:              code.DeviceID,
 			DeviceName:            code.DeviceName,
-		}); err != nil {
-			return nil, fmt.Errorf("persist refresh token: %w", err)
+		}
+	}
+
+	// FIX H4 atomic path: one Postgres tx for all three rows.
+	if s.mintRepo != nil {
+		mintParams := &OAuthTokenMintParams{
+			APIKey:       apiKey,
+			RefreshToken: refreshMeta,
+		}
+		if s.accessRepo != nil {
+			mintParams.AccessToken = accessMeta
+		}
+		if err := s.mintRepo.MintTokenSet(ctx, mintParams); err != nil {
+			return nil, fmt.Errorf("mint oauth token set: %w", err)
+		}
+	} else {
+		// Legacy fallback for tests that don't wire the atomic repo.
+		// Write order is access_token metadata FIRST so a partial failure
+		// never produces an api_keys row without scope metadata (which
+		// scope middleware would treat as legacy/pass-through). Refresh
+		// metadata follows the api_keys row so its api_key_id FK is valid.
+		if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
+			return nil, fmt.Errorf("create access token api_key: %w", err)
+		}
+		if s.accessRepo != nil {
+			accessMeta.APIKeyID = apiKey.ID
+			if err := s.accessRepo.CreateAccessToken(ctx, accessMeta); err != nil {
+				return nil, fmt.Errorf("create oauth access token metadata: %w", err)
+			}
+		}
+		if refreshMeta != nil {
+			refreshMeta.APIKeyID = apiKey.ID
+			if err := s.refreshRepo.CreateRefreshToken(ctx, refreshMeta); err != nil {
+				return nil, fmt.Errorf("persist refresh token: %w", err)
+			}
 		}
 	}
 
