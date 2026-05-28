@@ -1099,7 +1099,7 @@ func init() {
 		}
 	}()
 	// oauthauthorizetransactionDescClientID is the schema descriptor for client_id field.
-	oauthauthorizetransactionDescClientID := oauthauthorizetransactionFields[2].Descriptor()
+	oauthauthorizetransactionDescClientID := oauthauthorizetransactionFields[3].Descriptor()
 	// oauthauthorizetransaction.ClientIDValidator is a validator for the "client_id" field. It is called by the builders before save.
 	oauthauthorizetransaction.ClientIDValidator = func() func(string) error {
 		validators := oauthauthorizetransactionDescClientID.Validators
@@ -1117,25 +1117,25 @@ func init() {
 		}
 	}()
 	// oauthauthorizetransactionDescRedirectURI is the schema descriptor for redirect_uri field.
-	oauthauthorizetransactionDescRedirectURI := oauthauthorizetransactionFields[3].Descriptor()
+	oauthauthorizetransactionDescRedirectURI := oauthauthorizetransactionFields[4].Descriptor()
 	// oauthauthorizetransaction.RedirectURIValidator is a validator for the "redirect_uri" field. It is called by the builders before save.
 	oauthauthorizetransaction.RedirectURIValidator = oauthauthorizetransactionDescRedirectURI.Validators[0].(func(string) error)
 	// oauthauthorizetransactionDescResponseType is the schema descriptor for response_type field.
-	oauthauthorizetransactionDescResponseType := oauthauthorizetransactionFields[4].Descriptor()
+	oauthauthorizetransactionDescResponseType := oauthauthorizetransactionFields[5].Descriptor()
 	// oauthauthorizetransaction.DefaultResponseType holds the default value on creation for the response_type field.
 	oauthauthorizetransaction.DefaultResponseType = oauthauthorizetransactionDescResponseType.Default.(string)
 	// oauthauthorizetransaction.ResponseTypeValidator is a validator for the "response_type" field. It is called by the builders before save.
 	oauthauthorizetransaction.ResponseTypeValidator = oauthauthorizetransactionDescResponseType.Validators[0].(func(string) error)
 	// oauthauthorizetransactionDescScopes is the schema descriptor for scopes field.
-	oauthauthorizetransactionDescScopes := oauthauthorizetransactionFields[5].Descriptor()
+	oauthauthorizetransactionDescScopes := oauthauthorizetransactionFields[6].Descriptor()
 	// oauthauthorizetransaction.DefaultScopes holds the default value on creation for the scopes field.
 	oauthauthorizetransaction.DefaultScopes = oauthauthorizetransactionDescScopes.Default.([]string)
 	// oauthauthorizetransactionDescAllowedGroupsSnapshot is the schema descriptor for allowed_groups_snapshot field.
-	oauthauthorizetransactionDescAllowedGroupsSnapshot := oauthauthorizetransactionFields[6].Descriptor()
+	oauthauthorizetransactionDescAllowedGroupsSnapshot := oauthauthorizetransactionFields[7].Descriptor()
 	// oauthauthorizetransaction.DefaultAllowedGroupsSnapshot holds the default value on creation for the allowed_groups_snapshot field.
 	oauthauthorizetransaction.DefaultAllowedGroupsSnapshot = oauthauthorizetransactionDescAllowedGroupsSnapshot.Default.([]int64)
 	// oauthauthorizetransactionDescCodeChallenge is the schema descriptor for code_challenge field.
-	oauthauthorizetransactionDescCodeChallenge := oauthauthorizetransactionFields[8].Descriptor()
+	oauthauthorizetransactionDescCodeChallenge := oauthauthorizetransactionFields[9].Descriptor()
 	// oauthauthorizetransaction.CodeChallengeValidator is a validator for the "code_challenge" field. It is called by the builders before save.
 	oauthauthorizetransaction.CodeChallengeValidator = func() func(string) error {
 		validators := oauthauthorizetransactionDescCodeChallenge.Validators
@@ -1153,21 +1153,21 @@ func init() {
 		}
 	}()
 	// oauthauthorizetransactionDescCodeChallengeMethod is the schema descriptor for code_challenge_method field.
-	oauthauthorizetransactionDescCodeChallengeMethod := oauthauthorizetransactionFields[9].Descriptor()
+	oauthauthorizetransactionDescCodeChallengeMethod := oauthauthorizetransactionFields[10].Descriptor()
 	// oauthauthorizetransaction.DefaultCodeChallengeMethod holds the default value on creation for the code_challenge_method field.
 	oauthauthorizetransaction.DefaultCodeChallengeMethod = oauthauthorizetransactionDescCodeChallengeMethod.Default.(string)
 	// oauthauthorizetransaction.CodeChallengeMethodValidator is a validator for the "code_challenge_method" field. It is called by the builders before save.
 	oauthauthorizetransaction.CodeChallengeMethodValidator = oauthauthorizetransactionDescCodeChallengeMethod.Validators[0].(func(string) error)
 	// oauthauthorizetransactionDescDeviceID is the schema descriptor for device_id field.
-	oauthauthorizetransactionDescDeviceID := oauthauthorizetransactionFields[11].Descriptor()
+	oauthauthorizetransactionDescDeviceID := oauthauthorizetransactionFields[12].Descriptor()
 	// oauthauthorizetransaction.DeviceIDValidator is a validator for the "device_id" field. It is called by the builders before save.
 	oauthauthorizetransaction.DeviceIDValidator = oauthauthorizetransactionDescDeviceID.Validators[0].(func(string) error)
 	// oauthauthorizetransactionDescDeviceName is the schema descriptor for device_name field.
-	oauthauthorizetransactionDescDeviceName := oauthauthorizetransactionFields[12].Descriptor()
+	oauthauthorizetransactionDescDeviceName := oauthauthorizetransactionFields[13].Descriptor()
 	// oauthauthorizetransaction.DeviceNameValidator is a validator for the "device_name" field. It is called by the builders before save.
 	oauthauthorizetransaction.DeviceNameValidator = oauthauthorizetransactionDescDeviceName.Validators[0].(func(string) error)
 	// oauthauthorizetransactionDescCreatedIP is the schema descriptor for created_ip field.
-	oauthauthorizetransactionDescCreatedIP := oauthauthorizetransactionFields[15].Descriptor()
+	oauthauthorizetransactionDescCreatedIP := oauthauthorizetransactionFields[16].Descriptor()
 	// oauthauthorizetransaction.CreatedIPValidator is a validator for the "created_ip" field. It is called by the builders before save.
 	oauthauthorizetransaction.CreatedIPValidator = oauthauthorizetransactionDescCreatedIP.Validators[0].(func(string) error)
 	oauthclientMixin := schema.OAuthClient{}.Mixin()

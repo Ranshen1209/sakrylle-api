@@ -861,6 +861,7 @@ var (
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "transaction_id", Type: field.TypeString, Unique: true, Size: 96},
 		{Name: "csrf_hash", Type: field.TypeString, Size: 64},
+		{Name: "user_id", Type: field.TypeInt64},
 		{Name: "client_id", Type: field.TypeString, Size: 128},
 		{Name: "redirect_uri", Type: field.TypeString, Size: 2147483647},
 		{Name: "response_type", Type: field.TypeString, Size: 32, Default: "code"},
@@ -886,10 +887,15 @@ var (
 			{
 				Name:    "oauthauthorizetransaction_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{OauthAuthorizeTransactionsColumns[17]},
+				Columns: []*schema.Column{OauthAuthorizeTransactionsColumns[18]},
 			},
 			{
 				Name:    "oauthauthorizetransaction_client_id",
+				Unique:  false,
+				Columns: []*schema.Column{OauthAuthorizeTransactionsColumns[6]},
+			},
+			{
+				Name:    "oauthauthorizetransaction_user_id",
 				Unique:  false,
 				Columns: []*schema.Column{OauthAuthorizeTransactionsColumns[5]},
 			},

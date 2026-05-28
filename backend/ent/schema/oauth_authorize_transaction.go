@@ -45,6 +45,8 @@ func (OAuthAuthorizeTransaction) Fields() []ent.Field {
 			MaxLen(64).
 			NotEmpty().
 			Comment("SHA-256(plaintext CSRF); plaintext is returned only in rendered consent page"),
+		field.Int64("user_id").
+			Comment("Authenticated user id captured at /authorize time; approve must reject mismatched JWT subject"),
 		field.String("client_id").
 			MaxLen(128).
 			NotEmpty(),
@@ -99,5 +101,6 @@ func (OAuthAuthorizeTransaction) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("expires_at"),
 		index.Fields("client_id"),
+		index.Fields("user_id"),
 	}
 }

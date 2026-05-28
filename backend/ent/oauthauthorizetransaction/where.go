@@ -74,6 +74,11 @@ func CsrfHash(v string) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldEQ(FieldCsrfHash, v))
 }
 
+// UserID applies equality check predicate on the "user_id" field. It's identical to UserIDEQ.
+func UserID(v int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldEQ(FieldUserID, v))
+}
+
 // ClientID applies equality check predicate on the "client_id" field. It's identical to ClientIDEQ.
 func ClientID(v string) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldEQ(FieldClientID, v))
@@ -347,6 +352,46 @@ func CsrfHashEqualFold(v string) predicate.OAuthAuthorizeTransaction {
 // CsrfHashContainsFold applies the ContainsFold predicate on the "csrf_hash" field.
 func CsrfHashContainsFold(v string) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldContainsFold(FieldCsrfHash, v))
+}
+
+// UserIDEQ applies the EQ predicate on the "user_id" field.
+func UserIDEQ(v int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldEQ(FieldUserID, v))
+}
+
+// UserIDNEQ applies the NEQ predicate on the "user_id" field.
+func UserIDNEQ(v int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldNEQ(FieldUserID, v))
+}
+
+// UserIDIn applies the In predicate on the "user_id" field.
+func UserIDIn(vs ...int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldIn(FieldUserID, vs...))
+}
+
+// UserIDNotIn applies the NotIn predicate on the "user_id" field.
+func UserIDNotIn(vs ...int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldNotIn(FieldUserID, vs...))
+}
+
+// UserIDGT applies the GT predicate on the "user_id" field.
+func UserIDGT(v int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldGT(FieldUserID, v))
+}
+
+// UserIDGTE applies the GTE predicate on the "user_id" field.
+func UserIDGTE(v int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldGTE(FieldUserID, v))
+}
+
+// UserIDLT applies the LT predicate on the "user_id" field.
+func UserIDLT(v int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldLT(FieldUserID, v))
+}
+
+// UserIDLTE applies the LTE predicate on the "user_id" field.
+func UserIDLTE(v int64) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldLTE(FieldUserID, v))
 }
 
 // ClientIDEQ applies the EQ predicate on the "client_id" field.

@@ -24,7 +24,7 @@ type OAuthDeviceCode struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// SHA-256(device_code); plaintext is returned only at create-time
 	DeviceCodeHash string `json:"device_code_hash,omitempty"`
-	// SHA-256(user_code); partial unique index in DB covers pending+approved
+	// SHA-256(user_code); partial unique index in DB covers pending+approved only — see migration 145 (idx_oauth_device_codes_user_code_active_unique). Ent cannot express partial indexes natively, so the constraint lives in SQL only.
 	UserCodeHash string `json:"user_code_hash,omitempty"`
 	// ClientID holds the value of the "client_id" field.
 	ClientID string `json:"client_id,omitempty"`
