@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -31,7 +32,20 @@ type OAuthProviderHandler struct {
 }
 
 func NewOAuthProviderHandler(provider *service.OAuthProviderService, settings *service.SettingService) *OAuthProviderHandler {
-	return &OAuthProviderHandler{provider: provider, settings: settings}
+	h := &OAuthProviderHandler{provider: provider, settings: settings}
+	// One-shot soft check at boot: warn loudly when neither oauth_issuer nor
+	// frontend_url is configured, because RFC 8414 discovery and §12.7 device
+	// verification_uri will fall back to request scheme://Host (unstable
+	// across reverse-proxy configurations and TLS terminators).
+	//
+	// Deliberately *not* fail-closed: the setup wizard runs before either key
+	// is written on a fresh install, so a hard error here would break first
+	// boot. context.Background() is fine — this fires once during DI wiring,
+	// not on a request path.
+	if settings != nil {
+		settings.WarnIfOAuthIssuerMissing(context.Background())
+	}
+	return h
 }
 
 // SetDeviceHandler wires the device-grant branch into Token.
@@ -88,10 +102,30 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 
 // ApproveRequest is the body of POST /api/v1/oauth/authorize/approve.
 //
-// All fields except Decision are echoed verbatim from the original /authorize
-// query so the server re-validates against the registered client and
-// does not trust the form alone.
+// FIX A1 / §10.3: the approve POST carries ONLY the transaction id, the
+// CSRF token returned by /authorize/begin, the decision, and an optional
+// group override. Every other parameter (client_id, redirect_uri, scopes,
+// state, code_challenge, ...) is read from the server-side transaction row
+// keyed by transaction_id. Allowing the client to re-supply those values is
+// exactly the §10.3 attack surface the transaction model exists to close —
+// the consent page user sees scopes for client A, but the JS could submit
+// scopes for client B and we'd happily mint a code.
 type ApproveRequest struct {
+	TransactionID string `json:"transaction_id" binding:"required"`
+	CSRFToken     string `json:"csrf_token" binding:"required"`
+	Decision      string `json:"decision" binding:"required,oneof=approve deny"`
+	GroupID       *int64 `json:"group_id"`
+}
+
+// BeginAuthorizeRequest is the body of POST /api/v1/oauth/authorize/begin.
+//
+// The consent page (rendered by GET /oauth/authorize) reads the JWT from
+// localStorage and posts these fields to /begin, which authenticates the
+// JWT subject, calls ValidateAuthorizeRequest, then opens a server-side
+// transaction owned by that subject. The /authorize GET cannot do this
+// itself because it is a top-level browser navigation without a JWT cookie
+// — auth lives in localStorage and is sent only on XHR.
+type BeginAuthorizeRequest struct {
 	ClientID            string `json:"client_id" binding:"required"`
 	RedirectURI         string `json:"redirect_uri" binding:"required"`
 	ResponseType        string `json:"response_type" binding:"required"`
@@ -99,13 +133,69 @@ type ApproveRequest struct {
 	State               string `json:"state" binding:"required"`
 	CodeChallenge       string `json:"code_challenge"`
 	CodeChallengeMethod string `json:"code_challenge_method"`
-	Decision            string `json:"decision" binding:"required,oneof=approve deny"`
+	GroupID             *int64 `json:"group_id"`
+}
+
+// BeginAuthorize creates the server-side authorize transaction for the
+// currently logged-in user.
+//
+// Mounted under JWT-protected /api/v1/* so every transaction row carries an
+// authoritative user_id (the JWT subject). The plaintext CSRF token is
+// returned ONCE — only the SHA-256 hex hash lives in the DB. The consent
+// page stores it in memory and submits it on /approve.
+func (h *OAuthProviderHandler) BeginAuthorize(c *gin.Context) {
+	if !h.provider.IsEnabled(c.Request.Context()) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "oauth_provider_disabled"})
+		return
+	}
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var body BeginAuthorizeRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": err.Error()})
+		return
+	}
+	params := &service.BeginAuthorizeParams{
+		ClientID:            strings.TrimSpace(body.ClientID),
+		RedirectURI:         strings.TrimSpace(body.RedirectURI),
+		ResponseType:        strings.TrimSpace(body.ResponseType),
+		Scopes:              service.ParseScopes(body.Scope),
+		State:               strings.TrimSpace(body.State),
+		CodeChallenge:       strings.TrimSpace(body.CodeChallenge),
+		CodeChallengeMethod: strings.TrimSpace(body.CodeChallengeMethod),
+		RequestedGroupID:    body.GroupID,
+		UserID:              subject.UserID,
+	}
+	result, err := h.provider.BeginAuthorizeTransaction(c.Request.Context(), params)
+	if err != nil {
+		c.JSON(httpStatusForOAuthError(err), gin.H{
+			"error":             oauthErrorReason(err),
+			"error_description": infraerrors.Message(err),
+		})
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{
+		"transaction_id": result.Transaction.TransactionID,
+		"csrf_token":     result.CSRFTokenPlaintext,
+		"client_name":    result.Client.Name,
+		"scopes":         result.Transaction.Scopes,
+		"redirect_uri":   result.Transaction.RedirectURI,
+		"expires_at":     result.Transaction.ExpiresAt,
+	})
 }
 
 // Approve issues an authorization code (or denial) for an authenticated user.
 //
 // Mounted under JWT-protected /api/v1/* so only logged-in users can complete
-// consent. Returns the final redirect URL in JSON; the SPA navigates to it.
+// consent. The body MUST be the v2 transaction-bound shape; legacy fields
+// (client_id, redirect_uri, scope, ...) are ignored — those values live on
+// the server-side transaction row, keyed by transaction_id.
+//
+// Returns the final redirect URL in JSON; the SPA navigates to it.
 func (h *OAuthProviderHandler) Approve(c *gin.Context) {
 	if !h.provider.IsEnabled(c.Request.Context()) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "oauth_provider_disabled"})
@@ -122,40 +212,101 @@ func (h *OAuthProviderHandler) Approve(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": err.Error()})
 		return
 	}
+	txID := strings.TrimSpace(body.TransactionID)
+	csrf := strings.TrimSpace(body.CSRFToken)
 
-	authReq := &service.AuthorizeRequest{
-		ClientID:            strings.TrimSpace(body.ClientID),
-		RedirectURI:         strings.TrimSpace(body.RedirectURI),
-		ResponseType:        strings.TrimSpace(body.ResponseType),
-		Scopes:              service.ParseScopes(body.Scope),
-		State:               strings.TrimSpace(body.State),
-		CodeChallenge:       strings.TrimSpace(body.CodeChallenge),
-		CodeChallengeMethod: strings.TrimSpace(body.CodeChallengeMethod),
+	if body.Decision != "approve" {
+		// FIX A1: deny still requires the transaction lookup so we can echo
+		// the registered redirect_uri + state from the server-side row, never
+		// trusting client-supplied values. CSRF + subject are validated as
+		// part of the load.
+		tx, _, err := h.provider.LoadAuthorizeTransactionForApproval(c.Request.Context(), txID, csrf, subject.UserID)
+		if err != nil {
+			h.writeApproveError(c, err, txID)
+			return
+		}
+		// Mark consumed so the same transaction can't be re-approved later.
+		if _, err := h.provider.DenyAuthorization(c.Request.Context(), txID, csrf, subject.UserID); err != nil {
+			// DenyAuthorization is idempotent in spirit but may surface a
+			// repo-level error; opaque server_error is the right shape here
+			// because we already validated the transaction above.
+			slog.Warn("oauth: deny authorization mark-consumed failed",
+				"err", err, "user_id", subject.UserID, "transaction_id", txID)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":             "server_error",
+				"error_description": "deny processing failed",
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"redirect_to": buildOAuthErrorURL(tx.RedirectURI, "access_denied", "user denied authorization", tx.State),
+		})
+		return
 	}
-	client, err := h.provider.ValidateAuthorizeRequest(c.Request.Context(), authReq)
+
+	result, err := h.provider.ApproveAuthorization(c.Request.Context(), txID, csrf, subject.UserID, body.GroupID)
 	if err != nil {
+		h.writeApproveError(c, err, txID)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"redirect_to": buildOAuthRedirectURL(result.RedirectURI, result.Code, result.State),
+	})
+}
+
+// writeApproveError maps service-layer errors from approve/deny to OAuth-spec
+// JSON responses without leaking attacker signal.
+//
+// Subject mismatch is treated as opaque invalid_request (a 4xx the legitimate
+// user can act on) — never reveal that subject A's transaction was probed by
+// subject B; that's a CSRF/IDOR signal we log server-side instead.
+//
+// CSRF mismatch + transaction not found / consumed / expired all return 400
+// with the canonical OAuth error mapping; the consent page surfaces the
+// description verbatim to the user.
+func (h *OAuthProviderHandler) writeApproveError(c *gin.Context, err error, txID string) {
+	if errors.Is(err, service.ErrOAuthSubjectMismatch) {
+		// Log loudly: this is a real attack signal (someone replayed a
+		// transaction id with a different JWT). Return opaque to the client.
+		slog.Warn("oauth: approve subject mismatch",
+			"transaction_id", txID, "err", err)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":             "invalid_request",
+			"error_description": "authorization could not be completed",
+		})
+		return
+	}
+	if errors.Is(err, service.ErrOAuthAuthorizeCSRFMismatch) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":             "invalid_request",
+			"error_description": infraerrors.Message(err),
+		})
+		return
+	}
+	if errors.Is(err, service.ErrOAuthAuthorizeTransactionNotFound) ||
+		errors.Is(err, service.ErrOAuthAuthorizeTransactionConsumed) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": infraerrors.Message(err),
+		})
+		return
+	}
+	// Known OAuth-spec errors (group not allowed, scope not allowed, etc.)
+	// keep their canonical reason string.
+	if reason := infraerrors.Reason(err); reason != "" && reason != "INTERNAL" {
 		c.JSON(httpStatusForOAuthError(err), gin.H{
 			"error":             oauthErrorReason(err),
 			"error_description": infraerrors.Message(err),
 		})
 		return
 	}
-
-	if body.Decision != "approve" {
-		c.JSON(http.StatusOK, gin.H{
-			"redirect_to": buildOAuthErrorURL(authReq.RedirectURI, "access_denied", "user denied authorization", authReq.State),
-		})
-		return
-	}
-
-	issued, err := h.provider.IssueAuthorizationCode(c.Request.Context(), client, subject.UserID, authReq)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error", "error_description": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"redirect_to": buildOAuthRedirectURL(authReq.RedirectURI, issued.Code, issued.State),
+	// Anything else: opaque server_error. Don't echo internal text — DB
+	// strings can leak schema names. (FIX H3 pattern.)
+	slog.Warn("oauth: approve unexpected error",
+		"transaction_id", txID, "err", err)
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error":             "server_error",
+		"error_description": "authorization could not be completed",
 	})
 }
 
@@ -428,14 +579,19 @@ func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 
 // discoveryIssuer resolves the discovery `issuer` URL.
 //
-// Source order:
-//  1. settings.frontend_url (admin-configurable; production points at sub.sakrylle.com)
-//  2. request scheme://host (fallback when settings is unset)
+// Source order (kept in lockstep with §12.7 device flow verification_uri via
+// SettingService.GetOAuthIssuer so the two endpoints cannot disagree):
+//  1. settings.oauth_issuer  (canonical; per migration 145 deployments MUST set)
+//  2. settings.frontend_url  (legacy fallback)
+//  3. request scheme://host  (last-resort fallback for misconfigured deployments)
 //
 // Always strips a trailing slash because RFC 8414 forbids it on the issuer.
+// The X-Forwarded-Proto header is allowlisted to {http, https} so a malformed
+// or hostile proxy header (e.g. "javascript") cannot land inside the issuer
+// URL we publish in discovery and trust elsewhere.
 func (h *OAuthProviderHandler) discoveryIssuer(c *gin.Context) string {
 	if h.settings != nil {
-		if v := strings.TrimRight(strings.TrimSpace(h.settings.GetFrontendURL(c.Request.Context())), "/"); v != "" {
+		if v, _ := h.settings.GetOAuthIssuer(c.Request.Context()); v != "" {
 			return v
 		}
 	}
@@ -444,7 +600,10 @@ func (h *OAuthProviderHandler) discoveryIssuer(c *gin.Context) string {
 		if c.Request.TLS == nil && c.Request.Header.Get("X-Forwarded-Proto") != "https" {
 			scheme = "http"
 		}
-		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+		// Allowlist X-Forwarded-Proto to {http, https} so a malformed or
+		// hostile proxy header (e.g. "javascript") cannot land inside the
+		// issuer URL we publish in discovery and trust elsewhere.
+		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto == "http" || proto == "https" {
 			scheme = proto
 		}
 		if host := c.Request.Host; host != "" {

@@ -119,6 +119,21 @@ func (s *stubHandlerDeviceRepo) MarkDeviceCodeConsumed(_ context.Context, h stri
 	return nil
 }
 
+// ConsumeApprovedDeviceCode is the FIX H6 atomic gate stub: only the caller
+// that observes status='approved' wins; concurrent callers see not-found.
+func (s *stubHandlerDeviceRepo) ConsumeApprovedDeviceCode(_ context.Context, h string, now time.Time) (*service.OAuthDeviceCode, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.rows[h]
+	if !ok || row.Status != "approved" {
+		return nil, service.ErrOAuthDeviceCodeNotFound
+	}
+	row.Status = "consumed"
+	row.ConsumedAt = &now
+	cp := *row
+	return &cp, nil
+}
+
 func (s *stubHandlerDeviceRepo) IncrementDeviceCodeFailedAttempts(_ context.Context, h string, now time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

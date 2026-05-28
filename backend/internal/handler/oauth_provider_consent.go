@@ -13,8 +13,14 @@ import (
 // oauthConsentHTML renders the consent page shown by GET /oauth/authorize.
 //
 // Inline JS reads the JWT from localStorage (where the SPA stores it after
-// login), POSTs to /api/v1/oauth/authorize/approve, and follows the returned
-// redirect_to. If unauthenticated, it bounces to the SPA login flow with a
+// login), POSTs to /api/v1/oauth/authorize/begin to open a server-side
+// authorize transaction (FIX A1 / §10.3), then POSTs to
+// /api/v1/oauth/authorize/approve with ONLY {transaction_id, csrf_token,
+// decision, group_id?} — never client_id / redirect_uri / scope. Those
+// values live on the server-side transaction row keyed by transaction_id,
+// so the JS cannot tamper with the parameters the user consented to.
+//
+// If the JWT is missing the page bounces to the SPA login flow with a
 // post-login `next` pointing back at the current /oauth/authorize URL.
 //
 // nonce is the per-request CSP nonce from middleware.GetNonceFromContext; the
@@ -38,7 +44,10 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
 	}
 	scopeListHTML := scopeBulletsHTML(scopes)
 
-	formJSON := mustMarshalConsentForm(map[string]string{
+	// Begin payload echoes the validated /authorize query so /begin can
+	// re-validate, capture the JWT subject, and produce the transaction id +
+	// CSRF token. Field names match BeginAuthorizeRequest exactly.
+	beginJSON := mustMarshalConsentForm(map[string]string{
 		"client_id":             req.ClientID,
 		"redirect_uri":          req.RedirectURI,
 		"response_type":         req.ResponseType,
@@ -87,17 +96,23 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   <p class="lead">应用 <span class="client">` + html.EscapeString(clientName) + `</span> 请求访问您的 Sakrylle API 账户。</p>
   <ul class="scopes">` + scopeListHTML + `</ul>
   <div class="actions">
-    <button class="deny" id="deny">拒绝</button>
-    <button class="approve" id="approve">授权</button>
+    <button class="deny" id="deny" disabled>拒绝</button>
+    <button class="approve" id="approve" disabled>授权</button>
   </div>
   <div class="status" id="status"></div>
 </div>
 <script nonce="` + html.EscapeString(nonce) + `">
 (function() {
-  var form = ` + formJSON + `;
+  var beginPayload = ` + beginJSON + `;
   var $approve = document.getElementById("approve");
   var $deny = document.getElementById("deny");
   var $status = document.getElementById("status");
+
+  // Server-issued transaction id + CSRF token. Filled in by /begin once the
+  // user is confirmed authenticated; held in this closure (NOT localStorage)
+  // so XSS on a same-origin page can't grab the CSRF token after the user
+  // has navigated away from /oauth/authorize.
+  var tx = null;
 
   function setStatus(kind, message) {
     $status.className = "status " + kind;
@@ -117,16 +132,58 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
     var next = encodeURIComponent(window.location.pathname + window.location.search);
     window.location.href = "/auth/login?next=" + next;
   }
-  function submit(decision) {
+
+  // Step 1: open the transaction. Runs on page load so the consent UI is
+  // backed by a real server-side row before the user clicks anything; if
+  // /begin fails (expired client, scope rejected, etc.) we surface the
+  // error inline rather than waiting for the approve POST.
+  function begin() {
     var jwt = getJWT();
     if (!jwt) {
       setStatus("info", "需要登录后才能授权，正在跳转...");
       setTimeout(gotoLogin, 600);
       return;
     }
+    fetch("/api/v1/oauth/authorize/begin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + jwt },
+      body: JSON.stringify(beginPayload)
+    }).then(function(res) {
+      return res.json().then(function(data) { return { status: res.status, data: data }; });
+    }).then(function(out) {
+      if (out.status === 401) { gotoLogin(); return; }
+      if (out.status >= 400) {
+        setStatus("error", (out.data && out.data.error_description) || "无法开始授权流程");
+        return;
+      }
+      tx = { transaction_id: out.data.transaction_id, csrf_token: out.data.csrf_token };
+      $approve.disabled = false;
+      $deny.disabled = false;
+    }).catch(function(err) {
+      setStatus("error", "网络错误：" + err.message);
+    });
+  }
+
+  // Step 2: approve or deny against the transaction we just opened.
+  // The body carries ONLY the transaction id + csrf token + decision.
+  function submit(decision) {
+    if (!tx) {
+      setStatus("error", "授权流程尚未就绪，请刷新页面重试");
+      return;
+    }
+    var jwt = getJWT();
+    if (!jwt) {
+      setStatus("info", "登录已过期，正在跳转...");
+      setTimeout(gotoLogin, 600);
+      return;
+    }
     $approve.disabled = true;
     $deny.disabled = true;
-    var body = Object.assign({}, form, { decision: decision });
+    var body = {
+      transaction_id: tx.transaction_id,
+      csrf_token: tx.csrf_token,
+      decision: decision
+    };
     fetch("/api/v1/oauth/authorize/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + jwt },
@@ -150,6 +207,7 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   }
   $approve.addEventListener("click", function() { submit("approve"); });
   $deny.addEventListener("click", function() { submit("deny"); });
+  begin();
 })();
 </script>
 </body>
@@ -165,11 +223,23 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
 // reaching the panic indicates a "should be impossible" bug we want surfaced
 // loudly rather than silently degraded.
 func mustMarshalConsentForm(form map[string]string) string {
+	return mustMarshalJSONForScript(form, "oauth: consent form marshal failed")
+}
+
+// mustMarshalJSONForScript serializes v to a JSON literal safe to embed inside
+// a <script> block. Uses json.Encoder with SetEscapeHTML(true) so "<", ">",
+// and "&" are written as < / > / & — valid JSON AND safe inside
+// <script>. The opposite (HTML entities like &lt;) is NOT valid here because
+// the browser JS engine reads the script body literally.
+//
+// Panics on marshal failure with the supplied label; callers pass labels that
+// identify the call site so a panic stack tells operators which embed broke.
+func mustMarshalJSONForScript(v any, panicLabel string) string {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(true)
-	if err := enc.Encode(form); err != nil {
-		panic(fmt.Sprintf("oauth: consent form marshal failed: %v", err))
+	if err := enc.Encode(v); err != nil {
+		panic(fmt.Sprintf("%s: %v", panicLabel, err))
 	}
 	// json.Encoder.Encode appends a trailing newline; trim it so the result
 	// embeds cleanly into our template.

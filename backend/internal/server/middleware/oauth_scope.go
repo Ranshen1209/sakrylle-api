@@ -23,6 +23,7 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -50,10 +51,18 @@ func RequireOAuthScope(svc *service.OAuthProviderService) gin.HandlerFunc {
 		}
 		apiKey, ok := GetAPIKeyFromContext(c)
 		if !ok || apiKey == nil {
-			// API key auth must run first; if there's no api key context,
-			// something is misconfigured. Stay defensive — pass through and
-			// let the next layer reject if needed.
-			c.Next()
+			// API key auth must run before this middleware. Reaching here means
+			// the route is misconfigured (this middleware mounted before auth)
+			// or auth middleware silently failed without aborting. Fail closed:
+			// passing through would silently bypass scope enforcement.
+			slog.Error("oauth: scope middleware ran without api key context — misconfiguration",
+				"path", c.Request.URL.Path,
+				"method", c.Request.Method,
+			)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+				"error":             "server_error",
+				"error_description": "internal authorization error",
+			})
 			return
 		}
 		if !service.IsOAuthAccessToken(apiKey.Key) {
@@ -73,11 +82,31 @@ func RequireOAuthScope(svc *service.OAuthProviderService) gin.HandlerFunc {
 			})
 			return
 		}
-		// Feature flag off OR metadata not provisioned (legacy v1 sk_oauth_
-		// row that pre-dates the v2 access_tokens table) → service returns
-		// (nil, nil). Both cases pass through; backfill is a Phase 7 concern.
+		// Defense in depth: a sk_oauth_ token without an oauth_access_tokens
+		// row is a corrupt/incomplete provisioning state. The FIX H4 atomic
+		// mint path makes this unreachable for fresh tokens, but a stale row
+		// (or a future migration) could surface it. Reject with invalid_token
+		// per RFC 6750 rather than fall through to the gateway.
+		//
+		// Caveat: LoadOAuthAccessMetadata also returns (nil, nil) when the
+		// `oauth_scope_enforcement_enabled` feature flag is off — in that
+		// mode we deliberately bypass scope enforcement entirely (§13.2
+		// kill-switch), so re-check the flag before failing closed.
 		if meta == nil {
-			c.Next()
+			if !svc.IsScopeEnforcementEnabled(ctx) {
+				c.Next()
+				return
+			}
+			slog.Warn("oauth: sk_oauth_ token has no oauth_access_tokens row — failing closed",
+				"api_key_id", apiKey.ID,
+				"path", c.Request.URL.Path,
+			)
+			WriteOAuthResourceError(c, OAuthResourceError{
+				Status:              http.StatusUnauthorized,
+				Code:                OAuthErrInvalidToken,
+				Description:         "oauth access metadata missing",
+				ResourceMetadataURL: discoveryURLForRequest(c),
+			})
 			return
 		}
 
@@ -237,7 +266,10 @@ func discoveryURLForRequest(c *gin.Context) string {
 	if c.Request.TLS == nil && c.Request.Header.Get("X-Forwarded-Proto") != "https" {
 		scheme = "http"
 	}
-	if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto != "" {
+	// Allowlist X-Forwarded-Proto to {http, https} so a malformed or hostile
+	// proxy header cannot inject a scheme into the resource_metadata URL we
+	// echo into WWW-Authenticate.
+	if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto == "http" || proto == "https" {
 		scheme = proto
 	}
 	host := c.Request.Host

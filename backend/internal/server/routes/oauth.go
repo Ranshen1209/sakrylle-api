@@ -75,6 +75,13 @@ func RegisterOAuthRoutes(
 	oauth := v1.Group("/oauth")
 	oauth.Use(gin.HandlerFunc(jwtAuth))
 	{
+		// FIX A1 / §10.3: /begin opens the server-side authorize transaction
+		// for the JWT subject. The consent page POSTs the original /authorize
+		// query params here; the server validates them, captures user_id, and
+		// returns transaction_id + plaintext csrf_token (one-time). /approve
+		// then consumes the transaction by id alone — clients cannot tamper
+		// with client_id / redirect_uri / scopes between begin and approve.
+		oauth.POST("/authorize/begin", h.OAuthProvider.BeginAuthorize)
 		oauth.POST("/authorize/approve", h.OAuthProvider.Approve)
 
 		// Legacy v1 client-aggregate endpoints kept for compatibility (§12.10).
