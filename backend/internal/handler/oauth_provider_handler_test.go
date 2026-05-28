@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -438,6 +439,160 @@ func pkceVerifierAndChallengeForHandler(verifier string) (string, string) {
 	return verifier, base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
+// oauthHandlerAuthorizeTxRepoStub is the in-memory v2 authorize-transaction
+// repo used by handler tests. It implements both the base repo interface and
+// OAuthAuthorizeAtomicRepository (the FIX C2 / A4 atomic consume+issue
+// surface) so the same code path runs in tests as in production.
+//
+// The atomic consume gate enforces FIX A4's row-locked subject re-check, so
+// stub fakes that bypass the service layer cannot accidentally let a foreign
+// JWT subject win.
+type oauthHandlerAuthorizeTxRepoStub struct {
+	mu       sync.Mutex
+	rows     map[string]*service.OAuthAuthorizeTransaction
+	codeRepo *oauthHandlerCodeRepoStub
+}
+
+func newOAuthHandlerAuthorizeTxRepoStub(codeRepo *oauthHandlerCodeRepoStub) *oauthHandlerAuthorizeTxRepoStub {
+	return &oauthHandlerAuthorizeTxRepoStub{
+		rows:     map[string]*service.OAuthAuthorizeTransaction{},
+		codeRepo: codeRepo,
+	}
+}
+
+func (s *oauthHandlerAuthorizeTxRepoStub) CreateAuthorizeTransaction(_ context.Context, tx *service.OAuthAuthorizeTransaction) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := *tx
+	s.rows[tx.TransactionID] = &cp
+	return nil
+}
+
+func (s *oauthHandlerAuthorizeTxRepoStub) GetAuthorizeTransactionForApproval(_ context.Context, transactionID string, now time.Time) (*service.OAuthAuthorizeTransaction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.rows[transactionID]
+	if !ok {
+		return nil, service.ErrOAuthAuthorizeTransactionNotFound
+	}
+	if row.ConsumedAt != nil {
+		return nil, service.ErrOAuthAuthorizeTransactionConsumed
+	}
+	if !row.ExpiresAt.After(now) {
+		return nil, service.ErrOAuthAuthorizeTransactionNotFound
+	}
+	cp := *row
+	return &cp, nil
+}
+
+func (s *oauthHandlerAuthorizeTxRepoStub) MarkAuthorizeTransactionConsumed(_ context.Context, transactionID string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.rows[transactionID]
+	if !ok {
+		return service.ErrOAuthAuthorizeTransactionNotFound
+	}
+	if row.ConsumedAt == nil {
+		t := now
+		row.ConsumedAt = &t
+	}
+	return nil
+}
+
+func (s *oauthHandlerAuthorizeTxRepoStub) DeleteExpiredAuthorizeTransactions(_ context.Context, _ time.Time) (int, error) {
+	return 0, nil
+}
+
+// ConsumeAuthorizeTransactionAndIssueCode mirrors the production atomic
+// consume: row-locked existence + subject re-check, mark consumed, insert
+// code — all under one logical "transaction". The mutex stands in for FOR
+// UPDATE here.
+func (s *oauthHandlerAuthorizeTxRepoStub) ConsumeAuthorizeTransactionAndIssueCode(
+	ctx context.Context,
+	transactionID string,
+	expectedUserID int64,
+	now time.Time,
+	code *service.OAuthCode,
+) error {
+	if code == nil {
+		return errors.New("consume+issue: code argument is nil")
+	}
+	if expectedUserID <= 0 {
+		return service.ErrOAuthSubjectMismatch
+	}
+	s.mu.Lock()
+	row, ok := s.rows[transactionID]
+	if !ok {
+		s.mu.Unlock()
+		return service.ErrOAuthAuthorizeTransactionNotFound
+	}
+	if row.ConsumedAt != nil {
+		s.mu.Unlock()
+		return service.ErrOAuthAuthorizeTransactionConsumed
+	}
+	if !row.ExpiresAt.After(now) {
+		s.mu.Unlock()
+		return service.ErrOAuthAuthorizeTransactionNotFound
+	}
+	if row.UserID != expectedUserID {
+		s.mu.Unlock()
+		return service.ErrOAuthSubjectMismatch
+	}
+	t := now
+	row.ConsumedAt = &t
+	s.mu.Unlock()
+	// Persist the code outside the row lock; matches production "single tx"
+	// from the caller's perspective (any failure here would not leave a
+	// half-consumed row behind because we already stamped consumed_at).
+	return s.codeRepo.CreateCode(ctx, code)
+}
+
+// beginAndApproveForHandler drives the v2 BeginAuthorize → Approve flow
+// through the gin handlers and returns the issued authorization code.
+// Helper used by tests that need a valid code without relying on the now-
+// removed legacy approve-with-form-fields shape.
+func beginAndApproveForHandler(t *testing.T, h *OAuthProviderHandler, userID int64, scope, state, codeChallenge string) (code string) {
+	t.Helper()
+	beginBody, _ := json.Marshal(map[string]string{
+		"client_id":             testOAuthClientID,
+		"redirect_uri":          testOAuthRedirectURI,
+		"response_type":         "code",
+		"scope":                 scope,
+		"state":                 state,
+		"code_challenge":        codeChallenge,
+		"code_challenge_method": "S256",
+	})
+	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/begin", beginBody, "application/json")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.BeginAuthorize(c)
+	require.Equal(t, http.StatusOK, rec.Code, "begin: %s", rec.Body.String())
+
+	var beginResp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &beginResp))
+	txID, _ := beginResp["transaction_id"].(string)
+	csrf, _ := beginResp["csrf_token"].(string)
+	require.NotEmpty(t, txID)
+	require.NotEmpty(t, csrf)
+
+	approveBody, _ := json.Marshal(map[string]any{
+		"transaction_id": txID,
+		"csrf_token":     csrf,
+		"decision":       "approve",
+	})
+	c2, rec2 := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", approveBody, "application/json")
+	c2.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.Approve(c2)
+	require.Equal(t, http.StatusOK, rec2.Code, "approve: %s", rec2.Body.String())
+
+	var approveResp map[string]string
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &approveResp))
+	parsed, perr := url.Parse(approveResp["redirect_to"])
+	require.NoError(t, perr)
+	code = parsed.Query().Get("code")
+	require.NotEmpty(t, code)
+	return code
+}
+
 func newOAuthProviderHandlerHarness(t *testing.T) (*OAuthProviderHandler, *service.OAuthProviderService) {
 	t.Helper()
 	groupID := int64(5)
@@ -449,6 +604,7 @@ func newOAuthProviderHandlerHarness(t *testing.T) (*OAuthProviderHandler, *servi
 				testOAuthRedirectURI,
 			},
 			AllowedScopes:          []string{"image_generation", "balance:read", "models:read"},
+			DefaultScopes:          []string{"image_generation"},
 			PKCERequired:           true,
 			DefaultGroupID:         &groupID,
 			AccessTokenTTLSeconds:  86400,
@@ -464,13 +620,17 @@ func newOAuthProviderHandlerHarness(t *testing.T) (*OAuthProviderHandler, *servi
 		"oauth_provider_enabled": "true",
 		"oauth_default_group_id": "5",
 	}}
+	codeRepo := newOAuthHandlerCodeRepoStub()
+	// FIX A1: wire an in-memory authorize-tx repo (with atomic-consume
+	// surface) so handler tests exercise the v2 BeginAuthorize → Approve
+	// flow end to end.
 	svc := service.NewOAuthProviderService(
 		clientRepo,
-		newOAuthHandlerCodeRepoStub(),
+		codeRepo,
 		newOAuthHandlerRefreshRepoStub(),
 		nil, // accessRepo
 		nil, // deviceRepo
-		nil, // authzTxRepo
+		newOAuthHandlerAuthorizeTxRepoStub(codeRepo),
 		&oauthHandlerAPIKeyOAuthAdapter{oauthHandlerAPIKeyRepoStub: newOAuthHandlerAPIKeyRepoStub()},
 		nil, // GroupRepository — unused on this code path
 		nil, // groupAccess
@@ -713,11 +873,9 @@ func TestApproveRequiresAuth(t *testing.T) {
 	h, _ := newOAuthProviderHandlerHarness(t)
 
 	body := map[string]string{
-		"client_id":     testOAuthClientID,
-		"redirect_uri":  testOAuthRedirectURI,
-		"response_type": "code",
-		"state":         "abc",
-		"decision":      "approve",
+		"transaction_id": "any-id",
+		"csrf_token":     "any-csrf",
+		"decision":       "approve",
 	}
 	raw, _ := json.Marshal(body)
 	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", raw, "application/json")
@@ -732,7 +890,11 @@ func TestApproveDeniedReturnsAccessDenied(t *testing.T) {
 	h, _ := newOAuthProviderHandlerHarness(t)
 	_, challenge := pkceVerifierAndChallengeForHandler("the-quick-brown-fox-jumps-over-the-lazy-dog-12345")
 
-	body := map[string]string{
+	// FIX A1: deny path goes through Begin (to seed a transaction) then
+	// Approve with decision=deny. Server echoes the registered
+	// redirect_uri + state from the transaction row, never trusting the
+	// approve POST body.
+	beginBody, _ := json.Marshal(map[string]string{
 		"client_id":             testOAuthClientID,
 		"redirect_uri":          testOAuthRedirectURI,
 		"response_type":         "code",
@@ -740,10 +902,20 @@ func TestApproveDeniedReturnsAccessDenied(t *testing.T) {
 		"state":                 "echo-this-state",
 		"code_challenge":        challenge,
 		"code_challenge_method": "S256",
-		"decision":              "deny",
-	}
-	raw, _ := json.Marshal(body)
-	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", raw, "application/json")
+	})
+	bc, brec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/begin", beginBody, "application/json")
+	bc.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 42, Concurrency: 1})
+	h.BeginAuthorize(bc)
+	require.Equal(t, http.StatusOK, brec.Code, "begin: %s", brec.Body.String())
+	var beginResp map[string]any
+	require.NoError(t, json.Unmarshal(brec.Body.Bytes(), &beginResp))
+
+	denyBody, _ := json.Marshal(map[string]any{
+		"transaction_id": beginResp["transaction_id"],
+		"csrf_token":     beginResp["csrf_token"],
+		"decision":       "deny",
+	})
+	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", denyBody, "application/json")
 	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 42, Concurrency: 1})
 
 	h.Approve(c)
@@ -981,28 +1153,8 @@ func mintAccessGrantForHandler(t *testing.T, h *OAuthProviderHandler, userID int
 	t.Helper()
 	verifier, challenge := pkceVerifierAndChallengeForHandler("verifier-123456789-aaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
-	// 1. Approve → get authorization code via redirect_to JSON.
-	approveBody, _ := json.Marshal(map[string]string{
-		"client_id":             testOAuthClientID,
-		"redirect_uri":          testOAuthRedirectURI,
-		"response_type":         "code",
-		"scope":                 "image_generation",
-		"state":                 "x",
-		"code_challenge":        challenge,
-		"code_challenge_method": "S256",
-		"decision":              "approve",
-	})
-	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", approveBody, "application/json")
-	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
-	h.Approve(c)
-	require.Equal(t, http.StatusOK, rec.Code, "approve failed: %s", rec.Body.String())
-
-	var approveResp map[string]string
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &approveResp))
-	parsed, err := url.Parse(approveResp["redirect_to"])
-	require.NoError(t, err)
-	code := parsed.Query().Get("code")
-	require.NotEmpty(t, code)
+	// 1. Begin + Approve → get authorization code via redirect_to JSON.
+	code := beginAndApproveForHandler(t, h, userID, "image_generation", "x", challenge)
 
 	// 2. Token → exchange code for access_token.
 	form := url.Values{}
@@ -1316,25 +1468,7 @@ func TestRevoke_RefreshToken_KillsGrantAndDoubleRevokeStillSucceeds(t *testing.T
 	// Mint a grant + access/refresh pair.
 	const userID int64 = 444
 	verifier, challenge := pkceVerifierAndChallengeForHandler("verifier-revoke-test-aaaaaaaaaaaaaaaaaaaaaaaaaa")
-	approveBody, _ := json.Marshal(map[string]string{
-		"client_id":             testOAuthClientID,
-		"redirect_uri":          testOAuthRedirectURI,
-		"response_type":         "code",
-		"scope":                 "image_generation",
-		"state":                 "x",
-		"code_challenge":        challenge,
-		"code_challenge_method": "S256",
-		"decision":              "approve",
-	})
-	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", approveBody, "application/json")
-	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
-	h.Approve(c)
-	require.Equal(t, http.StatusOK, rec.Code, "approve: %s", rec.Body.String())
-
-	var approveResp map[string]string
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &approveResp))
-	parsed, _ := url.Parse(approveResp["redirect_to"])
-	code := parsed.Query().Get("code")
+	code := beginAndApproveForHandler(t, h, userID, "image_generation", "x", challenge)
 
 	tokenForm := url.Values{}
 	tokenForm.Set("grant_type", "authorization_code")
@@ -1492,4 +1626,319 @@ func TestRevokeAuthorizedClient_NoGrants_IsIdempotent(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code,
 		"§12.10: idempotent for users with no grants for this client")
+}
+
+// ── FIX A5: Discovery issuer priority order ─────────────────────────────────
+//
+// The §12.1 RFC 8414 discovery document and §12.7 device flow verification_uri
+// MUST resolve their canonical origin from the same priority order so an
+// operator who follows the migration 145 instruction ("set oauth_issuer per
+// deployment") cannot end up with discovery quietly publishing one host while
+// the device flow advertises another. These tests pin the order:
+//
+//  1. settings.oauth_issuer  (canonical)
+//  2. settings.frontend_url  (legacy fallback)
+//  3. request scheme://Host  (last-resort fallback when both are empty)
+
+func newDiscoveryHarnessWithSettings(t *testing.T, seed map[string]string) *OAuthProviderHandler {
+	t.Helper()
+	settingRepo := &oauthHandlerSettingRepoStub{values: map[string]string{
+		"oauth_provider_enabled": "true",
+	}}
+	for k, v := range seed {
+		settingRepo.values[k] = v
+	}
+	settings := service.NewSettingService(settingRepo, &config.Config{})
+
+	// Reuse the production handler harness's client/repo wiring; we only need
+	// a working OAuthProviderService for IsEnabled() to pass through Metadata.
+	groupID := int64(5)
+	clientRepo := &oauthHandlerClientRepoStub{clients: map[string]*service.OAuthClient{
+		testOAuthClientID: {
+			ClientID:               testOAuthClientID,
+			Name:                   testOAuthClientName,
+			RedirectURIs:           []string{testOAuthRedirectURI},
+			AllowedScopes:          []string{"image_generation", "balance:read", "models:read"},
+			PKCERequired:           true,
+			DefaultGroupID:         &groupID,
+			AccessTokenTTLSeconds:  86400,
+			RefreshTokenTTLSeconds: 2592000,
+		},
+	}}
+	codeRepo := newOAuthHandlerCodeRepoStub()
+	svc := service.NewOAuthProviderService(
+		clientRepo,
+		codeRepo,
+		newOAuthHandlerRefreshRepoStub(),
+		nil, nil,
+		newOAuthHandlerAuthorizeTxRepoStub(codeRepo),
+		&oauthHandlerAPIKeyOAuthAdapter{oauthHandlerAPIKeyRepoStub: newOAuthHandlerAPIKeyRepoStub()},
+		nil, nil,
+		settingRepo,
+		nil,
+	)
+	return NewOAuthProviderHandler(svc, settings)
+}
+
+func metadataIssuer(t *testing.T, h *OAuthProviderHandler, host string) string {
+	t.Helper()
+	c, rec := newGinTestContext(http.MethodGet, "/.well-known/oauth-authorization-server", nil, "")
+	c.Request.Host = host
+	h.Metadata(c)
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	issuer, _ := resp["issuer"].(string)
+	require.False(t, strings.HasSuffix(issuer, "/"), "RFC 8414: issuer must not have trailing slash")
+	return issuer
+}
+
+func TestDiscoveryIssuer_PrefersOAuthIssuerOverFrontendURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := newDiscoveryHarnessWithSettings(t, map[string]string{
+		"oauth_issuer": "https://canonical.example.com",
+		"frontend_url": "https://legacy.example.com",
+	})
+	require.Equal(t, "https://canonical.example.com",
+		metadataIssuer(t, h, "request-host.example"),
+		"FIX A5: oauth_issuer must win over frontend_url")
+}
+
+func TestDiscoveryIssuer_FallsBackToFrontendURLWhenIssuerEmpty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := newDiscoveryHarnessWithSettings(t, map[string]string{
+		"frontend_url": "https://legacy.example.com",
+	})
+	require.Equal(t, "https://legacy.example.com",
+		metadataIssuer(t, h, "request-host.example"),
+		"FIX A5: frontend_url is the legacy fallback")
+}
+
+func TestDiscoveryIssuer_FallsBackToRequestHostWhenBothEmpty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := newDiscoveryHarnessWithSettings(t, map[string]string{})
+	// No TLS on httptest request, no X-Forwarded-Proto → http scheme.
+	require.Equal(t, "http://request-host.example",
+		metadataIssuer(t, h, "request-host.example"),
+		"FIX A5: last-resort request scheme://Host fallback for misconfigured deployments")
+}
+
+func TestDiscoveryIssuer_StripsTrailingSlashFromCanonical(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := newDiscoveryHarnessWithSettings(t, map[string]string{
+		"oauth_issuer": "https://canonical.example.com/",
+	})
+	require.Equal(t, "https://canonical.example.com",
+		metadataIssuer(t, h, "request-host.example"),
+		"FIX A5: trailing slash must be stripped (RFC 8414 forbids it on issuer)")
+}
+
+func TestDiscoveryIssuer_WhitespaceOnlyValueFallsThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := newDiscoveryHarnessWithSettings(t, map[string]string{
+		"oauth_issuer": "   ", // whitespace-only must NOT win
+		"frontend_url": "https://legacy.example.com",
+	})
+	require.Equal(t, "https://legacy.example.com",
+		metadataIssuer(t, h, "request-host.example"),
+		"FIX A5: whitespace-only canonical must fall through to frontend_url")
+}
+
+// ── FIX A1 / A4 wave coverage ──────────────────────────────────────────────
+//
+// These tests pin the v2 transaction-bound /authorize → /approve contract:
+//   - body shape: only transaction_id, csrf_token, decision, group_id?
+//   - subject binding: foreign JWT cannot consume another user's transaction
+//   - CSRF binding: wrong csrf_token rejects
+//   - /begin creates a row with the JWT subject as user_id
+
+// TestApprove_RejectsBodyWithLegacyParams pins the §10.3 attack-surface
+// closure: an approve POST that omits transaction_id + csrf_token (the only
+// two fields gin's binding tags now require) MUST fail at the binding layer
+// even when it carries the legacy client_id / redirect_uri / scope shape.
+//
+// Without this rejection, an attacker who landed an XSS on the consent page
+// (or who guessed/replayed a transaction id) could re-supply scopes for a
+// different client and we'd happily mint a code with attacker-chosen
+// parameters. The transaction_id is the only piece of state that's bound to
+// the user; everything else has to come from the row.
+func TestApprove_RejectsBodyWithLegacyParams(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	legacyOnly, _ := json.Marshal(map[string]string{
+		"client_id":     testOAuthClientID,
+		"redirect_uri":  testOAuthRedirectURI,
+		"response_type": "code",
+		"scope":         "image_generation",
+		"state":         "x",
+		"decision":      "approve",
+	})
+	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", legacyOnly, "application/json")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 11, Concurrency: 1})
+	h.Approve(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code,
+		"approve must reject the legacy body (no transaction_id / csrf_token)")
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "invalid_request", resp["error"],
+		"binding failure must surface as invalid_request, not server_error")
+}
+
+// TestApprove_SubjectMismatchRejected — full HTTP path: user A opens the
+// transaction via /begin, user B's JWT submits /approve with the same CSRF
+// token. Expect 403 + opaque error_description (no leakage of "subject
+// mismatch") and the transaction must remain unconsumed so user A can still
+// complete the flow.
+func TestApprove_SubjectMismatchRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+	_, challenge := pkceVerifierAndChallengeForHandler(
+		"verifier-subject-mismatch-aaaaaaaaaaaaaaaaaa")
+
+	const userA int64 = 100
+	const userB int64 = 200
+
+	// Step 1: user A opens the transaction.
+	beginBody, _ := json.Marshal(map[string]string{
+		"client_id":             testOAuthClientID,
+		"redirect_uri":          testOAuthRedirectURI,
+		"response_type":         "code",
+		"scope":                 "image_generation",
+		"state":                 "abc",
+		"code_challenge":        challenge,
+		"code_challenge_method": "S256",
+	})
+	bc, brec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/begin", beginBody, "application/json")
+	bc.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userA, Concurrency: 1})
+	h.BeginAuthorize(bc)
+	require.Equal(t, http.StatusOK, brec.Code, "begin: %s", brec.Body.String())
+	var beginResp map[string]any
+	require.NoError(t, json.Unmarshal(brec.Body.Bytes(), &beginResp))
+	txID, _ := beginResp["transaction_id"].(string)
+	csrf, _ := beginResp["csrf_token"].(string)
+	require.NotEmpty(t, txID)
+	require.NotEmpty(t, csrf)
+
+	// Step 2: user B (different JWT subject) tries to approve.
+	approveBody, _ := json.Marshal(map[string]string{
+		"transaction_id": txID,
+		"csrf_token":     csrf,
+		"decision":       "approve",
+	})
+	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", approveBody, "application/json")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userB, Concurrency: 1})
+	h.Approve(c)
+
+	require.Equal(t, http.StatusForbidden, rec.Code,
+		"foreign-subject approve must return 403; body=%s", rec.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "invalid_request", resp["error"],
+		"subject mismatch is opaque — error_description must NOT reveal the mismatch reason")
+	desc, _ := resp["error_description"].(string)
+	require.NotContains(t, strings.ToLower(desc), "subject",
+		"error_description leaks attack signal: %q", desc)
+	require.NotContains(t, strings.ToLower(desc), "mismatch",
+		"error_description leaks attack signal: %q", desc)
+
+	// Step 3: user A must still be able to approve — the foreign-subject
+	// attempt cannot consume the transaction.
+	c2, rec2 := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", approveBody, "application/json")
+	c2.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userA, Concurrency: 1})
+	h.Approve(c2)
+	require.Equal(t, http.StatusOK, rec2.Code,
+		"legitimate user must still be able to approve; body=%s", rec2.Body.String())
+}
+
+// TestApprove_CSRFMismatch — a wrong csrf_token rejects with 403.
+func TestApprove_CSRFMismatch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+	_, challenge := pkceVerifierAndChallengeForHandler(
+		"verifier-csrf-mismatch-aaaaaaaaaaaaaaaaaaaa")
+
+	const userID int64 = 77
+
+	beginBody, _ := json.Marshal(map[string]string{
+		"client_id":             testOAuthClientID,
+		"redirect_uri":          testOAuthRedirectURI,
+		"response_type":         "code",
+		"scope":                 "image_generation",
+		"state":                 "abc",
+		"code_challenge":        challenge,
+		"code_challenge_method": "S256",
+	})
+	bc, brec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/begin", beginBody, "application/json")
+	bc.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.BeginAuthorize(bc)
+	require.Equal(t, http.StatusOK, brec.Code, "begin: %s", brec.Body.String())
+	var beginResp map[string]any
+	require.NoError(t, json.Unmarshal(brec.Body.Bytes(), &beginResp))
+	txID, _ := beginResp["transaction_id"].(string)
+	require.NotEmpty(t, txID)
+
+	approveBody, _ := json.Marshal(map[string]string{
+		"transaction_id": txID,
+		"csrf_token":     "definitely-not-the-right-csrf-token",
+		"decision":       "approve",
+	})
+	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/approve", approveBody, "application/json")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.Approve(c)
+
+	require.Equal(t, http.StatusForbidden, rec.Code,
+		"wrong csrf_token must return 403; body=%s", rec.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "invalid_request", resp["error"])
+}
+
+// TestAuthorize_CreatesTransaction — /begin captures the JWT subject as the
+// transaction's user_id so subsequent approve POSTs can re-verify it.
+func TestAuthorize_CreatesTransaction(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, svc := newOAuthProviderHandlerHarness(t)
+	_, challenge := pkceVerifierAndChallengeForHandler(
+		"verifier-creates-tx-aaaaaaaaaaaaaaaaaaaaaa")
+
+	const userID int64 = 1234
+
+	beginBody, _ := json.Marshal(map[string]string{
+		"client_id":             testOAuthClientID,
+		"redirect_uri":          testOAuthRedirectURI,
+		"response_type":         "code",
+		"scope":                 "image_generation",
+		"state":                 "rnd",
+		"code_challenge":        challenge,
+		"code_challenge_method": "S256",
+	})
+	c, rec := newGinTestContext(http.MethodPost, "/api/v1/oauth/authorize/begin", beginBody, "application/json")
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: userID, Concurrency: 1})
+	h.BeginAuthorize(c)
+
+	require.Equal(t, http.StatusOK, rec.Code, "begin body: %s", rec.Body.String())
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	txID, _ := resp["transaction_id"].(string)
+	csrfPlain, _ := resp["csrf_token"].(string)
+	require.NotEmpty(t, txID, "transaction_id missing from /begin response")
+	require.NotEmpty(t, csrfPlain, "csrf_token plaintext missing from /begin response")
+
+	// Inspect the transaction row through the service-layer load helper.
+	// LoadAuthorizeTransactionForApproval re-runs the CSRF + subject check,
+	// so passing the matching userID + plaintext CSRF is the public-API way
+	// to confirm both fields landed on the row correctly.
+	tx, _, err := svc.LoadAuthorizeTransactionForApproval(context.Background(), txID, csrfPlain, userID)
+	require.NoError(t, err, "transaction must be loadable with matching csrf + subject")
+	require.Equal(t, userID, tx.UserID,
+		"transaction user_id must match the JWT subject from /begin")
+	require.Equal(t, testOAuthClientID, tx.ClientID)
+
+	// And the same load with the wrong subject must reject — proves the
+	// row's subject is enforceable end-to-end.
+	_, _, mismatchErr := svc.LoadAuthorizeTransactionForApproval(context.Background(), txID, csrfPlain, userID+1)
+	require.Error(t, mismatchErr,
+		"loading with a different subject must fail; got nil")
 }
