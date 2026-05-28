@@ -224,7 +224,7 @@ const APP_TYPE_KEYS: Record<string, string> = {
   internal: 'authorizedApps.appType.internal'
 }
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const appStore = useAppStore()
 
 const apps = ref<AuthorizedAppGrant[]>([])
@@ -260,10 +260,10 @@ const appTypeLabel = (appType: string): string => {
   return key ? t(key) : appType
 }
 
-const scopeLabel = (scope: string): string => describeScope(scope, locale.value, t).name
+const scopeLabel = (scope: string): string => describeScope(scope, t).name
 
 const scopeTooltip = (scope: string): string => {
-  const { description } = describeScope(scope, locale.value, t)
+  const { description } = describeScope(scope, t)
   return `${scope} — ${description}`
 }
 
@@ -307,12 +307,12 @@ const handleRevokeDevice = async (): Promise<void> => {
     await oauthGrantsAPI.revokeAuthorizedApp(target.grant_id)
     apps.value = apps.value.filter((row) => row.grant_id !== target.grant_id)
     appStore.showSuccess(t('authorizedApps.revokedOne'))
-    closeDialog()
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : t('authorizedApps.revokeFailed')
     appStore.showError(message)
   } finally {
     revokingGrantId.value = null
+    closeDialog()
   }
 }
 
@@ -324,12 +324,12 @@ const handleRevokeAll = async (): Promise<void> => {
     const { revoked } = await oauthGrantsAPI.revokeAuthorizedAppsForClient(target.client_id)
     apps.value = apps.value.filter((row) => row.client_id !== target.client_id)
     appStore.showSuccess(t('authorizedApps.revoked', { count: revoked }))
-    closeDialog()
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : t('authorizedApps.revokeFailed')
     appStore.showError(message)
   } finally {
     revokingClientId.value = null
+    closeDialog()
   }
 }
 

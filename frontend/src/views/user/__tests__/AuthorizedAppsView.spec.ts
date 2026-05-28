@@ -38,23 +38,16 @@ vi.mock('@/utils/format', () => ({
 }))
 
 vi.mock('@/utils/scopes', () => ({
-  describeScope: (scope: string, locale: string) => {
-    const map: Record<string, Record<string, { name: string; description: string }>> = {
-      'profile:read': {
-        en: { name: 'Read profile', description: 'Read profile description' },
-        zh: { name: '查看档案', description: '允许应用读取档案' }
-      },
-      'images:create': {
-        en: { name: 'Create images', description: 'Call image API' },
-        zh: { name: '生成图片', description: '允许应用生成图片' }
-      },
-      image_generation: {
-        en: { name: 'Create images', description: 'Call image API' },
-        zh: { name: '生成图片', description: '允许应用生成图片' }
-      }
+  // describeScope no longer takes a `locale` arg — `t` is bound to the active
+  // i18n locale, so we just return English labels here (the mocked vue-i18n
+  // useI18n() below pins locale to 'en').
+  describeScope: (scope: string) => {
+    const map: Record<string, { name: string; description: string }> = {
+      'profile:read': { name: 'Read profile', description: 'Read profile description' },
+      'images:create': { name: 'Create images', description: 'Call image API' },
+      image_generation: { name: 'Create images', description: 'Call image API' }
     }
-    const loc = locale.startsWith('zh') ? 'zh' : 'en'
-    return map[scope]?.[loc] ?? { name: scope, description: scope }
+    return map[scope] ?? { name: scope, description: scope }
   }
 }))
 
@@ -283,7 +276,7 @@ describe('AuthorizedAppsView (v2 grant rows)', () => {
     expect(showErrorMock).toHaveBeenCalledWith('network down')
   })
 
-  it('shows an error toast when device revoke fails', async () => {
+  it('shows an error toast when device revoke fails and closes the dialog', async () => {
     listAuthorizedAppsMock.mockResolvedValue([grantOne])
     revokeAuthorizedAppMock.mockRejectedValue(new Error('boom'))
 
@@ -297,6 +290,32 @@ describe('AuthorizedAppsView (v2 grant rows)', () => {
 
     expect(showErrorMock).toHaveBeenCalledWith('boom')
     expect(wrapper.find('[data-testid="row-grant-1"]').exists()).toBe(true)
+    // Dialog must close on failure too — otherwise the user is stuck staring at a
+    // confirmation modal after seeing the error toast.
+    expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false)
+  })
+
+  it('closes the dialog when revoke-all fails', async () => {
+    listAuthorizedAppsMock.mockResolvedValue([grantOne, grantTwo])
+    revokeAuthorizedAppsForClientMock.mockRejectedValue(new Error('upstream down'))
+
+    const wrapper = mount(AuthorizedAppsView, { global: { stubs } })
+    await flushPromises()
+
+    const buttons = wrapper.findAll('[data-testid="row-grant-1"] button')
+    await buttons[buttons.length - 1].trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(true)
+
+    await wrapper.find('[data-testid="confirm-ok"]').trigger('click')
+    await flushPromises()
+
+    expect(showErrorMock).toHaveBeenCalledWith('upstream down')
+    // Both rows still present — neither client was actually revoked.
+    expect(wrapper.find('[data-testid="row-grant-1"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="row-grant-2"]').exists()).toBe(true)
+    // Dialog closed despite the failure.
+    expect(wrapper.find('[data-testid="confirm-dialog"]').exists()).toBe(false)
   })
 
   it('cancels the confirmation dialog without calling the API', async () => {
