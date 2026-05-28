@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -434,22 +435,121 @@ func TestSecurity_CrossClientRevokeStealth(t *testing.T) {
 	}
 }
 
-// TestSecurity_AuthorizeTransactionForeignSubject — an authorize transaction
-// created by user X cannot be approved by user Y, even with the right CSRF.
+// TestSecurity_AuthorizeTransactionForeignSubject — FIX C1 §18.7. An
+// authorize transaction created by user X cannot be approved by user Y, even
+// when the attacker has the right CSRF token. The transaction row stores the
+// user_id captured at /authorize time; LoadAuthorizeTransactionForApproval
+// rejects mismatched JWT subjects with ErrOAuthSubjectMismatch and never
+// surfaces the transaction to the caller.
 //
-// Note: per the implementation comment in
-// LoadAuthorizeTransactionForApproval, the subject binding is enforced by
-// ApproveAuthorization comparing the JWT user_id to the userID it threads
-// through code mint. The transaction itself doesn't store the original
-// user_id (it's bound to the rendering session via the CSRF cookie + JWT).
-// We therefore exercise the cookie-stale path: a foreign user with a fresh
-// JWT but no matching CSRF cookie → CSRF mismatch. Verifies the spec
-// requirement: "subject binding is enforced".
+// We exercise the service-layer fix directly via an in-memory authorize-tx
+// repo so we don't depend on the handler wiring.
 func TestSecurity_AuthorizeTransactionForeignSubject(t *testing.T) {
-	// The CSRF mismatch path is exercised by
-	// TestApprove_CSRFMismatch in the handler tests — pointer-only here so
-	// the §18.7 checklist tracks the assertion explicitly.
-	t.Skip("see handler-level TestApprove_CSRFMismatch (CSRF/cookie binding) — service-layer skips because the JWT/cookie binding is enforced at the handler before this method is called")
+	groupID := int64(5)
+	clientRepo := &stubClientRepo{clients: map[string]*OAuthClient{
+		"sakrylle-image-playground": {
+			ClientID:               "sakrylle-image-playground",
+			Name:                   "Sakrylle Image Playground",
+			RedirectURIs:           []string{"https://image.sakrylle.com/oauth/callback"},
+			AllowedScopes:          []string{"image_generation"},
+			DefaultScopes:          []string{"image_generation"},
+			PKCERequired:           true,
+			DefaultGroupID:         &groupID,
+			AccessTokenTTLSeconds:  3600,
+			RefreshTokenTTLSeconds: 86400,
+		},
+	}}
+	apiKeyRepo := newStubAPIKeyRepo()
+	refreshRepo := newStubRefreshRepo()
+	codeRepo := newStubCodeRepo()
+	settingRepo := &stubSettingRepo{values: map[string]string{
+		"oauth_provider_enabled": "true",
+		"oauth_default_group_id": "5",
+	}}
+	authzTxRepo := newStubAuthorizeTransactionRepo()
+	svc := NewOAuthProviderService(
+		clientRepo,
+		codeRepo,
+		refreshRepo,
+		nil,
+		nil,
+		authzTxRepo,
+		oauthAPIKeyOrAdapter(apiKeyRepo, nil),
+		nil,
+		nil,
+		settingRepo,
+		nil,
+	)
+
+	ctx := context.Background()
+	_, challenge := pkceVerifierAndChallenge("verifier-foreign-subject-aaaaaaaaaaaaaaaaaaaa")
+
+	const userA int64 = 100
+	const userB int64 = 200
+
+	begin, err := svc.BeginAuthorizeTransaction(ctx, &BeginAuthorizeParams{
+		ClientID:            "sakrylle-image-playground",
+		RedirectURI:         "https://image.sakrylle.com/oauth/callback",
+		ResponseType:        "code",
+		Scopes:              []string{"image_generation"},
+		State:               "abc",
+		CodeChallenge:       challenge,
+		CodeChallengeMethod: "S256",
+		UserID:              userA,
+	})
+	if err != nil {
+		t.Fatalf("BeginAuthorizeTransaction: %v", err)
+	}
+	if begin.Transaction.UserID != userA {
+		t.Fatalf("transaction must capture initiating user_id; got %d, want %d",
+			begin.Transaction.UserID, userA)
+	}
+
+	// User B (different JWT subject) submits the approve POST with the
+	// correct CSRF — must be rejected and the transaction must remain
+	// unconsumed so user A can complete the flow.
+	if _, err := svc.ApproveAuthorization(
+		ctx,
+		begin.Transaction.TransactionID,
+		begin.CSRFTokenPlaintext,
+		userB,
+		nil,
+	); !errors.Is(err, ErrOAuthSubjectMismatch) {
+		t.Fatalf("foreign-subject approve must return ErrOAuthSubjectMismatch; got %v", err)
+	}
+
+	// No code may have been issued.
+	codeRepo.mu.Lock()
+	codesAfterAttack := len(codeRepo.codes)
+	codeRepo.mu.Unlock()
+	if codesAfterAttack != 0 {
+		t.Fatalf("foreign-subject approve must not mint a code; got %d codes", codesAfterAttack)
+	}
+
+	// Transaction must remain unconsumed so the legitimate user can
+	// complete the flow.
+	row, err := authzTxRepo.GetAuthorizeTransactionForApproval(ctx, begin.Transaction.TransactionID, time.Now())
+	if err != nil {
+		t.Fatalf("transaction lookup after attack: %v", err)
+	}
+	if row.ConsumedAt != nil {
+		t.Fatalf("foreign-subject approve must NOT consume the transaction")
+	}
+
+	// User A's legitimate approve still works.
+	approved, err := svc.ApproveAuthorization(
+		ctx,
+		begin.Transaction.TransactionID,
+		begin.CSRFTokenPlaintext,
+		userA,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("legitimate approve after blocked attack: %v", err)
+	}
+	if approved.Code == "" {
+		t.Fatalf("legitimate approve must mint a code")
+	}
 }
 
 // TestSecurity_ContentTypeNonForm — service layer doesn't see Content-Type.
@@ -555,4 +655,56 @@ func TestSecurity_RefreshExpiryDoesNotExtendOnRotation(t *testing.T) {
 	if delta > time.Second || delta < -time.Second {
 		t.Fatalf("refresh rotation extended family expiry by %s — must inherit original ExpiresAt", delta)
 	}
+}
+
+// stubAuthorizeTransactionRepo is a minimal in-memory store of authorize
+// transactions used by the FIX C1 service-level subject-binding regression
+// test. Implements service.OAuthAuthorizeTransactionRepository.
+type stubAuthorizeTransactionRepo struct {
+	mu   sync.Mutex
+	rows map[string]*OAuthAuthorizeTransaction
+}
+
+func newStubAuthorizeTransactionRepo() *stubAuthorizeTransactionRepo {
+	return &stubAuthorizeTransactionRepo{rows: map[string]*OAuthAuthorizeTransaction{}}
+}
+
+func (s *stubAuthorizeTransactionRepo) CreateAuthorizeTransaction(_ context.Context, tx *OAuthAuthorizeTransaction) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := *tx
+	s.rows[tx.TransactionID] = &cp
+	return nil
+}
+
+func (s *stubAuthorizeTransactionRepo) GetAuthorizeTransactionForApproval(_ context.Context, transactionID string, now time.Time) (*OAuthAuthorizeTransaction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.rows[transactionID]
+	if !ok {
+		return nil, ErrOAuthAuthorizeTransactionNotFound
+	}
+	if !row.ExpiresAt.After(now) {
+		return nil, ErrOAuthAuthorizeTransactionNotFound
+	}
+	cp := *row
+	return &cp, nil
+}
+
+func (s *stubAuthorizeTransactionRepo) MarkAuthorizeTransactionConsumed(_ context.Context, transactionID string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.rows[transactionID]
+	if !ok {
+		return ErrOAuthAuthorizeTransactionNotFound
+	}
+	if row.ConsumedAt == nil {
+		t := now
+		row.ConsumedAt = &t
+	}
+	return nil
+}
+
+func (s *stubAuthorizeTransactionRepo) DeleteExpiredAuthorizeTransactions(_ context.Context, _ time.Time) (int, error) {
+	return 0, nil
 }

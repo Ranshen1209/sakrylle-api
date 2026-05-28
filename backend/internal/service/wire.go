@@ -535,7 +535,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
-	NewOAuthProviderService,
+	ProvideOAuthProviderService,
 	NewDefaultGroupAccessPolicy,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
@@ -653,6 +653,42 @@ func ProvideChannelMonitorService(
 	encryptor SecretEncryptor,
 ) *ChannelMonitorService {
 	return NewChannelMonitorService(repo, encryptor)
+}
+
+// ProvideOAuthProviderService wires OAuthProviderService and attaches the
+// FIX H4 atomic-mint repo via the WithTokenMintRepo option setter. Wire
+// can't express method chains directly, so this wrapper makes the chain
+// part of the provider graph instead of a hand-edit in wire_gen.go.
+//
+// Tests continue to use the bare NewOAuthProviderService constructor; only
+// production wiring goes through this wrapper.
+func ProvideOAuthProviderService(
+	clientRepo OAuthClientRepository,
+	codeRepo OAuthCodeRepository,
+	refreshRepo OAuthRefreshTokenRepository,
+	accessRepo OAuthAccessTokenRepository,
+	deviceRepo OAuthDeviceCodeRepository,
+	authzTxRepo OAuthAuthorizeTransactionRepository,
+	apiKeyRepo OAuthAPIKeyRepository,
+	groupRepo GroupRepository,
+	groupAccess GroupAccessPolicy,
+	settingRepo SettingRepository,
+	authCache APIKeyAuthCacheInvalidator,
+	mintRepo OAuthTokenMintRepository,
+) *OAuthProviderService {
+	return NewOAuthProviderService(
+		clientRepo,
+		codeRepo,
+		refreshRepo,
+		accessRepo,
+		deviceRepo,
+		authzTxRepo,
+		apiKeyRepo,
+		groupRepo,
+		groupAccess,
+		settingRepo,
+		authCache,
+	).WithTokenMintRepo(mintRepo)
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

@@ -408,6 +408,13 @@ func (s *OAuthProviderService) ExchangeDeviceCode(
 // but builds the OAuthCode-shaped intermediate from the device-code row so
 // the existing mint logic stays the single source of truth for token
 // material, scope normalization, and refresh-issuance rules.
+//
+// FIX H6: the order is INVERTED from the legacy mint-then-consume sequence.
+// We call ConsumeApprovedDeviceCode FIRST so a concurrent second poll can
+// never observe the row in 'approved' state again. Only the caller that
+// wins the atomic UPDATE proceeds to mint. If the mint then fails, the
+// device code is already consumed — RFC 8628 §3.5 explicitly tolerates this
+// outcome (the user reauthorizes).
 func (s *OAuthProviderService) mintTokensFromDeviceCode(
 	ctx context.Context,
 	client *OAuthClient,
@@ -424,6 +431,32 @@ func (s *OAuthProviderService) mintTokensFromDeviceCode(
 		return nil, ErrOAuthInvalidGrant
 	}
 	approvingUserID := *row.ApprovedByUserID
+
+	// FIX H6: gate on atomic consume BEFORE minting. If two pollers race,
+	// at most one wins; the loser sees ErrOAuthDeviceCodeNotFound (because
+	// status is no longer 'approved'), which the caller maps to
+	// ErrOAuthDeviceCodeAlreadyConsumed.
+	if atomic, ok := s.deviceRepo.(interface {
+		ConsumeApprovedDeviceCode(ctx context.Context, deviceCodeHash string, now time.Time) (*OAuthDeviceCode, error)
+	}); ok {
+		consumed, cerr := atomic.ConsumeApprovedDeviceCode(ctx, deviceCodeHash, now)
+		if cerr != nil {
+			if errors.Is(cerr, ErrOAuthDeviceCodeNotFound) {
+				return nil, ErrOAuthDeviceCodeAlreadyConsumed
+			}
+			return nil, fmt.Errorf("consume approved device code: %w", cerr)
+		}
+		// Use the freshly-loaded snapshot for downstream resolution so we
+		// see the final approved-time GroupID/ApprovedByUserID even if the
+		// caller's row was loaded before approval finished.
+		if consumed != nil {
+			row = consumed
+			if row.ApprovedByUserID == nil || *row.ApprovedByUserID <= 0 {
+				return nil, ErrOAuthInvalidGrant
+			}
+			approvingUserID = *row.ApprovedByUserID
+		}
+	}
 
 	var groupID int64
 	if row.GroupID != nil && *row.GroupID > 0 {
@@ -464,18 +497,14 @@ func (s *OAuthProviderService) mintTokensFromDeviceCode(
 
 	issued, err := s.mintTokensFromCode(ctx, client, pseudoCode)
 	if err != nil {
-		return nil, err
-	}
-
-	// Mark the device code consumed so a second poll returns
-	// invalid_grant. We do this AFTER successful mint so a transient mint
-	// failure keeps the row mintable on retry — RFC 8628 §3.5 allows this.
-	if cerr := s.deviceRepo.MarkDeviceCodeConsumed(ctx, deviceCodeHash, now); cerr != nil {
-		// Non-fatal: tokens are already minted and live. Log loudly.
-		slog.Warn("oauth: mark device code consumed failed after mint",
+		// Mint failed AFTER atomic consume — per RFC 8628 §3.5 this is
+		// acceptable. Log so operators can track the rare race; the user
+		// will see the underlying error and reauthorize.
+		slog.Warn("oauth: device code mint failed after atomic consume",
 			"client_id", client.ClientID,
-			"err", cerr,
+			"err", err,
 		)
+		return nil, err
 	}
 	return issued, nil
 }
@@ -516,9 +545,19 @@ func (s *OAuthProviderService) touchDevicePollAndBumpInterval(
 	}
 }
 
-// maybeBumpFailedAttempts is best-effort observability for §10.6. We don't
-// fail the user-facing flow if the repo call errors out; the row is denied
-// after 5 failed attempts only when a matching unexpired row exists.
+// maybeBumpFailedAttempts is best-effort observability for §10.6 — but the
+// real brute-force defense for device flow is the per-IP rate limit on
+// POST /api/v1/oauth/device/approve (5 attempts / 15 min / IP, fail-close;
+// see internal/server/routes/oauth_device.go).
+//
+// FIX M6: the legacy code looked up the row by hash(attacker_input). Wrong
+// guesses don't match any row, so the counter never bumped — making the
+// "5 strikes per code" claim from §10.6 ineffective in practice. We keep
+// this method only for the rare case where the hash DID match a real row
+// (i.e. the user typed a valid SKRY code but failed downstream validation
+// like ResolveOAuthGroup); under that path the bump is meaningful as a
+// stale-row defense rather than an adversarial counter. The IP limiter is
+// what stops 1000-guess attacks.
 func (s *OAuthProviderService) maybeBumpFailedAttempts(ctx context.Context, userCodeHash string, now time.Time) {
 	if s.deviceRepo == nil {
 		return
@@ -526,7 +565,8 @@ func (s *OAuthProviderService) maybeBumpFailedAttempts(ctx context.Context, user
 	count, err := s.deviceRepo.IncrementDeviceCodeFailedAttempts(ctx, userCodeHash, now)
 	if err != nil {
 		// Most common: row doesn't exist → ErrOAuthDeviceCodeNotFound.
-		// That's the expected case for typo-style guesses; nothing to do.
+		// That's the expected case for typo-style guesses; the IP rate
+		// limit handles those at the handler layer.
 		return
 	}
 	if count >= deviceUserCodeMaxFailedAttempts {
@@ -555,14 +595,25 @@ func (s *OAuthProviderService) isDeviceFlowGloballyEnabled(ctx context.Context) 
 	}
 }
 
-// deviceVerificationURI builds the §12.7 verification_uri value from the
-// configured oauth_issuer. Falls back to a relative path so a fresh local
-// install still works.
+// deviceVerificationURI builds the §12.7 verification_uri value.
+//
+// Source order is kept in lockstep with SettingService.GetOAuthIssuer (and
+// therefore with RFC 8414 discovery in the handler layer) so the two
+// endpoints cannot disagree about which origin Sakrylle considers canonical:
+//
+//  1. settings.oauth_issuer  (canonical; per migration 145 deployments MUST set)
+//  2. settings.frontend_url  (legacy fallback)
+//  3. relative path "/oauth/device" (last resort — fresh local install before
+//     either key is written; CLI clients will reject this, which is the right
+//     failure mode for a misconfigured deployment).
+//
+// Trailing slashes are stripped before appending the device path so a stored
+// "https://example.com/" cannot produce "https://example.com//oauth/device".
 func (s *OAuthProviderService) deviceVerificationURI(ctx context.Context) string {
 	if s.settingRepo == nil {
 		return "/oauth/device"
 	}
-	for _, key := range []string{"oauth_issuer", "frontend_url"} {
+	for _, key := range []string{SettingKeyOAuthIssuer, SettingKeyFrontendURL} {
 		if v, err := s.settingRepo.GetValue(ctx, key); err == nil {
 			trimmed := strings.TrimRight(strings.TrimSpace(v), "/")
 			if trimmed != "" {

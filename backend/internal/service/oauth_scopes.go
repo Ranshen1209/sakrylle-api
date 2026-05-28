@@ -253,10 +253,22 @@ var oauthScopePolicies = []scopePolicyEntry{
 
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
 	{method: "GET", pattern: regexp.MustCompile(`^/v1/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
+	// FIX M5: cover the rest of the mutating verbs on /v1/responses so a
+	// future DELETE /v1/responses/:id (cancellation) or PATCH /v1/responses
+	// /:id (metadata edit) can't sneak past with sk_oauth_ tokens that lack
+	// responses:create. Default-deny via OAuthScopePolicyForRequest's unlisted
+	// branch already rejects them, but listing explicitly means a properly
+	// scoped token can use these verbs once gin routes are added.
+	{method: "DELETE", pattern: regexp.MustCompile(`^/v1/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
+	{method: "PATCH", pattern: regexp.MustCompile(`^/v1/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
 	{method: "POST", pattern: regexp.MustCompile(`^/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
 	{method: "GET", pattern: regexp.MustCompile(`^/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
+	{method: "DELETE", pattern: regexp.MustCompile(`^/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
+	{method: "PATCH", pattern: regexp.MustCompile(`^/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/codex/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
 	{method: "GET", pattern: regexp.MustCompile(`^/v1/codex/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
+	{method: "DELETE", pattern: regexp.MustCompile(`^/v1/codex/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
+	{method: "PATCH", pattern: regexp.MustCompile(`^/v1/codex/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
 
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/messages/?$`), required: []string{ScopeMessagesCreate}},
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/messages/count_tokens/?$`), required: []string{ScopeMessagesCreate}},

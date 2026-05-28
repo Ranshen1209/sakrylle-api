@@ -185,6 +185,7 @@ type OAuthAuthorizeTransaction struct {
 	ID                    int64
 	TransactionID         string
 	CSRFHash              string
+	UserID                int64
 	ClientID              string
 	RedirectURI           string
 	ResponseType          string
@@ -316,6 +317,17 @@ type OAuthDeviceCodeRepository interface {
 	ApproveDeviceCode(ctx context.Context, userCodeHash string, userID int64, groupID int64, now time.Time) error
 	DenyDeviceCode(ctx context.Context, userCodeHash string, now time.Time) error
 	MarkDeviceCodeConsumed(ctx context.Context, deviceCodeHash string, now time.Time) error
+	// ConsumeApprovedDeviceCode atomically flips status approved → consumed
+	// and returns the row that was just consumed. RETURNING semantics: at
+	// most one caller wins, so a concurrent double-poll cannot mint twice.
+	// Returns ErrOAuthDeviceCodeNotFound when the row is missing or not in
+	// approved status (already consumed, denied, expired, or still pending).
+	//
+	// FIX H6: this is the canonical mint-gate; the legacy
+	// MarkDeviceCodeConsumed is kept only for callers that have already
+	// minted and need a best-effort follow-up consume, which is the wrong
+	// shape for the polling endpoint.
+	ConsumeApprovedDeviceCode(ctx context.Context, deviceCodeHash string, now time.Time) (*OAuthDeviceCode, error)
 	// IncrementDeviceCodeFailedAttempts atomically bumps
 	// failed_user_code_attempts on an unexpired matching row and returns
 	// the new value. The service decides whether to flip status to denied
@@ -333,12 +345,43 @@ type OAuthDeviceCodeRepository interface {
 // row used as server-side authorize state. See §10.3.
 type OAuthAuthorizeTransactionRepository interface {
 	CreateAuthorizeTransaction(ctx context.Context, tx *OAuthAuthorizeTransaction) error
-	// GetAuthorizeTransactionForUpdate locks the row by transaction_id and
-	// returns it. Approve/deny call this before validating CSRF, then mark
-	// consumed_at in the same tx.
-	GetAuthorizeTransactionForUpdate(ctx context.Context, transactionID string, now time.Time) (*OAuthAuthorizeTransaction, error)
+	// GetAuthorizeTransactionForApproval loads the row by transaction_id for
+	// the consent-page approval pre-checks (CSRF + subject). The implementation
+	// MAY use FOR UPDATE inside its own transaction, but the lock is released
+	// before this method returns — it is therefore a non-locking advisory
+	// load. The atomic consume path
+	// (OAuthAuthorizeAtomicRepository.ConsumeAuthorizeTransactionAndIssueCode)
+	// re-checks every invariant inside its own row-locked tx, so this load is
+	// safe for read-side validation only.
+	GetAuthorizeTransactionForApproval(ctx context.Context, transactionID string, now time.Time) (*OAuthAuthorizeTransaction, error)
 	MarkAuthorizeTransactionConsumed(ctx context.Context, transactionID string, now time.Time) error
 	DeleteExpiredAuthorizeTransactions(ctx context.Context, before time.Time) (int, error)
+}
+
+// OAuthAuthorizeAtomicRepository extends the authorize-transaction repo with
+// the FIX C2 atomic consume+issue helper. Production repos implement this;
+// older test fakes can opt out and the service falls back to the (unsafe)
+// legacy two-step path.
+type OAuthAuthorizeAtomicRepository interface {
+	// ConsumeAuthorizeTransactionAndIssueCode runs both writes inside one
+	// repository transaction:
+	//   1. SELECT ... FOR UPDATE the transaction row (must be unconsumed
+	//      and unexpired).
+	//   2. FIX A4: re-check that row.user_id == expectedUserID. The earlier
+	//      LoadAuthorizeTransactionForApproval check is advisory (its lock
+	//      is released before this call). Re-checking here closes the
+	//      TOCTOU window between subject check and consume.
+	//   3. UPDATE consumed_at = now.
+	//   4. INSERT the authorization code row.
+	// Rolls back on any failure so the transaction stays re-runnable. Returns
+	// ErrOAuthSubjectMismatch when expectedUserID does not match the row.
+	ConsumeAuthorizeTransactionAndIssueCode(
+		ctx context.Context,
+		transactionID string,
+		expectedUserID int64,
+		now time.Time,
+		code *OAuthCode,
+	) error
 }
 
 // OAuthAPIKeyRepository extends APIKeyRepository with the batch-disable
@@ -350,6 +393,33 @@ type OAuthAuthorizeTransactionRepository interface {
 type OAuthAPIKeyRepository interface {
 	APIKeyRepository
 	DisableAPIKeysByIDsReturningKeys(ctx context.Context, ids []int64, now time.Time) ([]string, error)
+}
+
+// OAuthTokenMintParams bundles the three rows that compose an OAuth token:
+// the api_keys row (holds the plaintext access token + status + group), the
+// oauth_access_tokens metadata row (scope + family/grant identity), and the
+// optional oauth_refresh_tokens row.
+//
+// AccessToken is mandatory when access scope enforcement is enabled; the
+// service passes nil for legacy v1 paths that don't write access metadata.
+// RefreshToken is nil when the client did not request offline_access AND
+// AllowRefreshWithoutOfflineAccess is false.
+type OAuthTokenMintParams struct {
+	APIKey       *APIKey
+	AccessToken  *OAuthAccessToken
+	RefreshToken *OAuthRefreshToken
+}
+
+// OAuthTokenMintRepository is the FIX H4 atomic mint surface. Implementations
+// MUST run all three writes inside a single repository transaction so a
+// failure between writes can never produce a live api_keys row that lacks
+// scope metadata (and would therefore bypass scope enforcement).
+//
+// The api_keys row is inserted first inside the tx; its assigned ID is then
+// stamped into the access/refresh rows before they are written. On commit
+// success, params.APIKey.ID is set on the caller's struct.
+type OAuthTokenMintRepository interface {
+	MintTokenSet(ctx context.Context, params *OAuthTokenMintParams) error
 }
 
 // ── Errors ──────────────────────────────────────────────────────────────────

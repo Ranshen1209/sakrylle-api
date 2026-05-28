@@ -124,6 +124,24 @@ func (s *stubDeviceCodeRepo) MarkDeviceCodeConsumed(_ context.Context, deviceCod
 	return nil
 }
 
+// ConsumeApprovedDeviceCode is the FIX H6 atomic gate: only the caller that
+// observes status='approved' wins; any concurrent caller sees not-found.
+func (s *stubDeviceCodeRepo) ConsumeApprovedDeviceCode(_ context.Context, deviceCodeHash string, now time.Time) (*OAuthDeviceCode, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.rows[deviceCodeHash]
+	if !ok {
+		return nil, ErrOAuthDeviceCodeNotFound
+	}
+	if row.Status != "approved" {
+		return nil, ErrOAuthDeviceCodeNotFound
+	}
+	row.Status = "consumed"
+	row.ConsumedAt = &now
+	cp := *row
+	return &cp, nil
+}
+
 func (s *stubDeviceCodeRepo) IncrementDeviceCodeFailedAttempts(_ context.Context, userCodeHash string, now time.Time) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -735,4 +753,133 @@ func equalStrSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestExchangeDeviceCode_RaceDoesNotDoubleMint — FIX H6 regression. Two
+// concurrent goroutines exchange the same approved device_code; the atomic
+// approved→consumed flip MUST guarantee at most one mint. The loser sees
+// invalid_grant (already_consumed). Without the atomic gate this test fails
+// because both pollers race past the status check before either consumes.
+func TestExchangeDeviceCode_RaceDoesNotDoubleMint(t *testing.T) {
+	svc, _, deviceRepo, apiKeyRepo, refreshRepo, accessRepo := newDeviceServiceUnderTest(t)
+	ctx := context.Background()
+
+	created, err := svc.CreateDeviceCode(ctx, &DeviceCodeRequest{
+		ClientID: "sakrylle-cli",
+		Scopes:   []string{ScopeMessagesCreate, ScopeOfflineAccess},
+	})
+	if err != nil {
+		t.Fatalf("CreateDeviceCode: %v", err)
+	}
+	if err := svc.ApproveDeviceCode(ctx, 42, created.UserCode, nil); err != nil {
+		t.Fatalf("ApproveDeviceCode: %v", err)
+	}
+	// Pre-clear LastPollAt so neither contender hits slow_down throttling.
+	deviceRepo.mu.Lock()
+	for _, row := range deviceRepo.rows {
+		row.LastPollAt = nil
+	}
+	deviceRepo.mu.Unlock()
+
+	type result struct {
+		token *IssuedToken
+		err   error
+	}
+	const goroutines = 8
+	results := make(chan result, goroutines)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			tok, err := svc.ExchangeDeviceCode(ctx, "sakrylle-cli", "", created.DeviceCode)
+			results <- result{token: tok, err: err}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	consumed := 0
+	slowDown := 0
+	for r := range results {
+		switch {
+		case r.err == nil && r.token != nil && r.token.AccessToken != "":
+			successes++
+		case errors.Is(r.err, ErrOAuthDeviceCodeAlreadyConsumed):
+			consumed++
+		case errors.Is(r.err, ErrOAuthDeviceCodeSlowDown):
+			// Legitimate transient response when a faster goroutine has just
+			// touched LastPollAt; bucket separately so a regression that
+			// surfaces a different error type (e.g. a panic-recover landing
+			// in 500/internal_server_error) cannot hide here.
+			slowDown++
+		default:
+			// FIX A6 / T-2(b): bound the loser-error set. Anything outside
+			// {already_consumed, slow_down} indicates a regression — fail
+			// loudly with the actual error so it cannot be masked as "other".
+			t.Errorf("FIX A6: unexpected loser error type: %T %v (token=%v)", r.err, r.err, r.token)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("FIX H6: expected exactly one successful mint across %d racers, got successes=%d already_consumed=%d slow_down=%d",
+			goroutines, successes, consumed, slowDown)
+	}
+	// Closed-set invariant: every goroutine result must fall into one of the
+	// three accepted buckets. Any drift means we silently swallowed an error.
+	if total := successes + consumed + slowDown; total != goroutines {
+		t.Fatalf("FIX A6: bucket arithmetic mismatch — successes=%d + consumed=%d + slow_down=%d = %d, want %d",
+			successes, consumed, slowDown, total, goroutines)
+	}
+
+	// One api_keys row, one access metadata row, one refresh token.
+	apiKeyRepo.mu.Lock()
+	apiKeyCount := len(apiKeyRepo.rows)
+	apiKeyRepo.mu.Unlock()
+	if apiKeyCount != 1 {
+		t.Fatalf("expected 1 api_key from race, got %d", apiKeyCount)
+	}
+	if accessRepo.calls != 1 {
+		t.Fatalf("expected 1 access metadata create, got %d", accessRepo.calls)
+	}
+	refreshRepo.mu.Lock()
+	rtCount := len(refreshRepo.tokens)
+	refreshRepo.mu.Unlock()
+	if rtCount != 1 {
+		t.Fatalf("expected 1 refresh token from race, got %d", rtCount)
+	}
+
+	// FIX A6 / T-2(d): assert the device code row is in its terminal state.
+	// "At most one mint succeeds" is necessary but not sufficient — without
+	// reading back the row we cannot prove the consume actually committed
+	// (a regression that mints a token without flipping status would still
+	// pass the success-count check above).
+	row := lookupStubDeviceCodeByPlain(deviceRepo, created.UserCode)
+	if row == nil {
+		t.Fatalf("FIX A6: device code row missing after race — expected approved→consumed transition")
+	}
+	if row.Status != "consumed" {
+		t.Fatalf("FIX A6: device code Status = %q, want %q", row.Status, "consumed")
+	}
+	if row.ConsumedAt == nil {
+		t.Fatalf("FIX A6: device code ConsumedAt is nil after consume; status=%q", row.Status)
+	}
+	if row.ConsumedAt.IsZero() {
+		t.Fatalf("FIX A6: device code ConsumedAt is the zero time")
+	}
+	now := time.Now()
+	// Allow +5s skew so a slow CI box (clock granularity, scheduler latency)
+	// doesn't trip this. The point of the upper bound is to catch a
+	// regression that writes a sentinel-future timestamp, not to assert
+	// real-time precision.
+	if row.ConsumedAt.After(now.Add(5 * time.Second)) {
+		t.Fatalf("FIX A6: device code ConsumedAt %v is in the future relative to now %v", *row.ConsumedAt, now)
+	}
+	// And it must not predate the test (the row was created moments ago).
+	if row.ConsumedAt.Before(now.Add(-1 * time.Minute)) {
+		t.Fatalf("FIX A6: device code ConsumedAt %v is implausibly old relative to now %v", *row.ConsumedAt, now)
+	}
 }

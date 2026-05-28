@@ -780,6 +780,42 @@ func (r *oauthProviderRepository) MarkDeviceCodeConsumed(ctx context.Context, de
 	})
 }
 
+// ConsumeApprovedDeviceCode atomically flips status approved → consumed and
+// returns the row that was just consumed. FIX H6: gate the device-code
+// minting path with this call so a concurrent double-poll cannot win twice.
+func (r *oauthProviderRepository) ConsumeApprovedDeviceCode(
+	ctx context.Context,
+	deviceCodeHash string,
+	now time.Time,
+) (*service.OAuthDeviceCode, error) {
+	var consumed *service.OAuthDeviceCode
+	err := withTx(ctx, r.client, func(tx *dbent.Tx) error {
+		row, qerr := tx.OAuthDeviceCode.Query().
+			Where(
+				oauthdevicecode.DeviceCodeHashEQ(deviceCodeHash),
+				oauthdevicecode.StatusEQ("approved"),
+			).
+			ForUpdate().
+			Only(ctx)
+		if qerr != nil {
+			if dbent.IsNotFound(qerr) {
+				return service.ErrOAuthDeviceCodeNotFound
+			}
+			return fmt.Errorf("lock oauth device code for atomic consume: %w", qerr)
+		}
+		updated, uerr := row.Update().
+			SetStatus("consumed").
+			SetConsumedAt(now).
+			Save(ctx)
+		if uerr != nil {
+			return fmt.Errorf("atomic consume oauth device code: %w", uerr)
+		}
+		consumed = entOAuthDeviceCodeToService(updated)
+		return nil
+	})
+	return consumed, err
+}
+
 func (r *oauthProviderRepository) IncrementDeviceCodeFailedAttempts(ctx context.Context, userCodeHash string, now time.Time) (int, error) {
 	var newCount int
 	err := withTx(ctx, r.client, func(tx *dbent.Tx) error {
@@ -848,6 +884,7 @@ func (r *oauthProviderRepository) CreateAuthorizeTransaction(ctx context.Context
 	q := r.client.OAuthAuthorizeTransaction.Create().
 		SetTransactionID(tx.TransactionID).
 		SetCsrfHash(tx.CSRFHash).
+		SetUserID(tx.UserID).
 		SetClientID(tx.ClientID).
 		SetRedirectURI(tx.RedirectURI).
 		SetResponseType(tx.ResponseType).
@@ -878,7 +915,17 @@ func (r *oauthProviderRepository) CreateAuthorizeTransaction(ctx context.Context
 	return nil
 }
 
-func (r *oauthProviderRepository) GetAuthorizeTransactionForUpdate(ctx context.Context, transactionID string, now time.Time) (*service.OAuthAuthorizeTransaction, error) {
+// GetAuthorizeTransactionForApproval loads the row by transaction_id for the
+// consent-page approval pre-checks (CSRF + subject). The lookup runs inside a
+// short-lived transaction but the row lock is released on commit before this
+// method returns — so this is effectively a non-locking advisory load. The
+// atomic consume path (ConsumeAuthorizeTransactionAndIssueCode) re-checks
+// every invariant under FOR UPDATE inside its own tx, so callers can rely on
+// the consume call to gate the actual mint.
+//
+// Renamed in FIX A4 from the misleading GetAuthorizeTransactionForUpdate to
+// reflect that the held lock is not durable across the call boundary.
+func (r *oauthProviderRepository) GetAuthorizeTransactionForApproval(ctx context.Context, transactionID string, now time.Time) (*service.OAuthAuthorizeTransaction, error) {
 	var got *service.OAuthAuthorizeTransaction
 	err := withTx(ctx, r.client, func(tx *dbent.Tx) error {
 		row, qerr := tx.OAuthAuthorizeTransaction.Query().
@@ -887,13 +934,12 @@ func (r *oauthProviderRepository) GetAuthorizeTransactionForUpdate(ctx context.C
 				oauthauthorizetransaction.ConsumedAtIsNil(),
 				oauthauthorizetransaction.ExpiresAtGT(now),
 			).
-			ForUpdate().
 			Only(ctx)
 		if qerr != nil {
 			if dbent.IsNotFound(qerr) {
 				return service.ErrOAuthAuthorizeTransactionNotFound
 			}
-			return fmt.Errorf("lock oauth authorize transaction: %w", qerr)
+			return fmt.Errorf("load oauth authorize transaction: %w", qerr)
 		}
 		got = entOAuthAuthorizeTransactionToService(row)
 		return nil
@@ -913,6 +959,81 @@ func (r *oauthProviderRepository) MarkAuthorizeTransactionConsumed(ctx context.C
 		return fmt.Errorf("mark oauth authorize transaction consumed: %w", err)
 	}
 	return nil
+}
+
+// ConsumeAuthorizeTransactionAndIssueCode is the FIX C2 atomic consume+issue
+// path. SELECT ... FOR UPDATE the transaction row, validate it is unconsumed
+// AND owned by expectedUserID (FIX A4 TOCTOU close), stamp consumed_at, then
+// insert the authorization code — all inside one repository transaction. On
+// any failure the transaction stays unconsumed so the user can retry.
+//
+// FIX A4: expectedUserID is the JWT subject from the approve POST; we re-verify
+// it inside the row lock here because LoadAuthorizeTransactionForApproval's
+// pre-check is advisory (lock released before this call). Subject mismatch
+// returns ErrOAuthSubjectMismatch and rolls back without consuming.
+func (r *oauthProviderRepository) ConsumeAuthorizeTransactionAndIssueCode(
+	ctx context.Context,
+	transactionID string,
+	expectedUserID int64,
+	now time.Time,
+	code *service.OAuthCode,
+) error {
+	if code == nil {
+		return fmt.Errorf("consume+issue: code argument is nil")
+	}
+	if expectedUserID <= 0 {
+		return service.ErrOAuthSubjectMismatch
+	}
+	return withTx(ctx, r.client, func(tx *dbent.Tx) error {
+		row, qerr := tx.OAuthAuthorizeTransaction.Query().
+			Where(
+				oauthauthorizetransaction.TransactionIDEQ(transactionID),
+				oauthauthorizetransaction.ConsumedAtIsNil(),
+				oauthauthorizetransaction.ExpiresAtGT(now),
+			).
+			ForUpdate().
+			Only(ctx)
+		if qerr != nil {
+			if dbent.IsNotFound(qerr) {
+				return service.ErrOAuthAuthorizeTransactionNotFound
+			}
+			return fmt.Errorf("lock authorize transaction for consume+issue: %w", qerr)
+		}
+		// FIX A4: subject re-check inside row lock. Defense in depth — the
+		// service-layer pre-check is advisory; this is the authoritative one.
+		if row.UserID != expectedUserID {
+			return service.ErrOAuthSubjectMismatch
+		}
+		if _, uerr := row.Update().SetConsumedAt(now).Save(ctx); uerr != nil {
+			return fmt.Errorf("mark authorize transaction consumed: %w", uerr)
+		}
+		cq := tx.OAuthCode.Create().
+			SetCodeHash(code.CodeHash).
+			SetClientID(code.ClientID).
+			SetUserID(code.UserID).
+			SetRedirectURI(code.RedirectURI).
+			SetScopes(code.Scopes).
+			SetCodeChallenge(code.CodeChallenge).
+			SetCodeChallengeMethod(code.CodeChallengeMethod).
+			SetExpiresAt(code.ExpiresAt).
+			SetAllowedGroupsSnapshot(code.AllowedGroupsSnapshot)
+		if code.GroupID != nil {
+			cq = cq.SetGroupID(*code.GroupID)
+		}
+		if code.GrantID != nil {
+			cq = cq.SetGrantID(*code.GrantID)
+		}
+		if code.DeviceID != nil {
+			cq = cq.SetDeviceID(*code.DeviceID)
+		}
+		if code.DeviceName != nil {
+			cq = cq.SetDeviceName(*code.DeviceName)
+		}
+		if _, cerr := cq.Save(ctx); cerr != nil {
+			return fmt.Errorf("persist authorization code: %w", cerr)
+		}
+		return nil
+	})
 }
 
 func (r *oauthProviderRepository) DeleteExpiredAuthorizeTransactions(ctx context.Context, before time.Time) (int, error) {
@@ -1073,6 +1194,7 @@ func entOAuthAuthorizeTransactionToService(row *dbent.OAuthAuthorizeTransaction)
 		ID:                    row.ID,
 		TransactionID:         row.TransactionID,
 		CSRFHash:              row.CsrfHash,
+		UserID:                row.UserID,
 		ClientID:              row.ClientID,
 		RedirectURI:           row.RedirectURI,
 		ResponseType:          row.ResponseType,
@@ -1100,4 +1222,5 @@ var (
 	_ service.OAuthAccessTokenRepository           = (*oauthProviderRepository)(nil)
 	_ service.OAuthDeviceCodeRepository            = (*oauthProviderRepository)(nil)
 	_ service.OAuthAuthorizeTransactionRepository  = (*oauthProviderRepository)(nil)
+	_ service.OAuthAuthorizeAtomicRepository       = (*oauthProviderRepository)(nil)
 )

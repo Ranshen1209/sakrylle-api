@@ -766,6 +766,88 @@ func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool,
 	return false, time.Hour
 }
 
+// OAuthIssuerSource identifies which key supplied the OAuth issuer URL.
+//
+// Used by callers (discovery handler, device flow §12.7) that need to log
+// or branch on the resolution source. Empty source → caller must fall back
+// to a request-derived value (e.g. scheme://Host) or a relative path.
+type OAuthIssuerSource string
+
+const (
+	// OAuthIssuerSourceCanonical = settings.oauth_issuer (deployment-required).
+	OAuthIssuerSourceCanonical OAuthIssuerSource = "oauth_issuer"
+	// OAuthIssuerSourceFrontend = settings.frontend_url (legacy fallback).
+	OAuthIssuerSourceFrontend OAuthIssuerSource = "frontend_url"
+	// OAuthIssuerSourceConfig  = config.yaml server.frontend_url (fresh-install fallback).
+	OAuthIssuerSourceConfig OAuthIssuerSource = "config.frontend_url"
+	// OAuthIssuerSourceNone    = neither setting nor config produced a value.
+	OAuthIssuerSourceNone OAuthIssuerSource = ""
+)
+
+// GetOAuthIssuer resolves the canonical OAuth issuer URL with a single,
+// shared priority order so RFC 8414 discovery and §12.7 verification_uri
+// cannot disagree.
+//
+// Source order:
+//  1. settings.oauth_issuer  (canonical; per migration 145 deployments MUST set this)
+//  2. settings.frontend_url  (legacy fallback)
+//  3. config.yaml server.frontend_url (fresh-install fallback before any DB write)
+//
+// Returns the URL with any trailing slash stripped (RFC 8414 forbids it on the
+// issuer) and a source tag identifying which key won. If everything is empty,
+// returns ("", OAuthIssuerSourceNone) and the caller must apply a request-host
+// fallback or refuse to publish a value.
+//
+// Inputs are TrimSpace'd before non-empty checks so a row containing only
+// whitespace falls through to the next source rather than producing a useless
+// empty issuer in discovery output.
+func (s *SettingService) GetOAuthIssuer(ctx context.Context) (string, OAuthIssuerSource) {
+	if s == nil {
+		return "", OAuthIssuerSourceNone
+	}
+	if s.settingRepo != nil {
+		if v, err := s.settingRepo.GetValue(ctx, SettingKeyOAuthIssuer); err == nil {
+			if trimmed := strings.TrimRight(strings.TrimSpace(v), "/"); trimmed != "" {
+				return trimmed, OAuthIssuerSourceCanonical
+			}
+		}
+		if v, err := s.settingRepo.GetValue(ctx, SettingKeyFrontendURL); err == nil {
+			if trimmed := strings.TrimRight(strings.TrimSpace(v), "/"); trimmed != "" {
+				return trimmed, OAuthIssuerSourceFrontend
+			}
+		}
+	}
+	if s.cfg != nil {
+		if trimmed := strings.TrimRight(strings.TrimSpace(s.cfg.Server.FrontendURL), "/"); trimmed != "" {
+			return trimmed, OAuthIssuerSourceConfig
+		}
+	}
+	return "", OAuthIssuerSourceNone
+}
+
+// WarnIfOAuthIssuerMissing emits a one-shot slog.Warn at boot when neither
+// oauth_issuer nor frontend_url is configured.
+//
+// This is a soft check on purpose: failing closed at startup would be a
+// breaking change for first-install (the setup wizard runs before either key
+// is written), so we settle for being loud instead. Discovery and device flow
+// will still publish a request-host-derived issuer in the meantime, which is
+// fine for smoke-testing but unstable across requests.
+//
+// Idempotent: safe to call multiple times; each call hits the settings
+// repository once.
+func (s *SettingService) WarnIfOAuthIssuerMissing(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	_, source := s.GetOAuthIssuer(ctx)
+	if source != OAuthIssuerSourceNone {
+		return
+	}
+	slog.Warn("oauth_issuer and frontend_url are both empty; OAuth discovery and device flow will fall back to request scheme://Host (unstable across deployments)",
+		"hint", "set settings.oauth_issuer to your canonical public origin (e.g. https://sub.example.com) via direct SQL UPSERT")
+}
+
 // GetPublicSettings 获取公开设置（无需登录）
 func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings, error) {
 	keys := []string{

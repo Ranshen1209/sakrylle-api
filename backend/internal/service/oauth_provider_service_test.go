@@ -815,12 +815,24 @@ func TestExchangeRedirectURIMismatch(t *testing.T) {
 func TestProviderDisabled(t *testing.T) {
 	svc, _, _ := newServiceUnderTest(t)
 	if !svc.IsEnabled(context.Background()) {
-		t.Fatal("expected enabled by default")
+		t.Fatal("expected enabled when oauth_provider_enabled=true")
 	}
 	repo := &stubSettingRepo{values: map[string]string{"oauth_provider_enabled": "false"}}
 	svc.settingRepo = repo
 	if svc.IsEnabled(context.Background()) {
-		t.Fatal("expected disabled")
+		t.Fatal("expected disabled when oauth_provider_enabled=false")
+	}
+
+	// FIX M1: fail closed on missing setting (no row at all).
+	svc.settingRepo = &stubSettingRepo{values: map[string]string{}}
+	if svc.IsEnabled(context.Background()) {
+		t.Fatal("expected disabled when oauth_provider_enabled is missing (fail closed)")
+	}
+
+	// FIX M1: fail closed on unparseable / unrecognized value.
+	svc.settingRepo = &stubSettingRepo{values: map[string]string{"oauth_provider_enabled": "garbage"}}
+	if svc.IsEnabled(context.Background()) {
+		t.Fatal("expected disabled when oauth_provider_enabled is unparseable (fail closed)")
 	}
 }
 
