@@ -426,4 +426,38 @@ func TestWriteOAuthResourceError_FormatsBearerChallenge(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"error":"insufficient_scope"`)
 }
 
+// FIX H5: when no api key landed in context, the middleware MUST fail closed.
+// A pass-through here would silently bypass scope enforcement on routes that
+// mounted RequireOAuthScope before (mistakenly) running auth.
+func TestRequireOAuthScope_NoAPIKeyContext_FailsClosed(t *testing.T) {
+	h := newScopeHarness(t, true)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	// NOTE: no API-key-context injector here — simulate misconfigured pipeline.
+	r.Use(RequireOAuthScope(h.svc))
+	r.GET("/v1/models", func(c *gin.Context) { c.Status(http.StatusOK) })
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code,
+		"missing api key context must fail closed (500), never pass through")
+	require.Contains(t, rec.Body.String(), `"server_error"`)
+}
+
+// FIX H5: a sk_oauth_ token without an oauth_access_tokens row is corrupt
+// state. With enforcement enabled the middleware must reject it as
+// invalid_token rather than fall through to the gateway.
+func TestRequireOAuthScope_OAuthTokenMissingMetadata_FailsClosed(t *testing.T) {
+	h := newScopeHarness(t, true) // enforcement on
+	oauthKey := &service.APIKey{ID: 16, Key: "sk_oauth_orphan", GroupID: ptrInt64(5)}
+	// Deliberately do NOT plant metadata.
+
+	rec := scopeRunner(http.MethodGet, "/v1/models", RequireOAuthScope(h.svc), oauthKey)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code,
+		"sk_oauth_ token without oauth_access_tokens row must reject with 401 invalid_token")
+	require.Contains(t, rec.Header().Get("WWW-Authenticate"), `error="invalid_token"`)
+}
+
 func ptrInt64(v int64) *int64 { return &v }

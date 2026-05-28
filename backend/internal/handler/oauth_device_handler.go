@@ -6,10 +6,8 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"html"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -517,19 +515,11 @@ func deviceVerificationHTML(prefilledUserCode, csrfToken, nonce string) string {
 
 // mustMarshalDeviceBootstrap is the device-page mirror of mustMarshalConsentForm:
 // produces a JSON literal safe to embed inside <script>.
+//
+// Uses the shared mustMarshalJSONForScript helper so HTML-significant characters
+// are encoded as < / > / & — valid JSON AND safe inside <script>.
+// (HTML entities like &lt; would NOT be valid here: the browser JS engine reads
+// them literally, not as the unescaped character.)
 func mustMarshalDeviceBootstrap(v map[string]string) string {
-	buf, err := json.Marshal(v)
-	if err != nil {
-		// Unreachable for map[string]string.
-		slog.Error("oauth: device bootstrap marshal failed", "err", err)
-		return "{}"
-	}
-	// json.Marshal already escapes <, >, & via SetEscapeHTML default-on
-	// when used through the encoder. Marshal directly leaves them as-is;
-	// re-escape manually.
-	s := string(buf)
-	s = strings.ReplaceAll(s, "<", `<`)
-	s = strings.ReplaceAll(s, ">", `>`)
-	s = strings.ReplaceAll(s, "&", `&`)
-	return s
+	return mustMarshalJSONForScript(v, "oauth: device bootstrap marshal failed")
 }

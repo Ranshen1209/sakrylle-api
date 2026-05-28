@@ -23,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -290,40 +289,17 @@ func TestE2E_DeviceFlow_DeniedReturnsAccessDenied(t *testing.T) {
 // TestE2E_TransactionApproveMintsCanonicalScopes — the v2 transaction-based
 // /authorize → /approve → /token path normalizes legacy scope strings to
 // canonical in the resulting access_token's scope claim. Combines
-// BeginAuthorizeTransaction → Approve → handler.Token.
+// BeginAuthorize → Approve → handler.Token through the real handlers.
 func TestE2E_TransactionApproveMintsCanonicalScopes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h, svc := newOAuthProviderHandlerHarness(t)
 	verifier, challenge := pkceVerifierAndChallengeForHandler(
 		"e2e-tx-mint-canonical-aaaaaaaaaaaaaaaaaaaaaaa")
 
-	// Approve via the handler with a JSON body that carries the legacy
-	// scope string. The fixture's authzTxRepo is nil, so the handler
-	// falls back to the legacy approve path; we drive that path here for
-	// canonical-scope normalization on /token.
-	approveBody, _ := json.Marshal(map[string]string{
-		"client_id":             testOAuthClientID,
-		"redirect_uri":          testOAuthRedirectURI,
-		"response_type":         "code",
-		"scope":                 "image_generation balance:read models:read",
-		"state":                 "x",
-		"code_challenge":        challenge,
-		"code_challenge_method": "S256",
-		"decision":              "approve",
-	})
-	c, rec := newGinTestContext(http.MethodPost,
-		"/api/v1/oauth/authorize/approve", approveBody, "application/json")
-	c.Set(string(servermiddleware.ContextKeyUser),
-		servermiddleware.AuthSubject{UserID: 314, Concurrency: 1})
-	h.Approve(c)
-	require.Equal(t, http.StatusOK, rec.Code, "approve body: %s", rec.Body.String())
-
-	var approveResp map[string]string
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &approveResp))
-	parsed, perr := url.Parse(approveResp["redirect_to"])
-	require.NoError(t, perr)
-	code := parsed.Query().Get("code")
-	require.NotEmpty(t, code)
+	// Drive the v2 begin → approve flow with a legacy scope string and
+	// confirm /token's response normalizes to canonical scope ids.
+	code := beginAndApproveForHandler(t, h, 314,
+		"image_generation balance:read models:read", "x", challenge)
 
 	// Exchange.
 	tokenForm := url.Values{}
