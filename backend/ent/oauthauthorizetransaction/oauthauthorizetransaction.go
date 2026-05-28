@@ -21,6 +21,8 @@ const (
 	FieldTransactionID = "transaction_id"
 	// FieldCsrfHash holds the string denoting the csrf_hash field in the database.
 	FieldCsrfHash = "csrf_hash"
+	// FieldUserID holds the string denoting the user_id field in the database.
+	FieldUserID = "user_id"
 	// FieldClientID holds the string denoting the client_id field in the database.
 	FieldClientID = "client_id"
 	// FieldRedirectURI holds the string denoting the redirect_uri field in the database.
@@ -62,6 +64,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldTransactionID,
 	FieldCsrfHash,
+	FieldUserID,
 	FieldClientID,
 	FieldRedirectURI,
 	FieldResponseType,
@@ -152,6 +155,11 @@ func ByTransactionID(opts ...sql.OrderTermOption) OrderOption {
 // ByCsrfHash orders the results by the csrf_hash field.
 func ByCsrfHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCsrfHash, opts...).ToFunc()
+}
+
+// ByUserID orders the results by the user_id field.
+func ByUserID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUserID, opts...).ToFunc()
 }
 
 // ByClientID orders the results by the client_id field.

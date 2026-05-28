@@ -22227,6 +22227,8 @@ type OAuthAuthorizeTransactionMutation struct {
 	updated_at                    *time.Time
 	transaction_id                *string
 	csrf_hash                     *string
+	user_id                       *int64
+	adduser_id                    *int64
 	client_id                     *string
 	redirect_uri                  *string
 	response_type                 *string
@@ -22491,6 +22493,62 @@ func (m *OAuthAuthorizeTransactionMutation) OldCsrfHash(ctx context.Context) (v 
 // ResetCsrfHash resets all changes to the "csrf_hash" field.
 func (m *OAuthAuthorizeTransactionMutation) ResetCsrfHash() {
 	m.csrf_hash = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *OAuthAuthorizeTransactionMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *OAuthAuthorizeTransactionMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the OAuthAuthorizeTransaction entity.
+// If the OAuthAuthorizeTransaction object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthAuthorizeTransactionMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *OAuthAuthorizeTransactionMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *OAuthAuthorizeTransactionMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *OAuthAuthorizeTransactionMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
 }
 
 // SetClientID sets the "client_id" field.
@@ -23196,7 +23254,7 @@ func (m *OAuthAuthorizeTransactionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuthAuthorizeTransactionMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 20)
 	if m.created_at != nil {
 		fields = append(fields, oauthauthorizetransaction.FieldCreatedAt)
 	}
@@ -23208,6 +23266,9 @@ func (m *OAuthAuthorizeTransactionMutation) Fields() []string {
 	}
 	if m.csrf_hash != nil {
 		fields = append(fields, oauthauthorizetransaction.FieldCsrfHash)
+	}
+	if m.user_id != nil {
+		fields = append(fields, oauthauthorizetransaction.FieldUserID)
 	}
 	if m.client_id != nil {
 		fields = append(fields, oauthauthorizetransaction.FieldClientID)
@@ -23270,6 +23331,8 @@ func (m *OAuthAuthorizeTransactionMutation) Field(name string) (ent.Value, bool)
 		return m.TransactionID()
 	case oauthauthorizetransaction.FieldCsrfHash:
 		return m.CsrfHash()
+	case oauthauthorizetransaction.FieldUserID:
+		return m.UserID()
 	case oauthauthorizetransaction.FieldClientID:
 		return m.ClientID()
 	case oauthauthorizetransaction.FieldRedirectURI:
@@ -23317,6 +23380,8 @@ func (m *OAuthAuthorizeTransactionMutation) OldField(ctx context.Context, name s
 		return m.OldTransactionID(ctx)
 	case oauthauthorizetransaction.FieldCsrfHash:
 		return m.OldCsrfHash(ctx)
+	case oauthauthorizetransaction.FieldUserID:
+		return m.OldUserID(ctx)
 	case oauthauthorizetransaction.FieldClientID:
 		return m.OldClientID(ctx)
 	case oauthauthorizetransaction.FieldRedirectURI:
@@ -23383,6 +23448,13 @@ func (m *OAuthAuthorizeTransactionMutation) SetField(name string, value ent.Valu
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCsrfHash(v)
+		return nil
+	case oauthauthorizetransaction.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
 		return nil
 	case oauthauthorizetransaction.FieldClientID:
 		v, ok := value.(string)
@@ -23497,6 +23569,9 @@ func (m *OAuthAuthorizeTransactionMutation) SetField(name string, value ent.Valu
 // this mutation.
 func (m *OAuthAuthorizeTransactionMutation) AddedFields() []string {
 	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, oauthauthorizetransaction.FieldUserID)
+	}
 	if m.addrequested_group_id != nil {
 		fields = append(fields, oauthauthorizetransaction.FieldRequestedGroupID)
 	}
@@ -23508,6 +23583,8 @@ func (m *OAuthAuthorizeTransactionMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *OAuthAuthorizeTransactionMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case oauthauthorizetransaction.FieldUserID:
+		return m.AddedUserID()
 	case oauthauthorizetransaction.FieldRequestedGroupID:
 		return m.AddedRequestedGroupID()
 	}
@@ -23519,6 +23596,13 @@ func (m *OAuthAuthorizeTransactionMutation) AddedField(name string) (ent.Value, 
 // type.
 func (m *OAuthAuthorizeTransactionMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case oauthauthorizetransaction.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
 	case oauthauthorizetransaction.FieldRequestedGroupID:
 		v, ok := value.(int64)
 		if !ok {
@@ -23603,6 +23687,9 @@ func (m *OAuthAuthorizeTransactionMutation) ResetField(name string) error {
 		return nil
 	case oauthauthorizetransaction.FieldCsrfHash:
 		m.ResetCsrfHash()
+		return nil
+	case oauthauthorizetransaction.FieldUserID:
+		m.ResetUserID()
 		return nil
 	case oauthauthorizetransaction.FieldClientID:
 		m.ResetClientID()
