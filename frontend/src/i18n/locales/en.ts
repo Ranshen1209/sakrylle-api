@@ -724,7 +724,6 @@ export default {
       scopes: 'Permissions',
       firstAuthorized: 'First authorized',
       lastUsed: 'Last used',
-      sessions: 'Active sessions',
       tokens: 'Tokens'
     },
     revoke: 'Revoke',
