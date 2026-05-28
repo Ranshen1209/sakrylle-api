@@ -8,7 +8,7 @@
  *
  *   - canonical-scope identification
  *   - legacy-alias rewriting (mirrors backend `legacyScopeAliases`)
- *   - `describeScope(scope, locale)` for synchronous label resolution
+ *   - `describeScope(scope, t?)` for synchronous label resolution
  *
  * Unknown scopes fall back to the raw scope identifier so a backend that
  * adds a scope before the frontend redeploys still renders something
@@ -75,7 +75,7 @@ function asString(value: unknown, fallback: string): string {
 }
 
 /**
- * Resolve a scope to its `{ name, description }` label in the requested
+ * Resolve a scope to its `{ name, description }` label using the active i18n
  * locale. Falls back to the raw scope identifier (as both `name` and
  * `description`) for unknown scopes.
  *
@@ -83,14 +83,17 @@ function asString(value: unknown, fallback: string): string {
  * — that way the label updates reactively when the user switches locale.
  * The default uses `i18n.global.t`, which is fine for one-shot rendering
  * (and the Authorized Apps page reloads on locale change anyway).
+ *
+ * Locale is honoured implicitly via the `t` function (which is bound to the
+ * active i18n locale). The previous `locale` parameter was load-bearing in
+ * name only — `t` already routes to the right locale dictionary — so the
+ * parameter has been removed to stop callers from passing a value that has
+ * no effect.
  */
 export function describeScope(
   scope: string,
-  locale: string,
   t: Translator = i18n.global.t
 ): ScopeLabel {
-  const loc = normalizeScopeLocale(locale)
-  void loc // locale is honoured by `t` via the i18n instance; kept for API symmetry
   const canonical = canonicalizeScope(scope)
   if (canonical) {
     const nameKey = `oauthScopes.${canonical}.name`

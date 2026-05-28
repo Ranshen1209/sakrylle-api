@@ -69,23 +69,23 @@ describe('utils/scopes — canonicalizeScope', () => {
 
 describe('utils/scopes — describeScope', () => {
   it('renders English labels for canonical scopes', () => {
-    const label = describeScope('profile:read', 'en', fakeT('en'))
+    const label = describeScope('profile:read', fakeT('en'))
     expect(label.name).toBe('Read your profile (username, avatar)')
     expect(label.description).toContain('Does not include email or balance')
   })
 
   it('renders Chinese labels for canonical scopes', () => {
-    const label = describeScope('profile:read', 'zh-CN', fakeT('zh'))
+    const label = describeScope('profile:read', fakeT('zh'))
     expect(label.name).toBe('查看您的档案（用户名、头像）')
   })
 
   it('rewrites legacy aliases when describing', () => {
-    const label = describeScope('image_generation', 'en', fakeT('en'))
+    const label = describeScope('image_generation', fakeT('en'))
     expect(label.name).toBe('Create and edit images')
   })
 
   it('falls back to the raw identifier for unknown scopes', () => {
-    const label = describeScope('future:unknown', 'en', fakeT('en'))
+    const label = describeScope('future:unknown', fakeT('en'))
     expect(label.name).toBe('future:unknown')
     expect(label.description).toBe('future:unknown')
   })

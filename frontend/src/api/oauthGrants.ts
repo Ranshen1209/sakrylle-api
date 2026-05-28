@@ -49,14 +49,17 @@ export async function revokeAuthorizedApp(grantId: string): Promise<void> {
 /**
  * Revoke every grant the current user holds for the given client. Idempotent.
  * Returns the number of refresh-token rows revoked.
+ *
+ * Defensively coerces missing fields (e.g. 204 / empty body) to `{ revoked: 0 }`
+ * so callers can rely on the shape without optional chaining.
  */
 export async function revokeAuthorizedAppsForClient(
   clientId: string
 ): Promise<{ revoked: number }> {
-  const { data } = await apiClient.delete<{ revoked: number }>(
+  const { data } = await apiClient.delete<{ revoked?: number } | undefined>(
     `/oauth/authorized-apps/client/${encodeURIComponent(clientId)}`
   )
-  return data
+  return { revoked: data?.revoked ?? 0 }
 }
 
 // ── v1: per-client (legacy) ─────────────────────────────────────────────────
@@ -72,12 +75,14 @@ export async function list(options?: { signal?: AbortSignal }): Promise<Authoriz
 /**
  * Legacy v1 revoke. Use `revokeAuthorizedAppsForClient` instead.
  * Idempotent — revoking an already-revoked grant returns `{ revoked: 0 }`.
+ *
+ * Defensively coerces missing fields (e.g. 204 / empty body) to `{ revoked: 0 }`.
  */
 export async function revoke(clientId: string): Promise<{ revoked: number }> {
-  const { data } = await apiClient.delete<{ revoked: number }>(
+  const { data } = await apiClient.delete<{ revoked?: number } | undefined>(
     `/oauth/grants/${encodeURIComponent(clientId)}`
   )
-  return data
+  return { revoked: data?.revoked ?? 0 }
 }
 
 export const oauthGrantsAPI = {

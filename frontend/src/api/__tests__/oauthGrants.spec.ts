@@ -81,6 +81,24 @@ describe('oauthGrants v2 authorized apps api', () => {
     expect(result).toEqual({ revoked: 3 })
   })
 
+  it('coerces a 204-style empty response to { revoked: 0 } for revokeAuthorizedAppsForClient', async () => {
+    del.mockResolvedValue({ data: undefined })
+
+    const { revokeAuthorizedAppsForClient } = await import('@/api/oauthGrants')
+    const result = await revokeAuthorizedAppsForClient('sakrylle-cli')
+
+    expect(result).toEqual({ revoked: 0 })
+  })
+
+  it('coerces a 204-style empty response to { revoked: 0 } for the legacy revoke helper', async () => {
+    del.mockResolvedValue({ data: undefined })
+
+    const oauthGrantsAPI = (await import('@/api/oauthGrants')).default
+    const result = await oauthGrantsAPI.revoke('legacy-client')
+
+    expect(result).toEqual({ revoked: 0 })
+  })
+
   it('exposes the v1 list/revoke helpers for backward compatibility', async () => {
     get.mockResolvedValue({ data: { items: [] } })
     del.mockResolvedValue({ data: { revoked: 0 } })

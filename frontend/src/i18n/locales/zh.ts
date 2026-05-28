@@ -723,7 +723,6 @@ export default {
       scopes: '权限',
       firstAuthorized: '首次授权',
       lastUsed: '最近使用',
-      sessions: '活跃会话',
       tokens: '令牌'
     },
     revoke: '撤销授权',
