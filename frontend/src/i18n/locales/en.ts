@@ -756,6 +756,7 @@ export default {
     revoked: 'Revoked {count} session(s)',
     revokedOne: 'Device revoked',
     revokeFailed: 'Revocation failed',
+    stepUpRequired: 'For security, please log in again to revoke authorization',
     loadFailed: 'Failed to load',
     disabledBadge: 'Decommissioned',
     disabledTooltip: 'This app has been decommissioned by the administrator, but you can still revoke prior authorizations',

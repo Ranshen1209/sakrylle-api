@@ -307,8 +307,18 @@ const handleRevokeDevice = async (): Promise<void> => {
     apps.value = apps.value.filter((row) => row.grant_id !== target.grant_id)
     appStore.showSuccess(t('authorizedApps.revokedOne'))
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : t('authorizedApps.revokeFailed')
-    appStore.showError(message)
+    // Check for step-up auth required (403 with error: "step_up_required")
+    const apiError = error as { status?: number; error?: string; message?: string }
+    if (apiError.status === 403 && apiError.error === 'step_up_required') {
+      appStore.showError(t('authorizedApps.stepUpRequired'))
+      // Redirect to login after a short delay
+      setTimeout(() => {
+        window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname)
+      }, 2000)
+    } else {
+      const message = error instanceof Error ? error.message : t('authorizedApps.revokeFailed')
+      appStore.showError(message)
+    }
   } finally {
     revokingGrantId.value = null
     closeDialog()
@@ -324,8 +334,18 @@ const handleRevokeAll = async (): Promise<void> => {
     apps.value = apps.value.filter((row) => row.client_id !== target.client_id)
     appStore.showSuccess(t('authorizedApps.revoked', { count: revoked }))
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : t('authorizedApps.revokeFailed')
-    appStore.showError(message)
+    // Check for step-up auth required (403 with error: "step_up_required")
+    const apiError = error as { status?: number; error?: string; message?: string }
+    if (apiError.status === 403 && apiError.error === 'step_up_required') {
+      appStore.showError(t('authorizedApps.stepUpRequired'))
+      // Redirect to login after a short delay
+      setTimeout(() => {
+        window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname)
+      }, 2000)
+    } else {
+      const message = error instanceof Error ? error.message : t('authorizedApps.revokeFailed')
+      appStore.showError(message)
+    }
   } finally {
     revokingClientId.value = null
     closeDialog()
