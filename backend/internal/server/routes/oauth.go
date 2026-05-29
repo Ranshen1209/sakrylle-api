@@ -81,25 +81,6 @@ func RegisterOAuthRoutes(
 		h.OAuthProvider.Revoke,
 	)
 
-	// RFC 8628 Device Authorization Grant (§12.6–§12.8).
-	// POST /oauth/device/code — mints device+user code pair (20/min, fail-close).
-	// GET  /oauth/device     — renders the verification page (30/min, fail-close).
-	if h.OAuthDevice != nil {
-		r.POST("/oauth/device/code",
-			rateLimiter.LimitWithOptions("oauth-device-code", 20, time.Minute, middleware.RateLimitOptions{
-				FailureMode: middleware.RateLimitFailClose,
-			}),
-			servermiddleware.RequestBodyLimit(32*1024),
-			h.OAuthDevice.DeviceAuthorize,
-		)
-		r.GET("/oauth/device",
-			rateLimiter.LimitWithOptions("oauth-device-verify", 30, time.Minute, middleware.RateLimitOptions{
-				FailureMode: middleware.RateLimitFailClose,
-			}),
-			h.OAuthDevice.DeviceVerificationPage,
-		)
-	}
-
 	oauth := v1.Group("/oauth")
 	oauth.Use(gin.HandlerFunc(jwtAuth))
 	oauth.Use(servermiddleware.RequestBodyLimit(32 * 1024))
