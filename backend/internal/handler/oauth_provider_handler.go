@@ -162,6 +162,7 @@ type BeginAuthorizeRequest struct {
 	CodeChallenge       string `json:"code_challenge"`
 	CodeChallengeMethod string `json:"code_challenge_method"`
 	GroupID             *int64 `json:"group_id"`
+	DeviceName          string `json:"device_name"`
 }
 
 // BeginAuthorize creates the server-side authorize transaction for the
@@ -195,6 +196,7 @@ func (h *OAuthProviderHandler) BeginAuthorize(c *gin.Context) {
 		CodeChallenge:       strings.TrimSpace(body.CodeChallenge),
 		CodeChallengeMethod: strings.TrimSpace(body.CodeChallengeMethod),
 		RequestedGroupID:    body.GroupID,
+		DeviceName:          stringPtrIfNotEmpty(strings.TrimSpace(body.DeviceName)),
 		UserID:              subject.UserID,
 	}
 	result, err := h.provider.BeginAuthorizeTransaction(c.Request.Context(), params)
@@ -890,6 +892,15 @@ func stringPtrOrNil(s *string) any {
 		return nil
 	}
 	return *s
+}
+
+// stringPtrIfNotEmpty returns a pointer to s if s is non-empty, otherwise nil.
+// Used to convert optional string form fields to *string service params.
+func stringPtrIfNotEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // emptyStringSlice ensures `scopes: []` is JSON-encoded as `[]` not `null`,

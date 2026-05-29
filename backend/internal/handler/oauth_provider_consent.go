@@ -131,6 +131,21 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   // has navigated away from /oauth/authorize.
   var tx = null;
 
+  // Detect device name from User-Agent
+  function getDeviceName() {
+    var ua = navigator.userAgent;
+    if (/iPhone/.test(ua)) return "iPhone";
+    if (/iPad/.test(ua)) return "iPad";
+    if (/Android/.test(ua)) {
+      if (/Mobile/.test(ua)) return "Android 手机";
+      return "Android 平板";
+    }
+    if (/Macintosh/.test(ua)) return "Mac";
+    if (/Windows/.test(ua)) return "Windows PC";
+    if (/Linux/.test(ua)) return "Linux";
+    return ""; // empty = backend will show "未命名设备"
+  }
+
   function setStatus(kind, message) {
     $status.className = "status " + kind;
     $status.textContent = message;
@@ -161,10 +176,12 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
       setTimeout(gotoLogin, 600);
       return;
     }
+    var payload = Object.assign({}, beginPayload);
+    payload.device_name = getDeviceName();
     fetch("/api/v1/oauth/authorize/begin", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + jwt },
-      body: JSON.stringify(beginPayload)
+      body: JSON.stringify(payload)
     }).then(function(res) {
       return res.json().then(function(data) { return { status: res.status, data: data }; });
     }).then(function(out) {
