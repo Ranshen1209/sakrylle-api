@@ -133,7 +133,7 @@ INSERT INTO oauth_clients (
 -- ON CONFLICT DO NOTHING: if the operator has already set a custom value via
 -- the admin UI or direct SQL, this migration leaves it untouched.
 
-INSERT INTO settings (key, value, created_at, updated_at)
-VALUES ('oauth_issuer', 'https://sub.sakrylle.com', NOW(), NOW())
+INSERT INTO settings (key, value, updated_at)
+VALUES ('oauth_issuer', 'https://sub.sakrylle.com', NOW())
 ON CONFLICT (key) DO NOTHING;
 
