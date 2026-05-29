@@ -38,6 +38,15 @@ type IssuedToken struct {
 	RefreshTokenExpiresIn int
 	Scope                 string
 	GroupID               int64
+	GroupName             string
+	AdditionalTokens      []AdditionalToken
+}
+
+type AdditionalToken struct {
+	AccessToken string
+	GroupID     int64
+	GroupName   string
+	ExpiresIn   int
 }
 
 // AuthorizeRequest is the validated form of /oauth/authorize query parameters.
@@ -643,6 +652,7 @@ func (s *OAuthProviderService) ApproveAuthorization(
 	txID, csrfToken string,
 	userIDFromJWT int64,
 	finalGroupID *int64,
+	groupIDs []int64,
 ) (*ApproveAuthorizationResult, error) {
 	if userIDFromJWT <= 0 {
 		return nil, ErrOAuthSubjectMismatch
@@ -650,6 +660,20 @@ func (s *OAuthProviderService) ApproveAuthorization(
 	tx, client, err := s.LoadAuthorizeTransactionForApproval(ctx, txID, csrfToken, userIDFromJWT)
 	if err != nil {
 		return nil, err
+	}
+
+	// Multi-group: validate each selected group against the snapshot.
+	// Use the first as the primary group for the authorization code.
+	var selectedGroups []int64
+	if len(groupIDs) > 0 {
+		for _, gid := range groupIDs {
+			if !int64InSlice(tx.AllowedGroupsSnapshot, gid) {
+				return nil, ErrOAuthGroupNotAllowed
+			}
+		}
+		selectedGroups = groupIDs
+		first := groupIDs[0]
+		finalGroupID = &first
 	}
 
 	requested := tx.RequestedGroupID
@@ -678,19 +702,19 @@ func (s *OAuthProviderService) ApproveAuthorization(
 	}
 	grantID := uuid.NewString()
 	code := &OAuthCode{
-		CodeHash:              hashOAuthToken(codePlain),
-		ClientID:              client.ClientID,
-		UserID:                userIDFromJWT,
-		RedirectURI:           tx.RedirectURI,
-		Scopes:                tx.Scopes,
-		CodeChallenge:         tx.CodeChallenge,
-		CodeChallengeMethod:   tx.CodeChallengeMethod,
-		ExpiresAt:             now.Add(authCodeTTL),
-		GroupID:               &resolvedGroup,
-		GrantID:               &grantID,
-		AllowedGroupsSnapshot: tx.AllowedGroupsSnapshot,
-		DeviceID:              tx.DeviceID,
-		DeviceName:            tx.DeviceName,
+		CodeHash:            hashOAuthToken(codePlain),
+		ClientID:            client.ClientID,
+		UserID:              userIDFromJWT,
+		RedirectURI:         tx.RedirectURI,
+		Scopes:             tx.Scopes,
+		CodeChallenge:       tx.CodeChallenge,
+		CodeChallengeMethod: tx.CodeChallengeMethod,
+		ExpiresAt:           now.Add(authCodeTTL),
+		GroupID:             &resolvedGroup,
+		GrantID:             &grantID,
+		AllowedGroupsSnapshot: selectedGroupsOrDefault(selectedGroups, tx.AllowedGroupsSnapshot),
+		DeviceID:            tx.DeviceID,
+		DeviceName:          tx.DeviceName,
 	}
 	if atomic, ok := s.authzTxRepo.(OAuthAuthorizeAtomicRepository); ok {
 		// FIX A4: pass userIDFromJWT so the atomic consume re-checks the
@@ -1665,6 +1689,79 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		}
 	}
 
+	// Resolve primary group name for the response.
+	var primaryGroupName string
+	if s.groupRepo != nil {
+		if g, err := s.groupRepo.GetByID(ctx, groupID); err == nil {
+			primaryGroupName = g.Name
+		}
+	}
+
+	// Multi-group: mint additional tokens for extra groups in the snapshot.
+	var additionalTokens []AdditionalToken
+	if len(allowedSnap) > 1 {
+		for _, extraGID := range allowedSnap {
+			if extraGID == groupID {
+				continue
+			}
+			extraKey := oauthAccessTokenPrefix + mustOpaqueToken(defaultAccessTokenSecret)
+			extraExp := now.Add(time.Duration(client.AccessTokenTTLSeconds) * time.Second)
+			extraAPIKey := &APIKey{
+				UserID:    code.UserID,
+				Key:       extraKey,
+				Name:      fmt.Sprintf("OAuth %s", client.ClientID),
+				GroupID:   &extraGID,
+				Status:    StatusAPIKeyActive,
+				ExpiresAt: &extraExp,
+			}
+			extraAccess := &OAuthAccessToken{
+				GrantID:         grantID,
+				TokenFamilyID:   familyID,
+				ClientID:        client.ClientID,
+				UserID:          code.UserID,
+				Scopes:          scopes,
+				GroupID:         extraGID,
+				AllowedGroupIDs: allowedSnap,
+				AppType:         client.AppType,
+				DeviceID:        code.DeviceID,
+				DeviceName:      code.DeviceName,
+				IssuedAt:        now,
+				ExpiresAt:       extraExp,
+			}
+			if s.mintRepo != nil {
+				mintP := &OAuthTokenMintParams{APIKey: extraAPIKey}
+				if s.accessRepo != nil {
+					mintP.AccessToken = extraAccess
+				}
+				if err := s.mintRepo.MintTokenSet(ctx, mintP); err != nil {
+					return nil, fmt.Errorf("mint additional oauth token (group %d): %w", extraGID, err)
+				}
+			} else {
+				if err := s.apiKeyRepo.Create(ctx, extraAPIKey); err != nil {
+					return nil, fmt.Errorf("create additional api_key (group %d): %w", extraGID, err)
+				}
+				if s.accessRepo != nil {
+					extraAccess.APIKeyID = extraAPIKey.ID
+					if err := s.accessRepo.CreateAccessToken(ctx, extraAccess); err != nil {
+						return nil, fmt.Errorf("create additional access token metadata (group %d): %w", extraGID, err)
+					}
+				}
+			}
+			var extraName string
+			if s.groupRepo != nil {
+				if g, err := s.groupRepo.GetByID(ctx, extraGID); err == nil {
+					extraName = g.Name
+				}
+			}
+			additionalTokens = append(additionalTokens, AdditionalToken{
+				AccessToken: extraKey,
+				GroupID:     extraGID,
+				GroupName:   extraName,
+				ExpiresIn:   client.AccessTokenTTLSeconds,
+			})
+		}
+	}
+
 	return &IssuedToken{
 		AccessToken:           accessKey,
 		TokenType:             "Bearer",
@@ -1673,6 +1770,8 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		RefreshTokenExpiresIn: refreshExpiresIn,
 		Scope:                 strings.Join(scopes, " "),
 		GroupID:               groupID,
+		GroupName:             primaryGroupName,
+		AdditionalTokens:      additionalTokens,
 	}, nil
 }
 
@@ -1838,6 +1937,13 @@ func int64InSlice(haystack []int64, needle int64) bool {
 		}
 	}
 	return false
+}
+
+func selectedGroupsOrDefault(selected, fallback []int64) []int64 {
+	if len(selected) > 0 {
+		return selected
+	}
+	return fallback
 }
 
 func dedupeInt64s(in []int64) []int64 {

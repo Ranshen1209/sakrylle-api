@@ -89,8 +89,13 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   .status.error { background:rgba(220,38,38,.12); color:#dc2626; display:block; }
   .status.info { background:rgba(145,129,189,.12); color:var(--primary); display:block; }
   .group-wrap { margin-bottom:24px; display:none; }
-  .group-wrap label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
-  .group-wrap select { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--fg); font-size:14px; cursor:pointer; }
+  .group-wrap > .group-title { display:block; font-size:13px; color:var(--muted); margin-bottom:8px; }
+  .group-list { display:flex; flex-direction:column; gap:6px; }
+  .group-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--card); cursor:pointer; transition:border-color .15s; }
+  .group-item:has(input:checked) { border-color:var(--primary); background:rgba(145,129,189,.06); }
+  .group-item input[type=checkbox] { accent-color:var(--primary); width:16px; height:16px; cursor:pointer; }
+  .group-item .g-name { font-size:14px; color:var(--fg); flex:1; }
+  .group-item .g-badge { font-size:11px; padding:2px 8px; border-radius:4px; background:rgba(145,129,189,.12); color:var(--primary); }
 </style>
 </head>
 <body>
@@ -99,8 +104,8 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   <p class="lead">应用 <span class="client">` + html.EscapeString(clientName) + `</span> 请求访问您的 Sakrylle API 账户。</p>
   <ul class="scopes">` + scopeListHTML + `</ul>
   <div class="group-wrap" id="group-wrap">
-    <label for="group-select">选择分组 / Select group</label>
-    <select id="group-select"></select>
+    <span class="group-title">选择分组 / Select groups</span>
+    <div class="group-list" id="group-list"></div>
   </div>
   <div class="actions">
     <button class="deny" id="deny" disabled>拒绝</button>
@@ -168,22 +173,31 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
       // Hide the wrapper when only one group is available (no choice to make).
       var groups = (out.data.allowed_groups && Array.isArray(out.data.allowed_groups)) ? out.data.allowed_groups : [];
       var $groupWrap = document.getElementById("group-wrap");
-      var $groupSelect = document.getElementById("group-select");
+      var $groupList = document.getElementById("group-list");
       if (groups.length > 1) {
-        $groupSelect.innerHTML = "";
+        $groupList.innerHTML = "";
         for (var i = 0; i < groups.length; i++) {
-          var opt = document.createElement("option");
-          opt.value = String(groups[i].id || groups[i]);
-          opt.textContent = groups[i].name || String(groups[i].id || groups[i]);
-          $groupSelect.appendChild(opt);
+          var g = groups[i];
+          var id = g.id || g;
+          var name = g.name || String(id);
+          var badge = g.allow_image_generation ? "Image" : (g.rate_multiplier ? g.rate_multiplier + "x" : "");
+          var item = document.createElement("label");
+          item.className = "group-item";
+          item.innerHTML = '<input type="checkbox" name="group_ids" value="' + id + '" checked>' +
+            '<span class="g-name">' + name + '</span>' +
+            (badge ? '<span class="g-badge">' + badge + '</span>' : '');
+          $groupList.appendChild(item);
         }
         $groupWrap.style.display = "block";
       } else if (groups.length === 1) {
-        $groupSelect.innerHTML = "";
-        var opt = document.createElement("option");
-        opt.value = String(groups[0].id || groups[0]);
-        opt.textContent = groups[0].name || String(groups[0].id || groups[0]);
-        $groupSelect.appendChild(opt);
+        $groupList.innerHTML = "";
+        var g = groups[0];
+        var id = g.id || g;
+        var item = document.createElement("label");
+        item.className = "group-item";
+        item.innerHTML = '<input type="checkbox" name="group_ids" value="' + id + '" checked disabled>' +
+          '<span class="g-name">' + (g.name || String(id)) + '</span>';
+        $groupList.appendChild(item);
       }
       $approve.disabled = false;
       $deny.disabled = false;
@@ -212,8 +226,13 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
       csrf_token: tx.csrf_token,
       decision: decision
     };
-    var $sel = document.getElementById("group-select");
-    if ($sel && $sel.value) { body.group_id = parseInt($sel.value, 10); }
+    var checks = document.querySelectorAll('input[name="group_ids"]:checked');
+    if (checks.length > 0) {
+      var ids = [];
+      for (var i = 0; i < checks.length; i++) { ids.push(parseInt(checks[i].value, 10)); }
+      body.group_ids = ids;
+      body.group_id = ids[0];
+    }
     fetch("/api/v1/oauth/authorize/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + jwt },
