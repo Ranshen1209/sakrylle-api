@@ -748,9 +748,8 @@ export default {
       cli: 'CLI',
       mobile: '移动端',
       desktop: '桌面端',
-      device: '设备',
-      service: '服务',
-      internal: '内部'
+      chat: '聊天客户端',
+      image: '图片生成'
     }
   },
 

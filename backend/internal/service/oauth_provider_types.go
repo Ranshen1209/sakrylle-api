@@ -227,6 +227,16 @@ type OAuthAuthorizedGrant struct {
 	Status                  string // active | revoked
 }
 
+// OAuthAllowedGroup is the rich group projection returned by
+// ListUserAllowedGroupsForOAuth. It carries the fields the consent page and
+// /v1/me need without requiring a second GroupRepository lookup.
+type OAuthAllowedGroup struct {
+	ID                   int64
+	Name                 string
+	RateMultiplier       float64
+	AllowImageGeneration bool
+}
+
 // ── Repository interfaces ───────────────────────────────────────────────────
 
 type OAuthClientRepository interface {
@@ -280,6 +290,10 @@ type OAuthRefreshTokenRepository interface {
 	RevokeRefreshTokensByGrantID(ctx context.Context, grantID string, now time.Time) ([]int64, error)
 	RevokeRefreshTokensByTokenFamilyID(ctx context.Context, tokenFamilyID string, now time.Time) ([]int64, error)
 	RevokeRefreshTokensByUserAndClient(ctx context.Context, userID int64, clientID string, now time.Time) ([]int64, error)
+	// MarkReuseDetected stamps reuse_detected_at on the specific row that was
+	// replayed. Best-effort: a failure is logged but does not abort the
+	// reuse-containment cascade.
+	MarkReuseDetected(ctx context.Context, tokenHash string, now time.Time) error
 }
 
 // OAuthAccessTokenRepository owns the v2 oauth_access_tokens row. See §11.2.

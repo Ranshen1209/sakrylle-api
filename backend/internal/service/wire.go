@@ -594,6 +594,7 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
+	ProvideOAuthCleanupService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
@@ -689,6 +690,13 @@ func ProvideOAuthProviderService(
 		settingRepo,
 		authCache,
 	).WithTokenMintRepo(mintRepo)
+}
+
+// ProvideOAuthCleanupService creates and starts OAuthCleanupService (Issue 18).
+func ProvideOAuthCleanupService(db *sql.DB) *OAuthCleanupService {
+	svc := NewOAuthCleanupService(db)
+	svc.Start()
+	return svc
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

@@ -749,9 +749,8 @@ export default {
       cli: 'CLI',
       mobile: 'Mobile',
       desktop: 'Desktop',
-      device: 'Device',
-      service: 'Service',
-      internal: 'Internal'
+      chat: 'Chat',
+      image: 'Image'
     }
   },
 
