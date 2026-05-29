@@ -88,7 +88,7 @@ type BeginAuthorizeResult struct {
 	Transaction          *OAuthAuthorizeTransaction
 	CSRFTokenPlaintext   string
 	Client               *OAuthClient
-	AllowedGroupsForUser []int64
+	AllowedGroupsForUser []OAuthAllowedGroup
 }
 
 // ApproveAuthorizationResult is what /api/v1/oauth/authorize/approve returns.
@@ -520,6 +520,7 @@ func (s *OAuthProviderService) BeginAuthorizeTransaction(
 	}
 	allowed := oauthAllowedGroupIDs(allowedGroups)
 	allowed = filterAllowedByClient(client, allowed)
+	allowedGroups = filterAllowedGroupsByIDs(allowedGroups, allowed)
 
 	// Pre-validate requestedGroupID is at least in the snapshot when supplied.
 	// Final ResolveOAuthGroup happens at approval time.
@@ -564,7 +565,7 @@ func (s *OAuthProviderService) BeginAuthorizeTransaction(
 		Transaction:          tx,
 		CSRFTokenPlaintext:   csrfPlain,
 		Client:               client,
-		AllowedGroupsForUser: allowed,
+		AllowedGroupsForUser: allowedGroups,
 	}, nil
 }
 
@@ -1352,6 +1353,26 @@ func oauthAllowedGroupIDs(groups []OAuthAllowedGroup) []int64 {
 		ids[i] = g.ID
 	}
 	return ids
+}
+
+// filterAllowedGroupsByIDs filters a []OAuthAllowedGroup to only those whose
+// ID appears in the allowedIDs slice. Used after filterAllowedByClient to
+// apply client-level restrictions to the rich group objects.
+func filterAllowedGroupsByIDs(groups []OAuthAllowedGroup, allowedIDs []int64) []OAuthAllowedGroup {
+	if len(groups) == 0 || len(allowedIDs) == 0 {
+		return []OAuthAllowedGroup{}
+	}
+	idSet := make(map[int64]bool, len(allowedIDs))
+	for _, id := range allowedIDs {
+		idSet[id] = true
+	}
+	out := make([]OAuthAllowedGroup, 0, len(groups))
+	for _, g := range groups {
+		if idSet[g.ID] {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // LookupGroup returns a group by ID using the same repo the OAuth resolver
