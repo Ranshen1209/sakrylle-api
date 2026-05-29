@@ -91,6 +91,7 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   .group-wrap { margin-bottom:24px; display:none; }
   .group-wrap > .group-title { display:block; font-size:13px; color:var(--muted); margin-bottom:8px; font-weight:500; }
   .group-list { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
+  .group-list.single { grid-template-columns:1fr; max-width:50%; }
   .group-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--card); cursor:pointer; transition:border-color .15s; }
   .group-item:has(input:checked) { border-color:var(--primary); background:rgba(145,129,189,.06); }
   .group-item input[type=checkbox] { accent-color:var(--primary); width:16px; height:16px; cursor:pointer; }
@@ -192,6 +193,9 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
       var $imageList = document.getElementById("image-group-list");
       if (imageGroups.length > 0) {
         $imageList.innerHTML = "";
+        if (imageGroups.length === 1) {
+          $imageList.className = "group-list single";
+        }
         for (var i = 0; i < imageGroups.length; i++) {
           var g = imageGroups[i];
           var id = g.id || g;
@@ -212,6 +216,9 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
       var $responsesList = document.getElementById("responses-group-list");
       if (responsesGroups.length > 0) {
         $responsesList.innerHTML = "";
+        if (responsesGroups.length === 1) {
+          $responsesList.className = "group-list single";
+        }
         for (var i = 0; i < responsesGroups.length; i++) {
           var g = responsesGroups[i];
           var id = g.id || g;
