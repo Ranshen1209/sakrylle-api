@@ -1,25 +1,47 @@
-# Sakrylle API OAuth 应用接入指南
+# Sakrylle API OAuth 应用接入指南 (v1 存档)
 
-> **DEPRECATED — v1 reference only.** New integrations should use
-> [`OAUTH_V2_INTEGRATION.md`](./OAUTH_V2_INTEGRATION.md). The v2 docs cover
-> canonical scopes, the transaction-based authorize/approve flow, RFC 8628
-> Device Flow, refresh-rotation reuse detection, and per-device authorized
-> apps. This v1 document remains for archival reference and to document the
-> contract that legacy `image_generation` / `balance:read` clients still
-> rely on during the alias deprecation window
-> (see [`OAUTH_V2_SCOPE_MIGRATION.md`](./OAUTH_V2_SCOPE_MIGRATION.md)).
+> ## DEPRECATED — 仅供存档参考
 >
-> **交付对象**:开发"接入 Sakrylle API"的第三方 Web 应用的 Claude Code 会话。
+> **新接入请直接阅读 [`OAUTH_V2_INTEGRATION.md`](./OAUTH_V2_INTEGRATION.md)**。
+>
+> 本文档保留的唯一目的:记录 v1 合约,供仍在使用 `image_generation` /
+> `balance:read` scope 别名的遗留客户端在迁移窗口期内参考。
+> 迁移时间线与别名映射见 [`OAUTH_V2_SCOPE_MIGRATION.md`](./OAUTH_V2_SCOPE_MIGRATION.md)。
+>
+> **v2 新增能力**(本文档不覆盖):
+> - 规范化 scope 体系(11 个 canonical scope)
+> - 服务端 authorize transaction + CSRF(防 consent 篡改)
+> - RFC 8628 Device Flow(CLI / headless 设备)
+> - RFC 7009 Token Revocation 端点(`POST /oauth/revoke`)
+> - RFC 8414 Discovery(`GET /.well-known/oauth-authorization-server`)
+> - Refresh rotation reuse detection(家族级撤销)
+> - 每设备授权管理(`/api/v1/oauth/authorized-apps`)
+> - `/v1/me` scope-cropped 用户信息端点
+> - Endpoint scope enforcement(`sk_oauth_` token 仅能访问 §7.3 矩阵内路由)
+>
+> **v1 → v2 关键行为变更**(影响遗留客户端):
+> 1. **Scope 别名自动重写**:`image_generation` → `images:create`,`balance:read` → `account:balance:read`。Token 响应的 `scope` 字段返回 canonical 名称。
+> 2. **Scope enforcement 生效后**:`sk_oauth_` token 只能访问 §7.3 矩阵列出的端点。未列出的路由返回 403 `insufficient_scope`。遗留客户端如果调用了矩阵外的端点,需要申请新 scope 或改用手动 API key。
+> 3. **Refresh reuse detection**:同一 refresh token 提交两次会触发整个 token family 撤销(v1 仅标记旧 token 失效)。客户端必须严格单次使用 refresh token。
+> 4. **Authorize 流程**:v2 引入 `POST /api/v1/oauth/authorize/begin` + `POST /api/v1/oauth/authorize/approve` 两步事务。旧的 consent 页 JS 直接 POST approve 的方式仍兼容,但内部已走 transaction 路径。
+> 5. **Token 响应新增字段**:`refresh_token_expires_in`(秒)。遗留客户端应忽略未知字段。
+> 6. **错误响应新增字段**:`error_uri` 指向 `https://doc.sakrylle.com/developers/oauth/errors#<code>`。
+>
+> ---
+>
+> **原始交付对象**:开发"接入 Sakrylle API"的第三方 Web 应用。
 > **服务方**:`sub.sakrylle.com`(本仓库,sub2api fork)。
-> **示例消费方**:`image.sakrylle.com`(已上线),后续可复用此契约接其它子域。
+> **示例消费方**:`image.sakrylle.com`(已上线)。
 >
-> 本文档基于代码反推,与 `backend/internal/handler/oauth_provider_*.go`、`backend/internal/service/oauth_provider_service.go`、`backend/migrations/142_oauth_provider.sql` 一致。如代码与本文档不符,以代码为准并提交 issue。
+> 本文档基于代码反推,与 `backend/internal/handler/oauth_provider_*.go`、`backend/internal/service/oauth_provider_service.go`、`backend/migrations/143_oauth_provider.sql` 一致。如代码与本文档不符,以代码为准。
 
 ---
 
 ## 0. 30 秒概览
 
-Sakrylle 实现了 **RFC 6749 §4.1 Authorization Code + RFC 7636 PKCE**,自己当 OAuth provider。第三方 webapp 走标准 PKCE 流程拿到一个 `sk_oauth_<...>` 形式的 Bearer token,这个 token 同时也是合法的 Sakrylle API Key —— 直接拿去调 `/v1/chat/completions`、`/v1/images/generations` 等任何 `/v1/*` 端点,鉴权/计费/限速/Redis 缓存全部走原有路径,不需要任何特殊处理。
+Sakrylle 实现了 **RFC 6749 §4.1 Authorization Code + RFC 7636 PKCE**,自己当 OAuth provider。第三方 webapp 走标准 PKCE 流程拿到一个 `sk_oauth_<...>` 形式的 Bearer token,这个 token 同时也是合法的 Sakrylle API Key —— 直接拿去调 `/v1/chat/completions`、`/v1/images/generations` 等 `/v1/*` 端点,鉴权/计费/限速/Redis 缓存全部走原有路径,不需要任何特殊处理。
+
+> **v2 注意**:scope enforcement 生效后,`sk_oauth_` token 仅能访问 §7.3 scope 矩阵中列出的端点(覆盖所有常用 `/v1/*` 路由)。未列出的路由对 OAuth token 返回 403。手动 API key(`sk-...`)不受影响。
 
 ```
 浏览器(your-app.example.com)
@@ -48,7 +70,9 @@ OAuth client 不是消费方自助创建,**必须找运维在 `oauth_clients` �
 | `access_token_ttl_seconds` | access_token 有效期(秒),默认 86400 | `86400` |
 | `refresh_token_ttl_seconds` | refresh_token 有效期(秒),默认 2592000(30 天) | `2592000` |
 
-参考 seed:`backend/migrations/143_oauth_seed_sakrylle.sql`(`sakrylle-image-playground` client 的注册示例)。
+参考 seed:`backend/migrations/143_oauth_provider.sql`(v1 schema)、`backend/migrations/148_oauth_v2_sakrylle_seed.sql`(v2 seed 示例)。
+
+> **v2 新增注册字段**(详见 [`OAUTH_V2_INTEGRATION.md` §2](./OAUTH_V2_INTEGRATION.md#client-registration)):`client_type`、`app_type`、`default_scopes`、`allowed_group_ids`、`device_flow_enabled`、`icon_url`、`homepage_url`、`privacy_url`、`terms_url`。
 
 ### 1.1 PKCE-only vs 机密 client
 
@@ -75,12 +99,16 @@ OAuth client 不是消费方自助创建,**必须找运维在 `oauth_clients` �
 
 | 端点 | 方法 | 鉴权 | 限速 | Content-Type |
 |---|---|---|---|---|
-| `/oauth/authorize` | GET | 无(由 sub2api 内部 SPA 处理用户登录) | 30/min/IP **fail-close** | (HTML 响应) |
+| `/oauth/authorize` | GET/POST | 无(由 sub2api 内部 SPA 处理用户登录) | 30/min/IP **fail-close** | (HTML 响应) |
 | `/oauth/token` | POST | client_id (+ optional client_secret) | 20/min/IP **fail-close** | `application/x-www-form-urlencoded` |
+| `/oauth/revoke` | POST | client_id (+ optional client_secret) | 30/min/IP **fail-close** | `application/x-www-form-urlencoded` |
+| `/oauth/device/code` | POST | client_id | 10/min/IP **fail-close** | `application/x-www-form-urlencoded` |
+| `/.well-known/oauth-authorization-server` | GET | 无 | 无 | (JSON 响应) |
 | `/v1/*` | * | `Authorization: Bearer sk_oauth_...` | 同 API Key | 同各端点 |
 
 > **fail-close** = Redis 不可用时拒绝请求(不放行)。设计上对齐 `/api/v1/auth/*`。
 > **路径根**:`/oauth/*` **不在** `/api/v1` 下,这是有意的 —— 避免被前端 SPA fallback 抢路由。详见 `backend/internal/web/embed_on.go` bypass 列表。
+> **v2 新增**:`POST /oauth/authorize`(form-encoded consent)、`/oauth/revoke`、`/oauth/device/code`、`/.well-known/oauth-authorization-server`。
 
 ### 2.2 GET /oauth/authorize
 
@@ -135,11 +163,14 @@ grant_type=authorization_code
   "token_type": "Bearer",
   "expires_in": 86400,
   "refresh_token": "rt_XyZwVuTs...",
-  "scope": "image_generation balance:read models:read"
+  "refresh_token_expires_in": 2592000,
+  "scope": "images:create account:balance:read models:read"
 }
 ```
 
-响应头 `Cache-Control: no-store`。
+> **v2 变更**:`scope` 字段返回 canonical 名称(即使请求时用了 legacy 别名)。新增 `refresh_token_expires_in` 字段(秒,family-anchored 绝对过期)。遗留客户端应忽略未知字段。
+
+响应头 `Cache-Control: no-store`、`Pragma: no-cache`。
 
 ### 2.4 POST /oauth/token —— refresh_token 续期
 
@@ -161,9 +192,12 @@ grant_type=refresh_token
 ```json
 {
   "error": "invalid_grant",
-  "error_description": "authorization code expired"
+  "error_description": "authorization code expired",
+  "error_uri": "https://doc.sakrylle.com/developers/oauth/errors#invalid_grant"
 }
 ```
+
+> **v2 新增**:`error_uri` 字段指向 Sakrylle 文档对应错误码锚点。遗留客户端应忽略未知字段。
 
 可能的 `error` 值与 HTTP 状态码:
 
@@ -173,8 +207,10 @@ grant_type=refresh_token
 | `invalid_client` | 401 | `client_id` 不存在/被禁用/`client_secret` 错 |
 | `invalid_grant` | 400 | code 不存在/过期/已使用、`code_verifier` 不匹配、`refresh_token` 失效、`redirect_uri`/`client_id` 与 authorize 时不一致 |
 | `invalid_scope` | 400 | 申请的 scope 不在 `allowed_scopes` 里 |
-| `unsupported_grant_type` | 400 | `grant_type` 不是 `authorization_code` 或 `refresh_token` |
+| `unsupported_grant_type` | 400 | `grant_type` 不是 `authorization_code`、`refresh_token` 或 `urn:ietf:params:oauth:grant-type:device_code` |
 | `unsupported_response_type` | 400 | `response_type != code` |
+| `insufficient_scope` | 403 | (v2) `sk_oauth_` token 缺少端点所需 scope |
+| `temporarily_unavailable` | 503 | OAuth provider 被管理员禁用 |
 
 > **PKCE 失败**(`code_verifier` 与 `code_challenge` 不匹配)使用 `subtle.ConstantTimeCompare` 做常数时间比较,防 timing attack。
 
@@ -205,7 +241,9 @@ Authorization: Bearer sk_oauth_AbCdEfGh...
 
 ### 3.1 GET /v1/account/balance
 
-读取当前 token 绑定的用户余额与 group 信息。**仅 Bearer 鉴权,无显式 scope 检查**(实现层面 scope 仅在 `/oauth/authorize` 时校验是否在 `allowed_scopes` 子集内)。
+读取当前 token 绑定的用户余额与 group 信息。
+
+> **v2 变更**:v2 scope enforcement 生效后,`sk_oauth_` token 调用此端点需持有 `account:balance:read` 或 `account:read` scope。遗留 `balance:read` 别名会被自动重写为 `account:balance:read`,因此已有客户端无需改动。
 
 ```http
 GET /v1/account/balance
@@ -295,11 +333,15 @@ refresh_token + /oauth/token (refresh_token grant)
 
 ### 4.2 撤销语义
 
-三种触发路径,效果相同 —— 清扫该 (user, client) 下**所有** active token:
+**v2 变更**:v2 引入了 token family reuse detection。重放已轮换的 refresh token 会触发**整个 token family**(所有 access + refresh)立即撤销,而非仅清扫 (user, client) 级别。客户端必须严格保证 refresh token 单次使用。
+
+撤销触发路径:
 
 1. **Code 重放**(`/oauth/token` 收到已使用的 code) → 服务端自动清扫(RFC 6749 §10.5)
-2. **用户在 sub.sakrylle.com 个人中心点"撤销授权"** → `DELETE /api/v1/oauth/grants/:client_id`
-3. **运维直接 SQL** → `UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE user_id=? AND client_id=?` + `UPDATE api_keys SET status='disabled' WHERE id IN (...)` + Redis Pub/Sub `auth:cache:invalidate <plaintext>`
+2. **Refresh token 重放**(v2) → 整个 token family 撤销,`slog.Warn` 记账
+3. **用户在 sub.sakrylle.com 个人中心点"撤销授权"** → `DELETE /api/v1/oauth/grants/:client_id` 或 `DELETE /api/v1/oauth/authorized-apps/:grant_id`
+4. **客户端主动撤销**(v2) → `POST /oauth/revoke`(RFC 7009,幂等)
+5. **运维直接 SQL** → `UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE user_id=? AND client_id=?` + `UPDATE api_keys SET status='disabled' WHERE id IN (...)` + Redis Pub/Sub `auth:cache:invalidate <plaintext>`
 
 > **Redis 鉴权缓存**:`apikey:auth:<sha>` TTL 60s。撤销路径都会发 Pub/Sub invalidate;**SQL 路径必须手发**(`docker exec sub2api-redis redis-cli PUBLISH auth:cache:invalidate '<full-plaintext>'`),否则 60s 内仍可调用。
 
@@ -325,10 +367,18 @@ refreshing ──(任何错误)──→ idle (清 token, 重新走 authorize)
 
 sub.sakrylle.com 自己的 SPA 在用户中心提供"已授权应用"页面,后端端点:
 
+**v1 兼容端点**(仍可用):
 - `GET /api/v1/oauth/grants` —— 列当前用户的所有 grant(每个 `client_id` 一行)
 - `DELETE /api/v1/oauth/grants/:client_id` —— 撤销该 client 的全部 token
 
-**这两个端点是 JWT 鉴权**(用户在 sub.sakrylle.com 已登录的 session),**不能用 `sk_oauth_` token 调**。第三方应用如果想提供"在我这里登出"功能,正确做法是**自己丢弃本地 token + 提示用户也可以去 sub.sakrylle.com 撤销**;不要尝试从消费方应用代为撤销。
+**v2 新增端点**(per-device 粒度):
+- `GET /api/v1/oauth/authorized-apps` —— 列每设备的 grant 详情
+- `DELETE /api/v1/oauth/authorized-apps/:grant_id` —— 撤销单个设备 grant(需 step-up auth)
+- `DELETE /api/v1/oauth/authorized-apps/client/:client_id` —— 撤销某 client 所有设备(需 step-up auth)
+
+**这些端点全部是 JWT 鉴权**(用户在 sub.sakrylle.com 已登录的 session),**不能用 `sk_oauth_` token 调**。第三方应用如果想提供"在我这里登出"功能,正确做法是**自己丢弃本地 token + 提示用户也可以去 sub.sakrylle.com 撤销**;不要尝试从消费方应用代为撤销。
+
+> v2 新增 `POST /oauth/revoke`(RFC 7009)允许客户端主动撤销自己的 token,无需 JWT。详见 [`OAUTH_V2_INTEGRATION.md` §9](./OAUTH_V2_INTEGRATION.md#9-token-revocation)。
 
 ---
 
@@ -465,7 +515,8 @@ interface TokenResponse {
   token_type: "Bearer";
   expires_in: number;     // 秒
   refresh_token: string;  // rt_...
-  scope: string;
+  refresh_token_expires_in?: number; // 秒 (v2 新增,family-anchored)
+  scope: string;          // v2 返回 canonical 名称
 }
 ```
 
@@ -647,16 +698,30 @@ PKCE-only client 的 `/oauth/token` 请求**不要**带 `client_secret`(也不�
 ## 9. 引用
 
 - 代码:
-  - `backend/internal/handler/oauth_provider_handler.go`(端点)
+  - `backend/internal/handler/oauth_provider_handler.go`(主端点:authorize, token, revoke, grants, authorized-apps)
+  - `backend/internal/handler/oauth_device_handler.go`(RFC 8628 device flow 端点)
   - `backend/internal/handler/oauth_provider_consent.go`(同意页 HTML + XSS 防御)
-  - `backend/internal/handler/oauth_provider_account_handler.go`(`/v1/account/balance`)
-  - `backend/internal/service/oauth_provider_service.go`(核心逻辑、PKCE、rotation)
+  - `backend/internal/handler/oauth_provider_account_handler.go`(`/v1/account/balance`、`/v1/me`)
+  - `backend/internal/service/oauth_provider_service.go`(核心逻辑、PKCE、rotation、reuse detection)
   - `backend/internal/service/oauth_provider_types.go`(域类型、错误清单)
+  - `backend/internal/service/oauth_scopes.go`(canonical scope 注册表、legacy 别名映射)
   - `backend/internal/repository/oauth_provider_repo.go`(DB 层)
   - `backend/internal/server/routes/oauth.go`(路由 + 限速)
+  - `backend/internal/server/routes/oauth_device.go`(device flow 路由)
+  - `backend/internal/server/middleware/oauth_scope.go`(§7.3 scope enforcement)
   - `backend/internal/server/middleware/api_key_auth.go`(`sk_oauth_` 前缀识别)
-  - `backend/migrations/142_oauth_provider.sql`(表结构)
-  - `backend/migrations/143_oauth_seed_sakrylle.sql`(seed 示例)
+  - `backend/migrations/143_oauth_provider.sql`(v1 表结构)
+  - `backend/migrations/144_oauth_seed_sakrylle.sql`(seed 示例)
+  - `backend/migrations/145_oauth_v2.sql`(v2 schema 扩展)
+  - `backend/migrations/146_oauth_authorize_transaction_user_id.sql`(transaction 补丁)
+  - `backend/migrations/148_oauth_v2_sakrylle_seed.sql`(v2 seed)
+- v2 文档:
+  - [`docs/OAUTH_V2_INTEGRATION.md`](./OAUTH_V2_INTEGRATION.md)(v2 集成指南,新接入首选)
+  - [`docs/OAUTH_V2_DESIGN.md`](./OAUTH_V2_DESIGN.md)(完整设计契约)
+  - [`docs/OAUTH_V2_ERROR_REFERENCE.md`](./OAUTH_V2_ERROR_REFERENCE.md)(错误码全表)
+  - [`docs/OAUTH_V2_DEVICE_FLOW_CLI_GUIDE.md`](./OAUTH_V2_DEVICE_FLOW_CLI_GUIDE.md)(CLI 设备流指南)
+  - [`docs/OAUTH_V2_SCOPE_MIGRATION.md`](./OAUTH_V2_SCOPE_MIGRATION.md)(scope 迁移时间线)
+  - [`docs/OAUTH_V2_FIRST_PARTY_SECURITY_CHECKLIST.md`](./OAUTH_V2_FIRST_PARTY_SECURITY_CHECKLIST.md)(第一方安全清单)
 - 历史:`docs/SAKRYLLE_API_SPEC.md`(消费方早期契约,部分字段名与本文不一致,以本文为准)
-- 项目背景:`CLAUDE.md` § OAuth 2.0 provider、Currency policy、Deepseek 双协议入口与缓存陷阱
-- 标准:[RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749)、[RFC 7636 PKCE](https://datatracker.ietf.org/doc/html/rfc7636)、[RFC 6750 Bearer](https://datatracker.ietf.org/doc/html/rfc6750)
+- 项目背景:`CLAUDE.md` § OAuth 2.0 provider、Currency policy
+- 标准:[RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749)、[RFC 7636 PKCE](https://datatracker.ietf.org/doc/html/rfc7636)、[RFC 6750 Bearer](https://datatracker.ietf.org/doc/html/rfc6750)、[RFC 7009 Revocation](https://datatracker.ietf.org/doc/html/rfc7009)、[RFC 8414 Discovery](https://datatracker.ietf.org/doc/html/rfc8414)、[RFC 8628 Device Flow](https://datatracker.ietf.org/doc/html/rfc8628)
