@@ -313,7 +313,7 @@ const handleRevokeDevice = async (): Promise<void> => {
       appStore.showError(t('authorizedApps.stepUpRequired'))
       // Redirect to login after a short delay
       setTimeout(() => {
-        window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname)
+        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname)
       }, 2000)
     } else {
       const message = error instanceof Error ? error.message : t('authorizedApps.revokeFailed')
@@ -340,7 +340,7 @@ const handleRevokeAll = async (): Promise<void> => {
       appStore.showError(t('authorizedApps.stepUpRequired'))
       // Redirect to login after a short delay
       setTimeout(() => {
-        window.location.href = '/auth/login?next=' + encodeURIComponent(window.location.pathname)
+        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname)
       }, 2000)
     } else {
       const message = error instanceof Error ? error.message : t('authorizedApps.revokeFailed')
