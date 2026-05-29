@@ -737,6 +737,7 @@ export default {
     revoked: '已撤销 {count} 个会话',
     revokedOne: '已撤销该设备的授权',
     revokeFailed: '撤销失败',
+    stepUpRequired: '为了安全，请重新登录后再撤销授权',
     loadFailed: '加载失败',
     disabledBadge: '已下线',
     disabledTooltip: '该应用已被管理员下线，但你仍可以撤销之前的授权',
