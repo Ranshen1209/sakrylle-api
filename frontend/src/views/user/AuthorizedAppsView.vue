@@ -219,9 +219,8 @@ const APP_TYPE_KEYS: Record<string, string> = {
   cli: 'authorizedApps.appType.cli',
   mobile: 'authorizedApps.appType.mobile',
   desktop: 'authorizedApps.appType.desktop',
-  device: 'authorizedApps.appType.device',
-  service: 'authorizedApps.appType.service',
-  internal: 'authorizedApps.appType.internal'
+  chat: 'authorizedApps.appType.chat',
+  image: 'authorizedApps.appType.image'
 }
 
 const { t } = useI18n()

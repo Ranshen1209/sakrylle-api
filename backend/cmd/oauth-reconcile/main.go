@@ -17,9 +17,11 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -104,6 +106,16 @@ func main() {
 			log.Fatalf("backfill failed: %v", err)
 		}
 		fmt.Printf("backfill inserted %d new oauth_access_tokens row(s) (existing rows untouched).\n", affected)
+
+		// Summary audit event — one JSON line for easy log aggregation.
+		summary := map[string]any{
+			"event":     "oauth_reconcile_apply_summary",
+			"rows_inserted": affected,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		}
+		if b, err := json.Marshal(summary); err == nil {
+			slog.Info("oauth_reconcile_audit", "action", "apply_summary", "summary", string(b))
+		}
 	} else {
 		fmt.Println("oauth-reconcile: --report-only mode (no writes)")
 	}
@@ -132,8 +144,10 @@ func main() {
 // The SQL is intentionally identical in shape to the migration so the CLI
 // stays a verbatim re-run path: rolling back v2 then re-deploying must be
 // equivalent to the migration's first pass.
+//
+// RETURNING lets us emit one structured audit event per inserted row (Issue 19).
 func applyBackfill(ctx context.Context, db *sql.DB) (int64, error) {
-	res, err := db.ExecContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 INSERT INTO oauth_access_tokens (
     api_key_id,
     grant_id,
@@ -189,6 +203,7 @@ LEFT JOIN oauth_clients oc ON oc.client_id = rt.client_id
 WHERE ak.key LIKE 'sk_oauth_%'
   AND ak.group_id IS NOT NULL
 ON CONFLICT (api_key_id) DO NOTHING
+RETURNING api_key_id, grant_id, token_family_id, client_id, scopes::text
 `,
 		legacyDefaultClientID,
 		legacyDefaultScopes,
@@ -197,9 +212,36 @@ ON CONFLICT (api_key_id) DO NOTHING
 	if err != nil {
 		return 0, fmt.Errorf("oauth_access_tokens backfill: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("rows affected: %w", err)
+	defer rows.Close()
+
+	var n int64
+	for rows.Next() {
+		var apiKeyID int64
+		var grantID, familyID, clientID, scopesJSON string
+		if err := rows.Scan(&apiKeyID, &grantID, &familyID, &clientID, &scopesJSON); err != nil {
+			return n, fmt.Errorf("scan backfill row: %w", err)
+		}
+		n++
+
+		usedLegacyGrant := grantID == fmt.Sprintf("legacy-grant-ak-%d", apiKeyID)
+		usedLegacyFamily := familyID == fmt.Sprintf("legacy-family-ak-%d", apiKeyID)
+		usedFallbackClient := clientID == legacyDefaultClientID
+		usedFallbackScopes := scopesJSON == legacyDefaultScopes
+
+		slog.Info("oauth_reconcile_audit",
+			"action", "backfill_access_metadata",
+			"api_key_id", apiKeyID,
+			"grant_id", grantID,
+			"token_family_id", familyID,
+			"client_id", clientID,
+			"fallback_scopes", usedFallbackScopes,
+			"fallback_grant_id", usedLegacyGrant,
+			"fallback_family_id", usedLegacyFamily,
+			"fallback_client_id", usedFallbackClient,
+		)
+	}
+	if err := rows.Err(); err != nil {
+		return n, fmt.Errorf("iterate backfill rows: %w", err)
 	}
 	return n, nil
 }

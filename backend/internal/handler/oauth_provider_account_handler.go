@@ -211,7 +211,11 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 		if apiKey.Group != nil {
 			resp["current_group"] = groupSummary(apiKey.Group, user, false)
 		}
-		resp["allowed_groups"] = h.allowedGroupsForUser(c, user.ID, apiKey.Group)
+		var oauthClient *service.OAuthClient
+		if meta.ClientID != "" {
+			oauthClient, _ = h.oauthService.LookupClient(c.Request.Context(), meta.ClientID)
+		}
+		resp["allowed_groups"] = h.allowedGroupsForUser(c, user.ID, apiKey.Group, oauthClient, meta.Scopes)
 	}
 
 	return resp
@@ -221,24 +225,20 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 // empty slice (not nil) on any error so the JSON encoder emits `[]`.
 //
 // `is_default` flags the user's currently bound group when present.
-func (h *AccountInfoHandler) allowedGroupsForUser(c *gin.Context, userID int64, currentGroup *service.Group) []gin.H {
+func (h *AccountInfoHandler) allowedGroupsForUser(c *gin.Context, userID int64, currentGroup *service.Group, client *service.OAuthClient, scopes []string) []gin.H {
 	out := []gin.H{}
 	if h.oauthService == nil {
 		return out
 	}
-	ids, err := h.oauthService.AllowedGroupsForUser(c.Request.Context(), userID)
-	if err != nil || len(ids) == 0 {
+	groups, err := h.oauthService.AllowedGroupsForUser(c.Request.Context(), userID, client, scopes)
+	if err != nil || len(groups) == 0 {
 		return out
 	}
 	currentID := int64(0)
 	if currentGroup != nil {
 		currentID = currentGroup.ID
 	}
-	for _, gid := range ids {
-		g, err := h.oauthService.LookupGroup(c.Request.Context(), gid)
-		if err != nil || g == nil {
-			continue
-		}
+	for _, g := range groups {
 		out = append(out, gin.H{
 			"id":                     g.ID,
 			"name":                   g.Name,

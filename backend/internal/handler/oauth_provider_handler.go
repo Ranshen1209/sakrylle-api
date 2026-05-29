@@ -69,14 +69,39 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 		return
 	}
 
+	// Support both GET (query params) and POST (form-encoded body) per §12.2.
+	if c.Request.Method == http.MethodPost {
+		_ = c.Request.ParseForm()
+	}
+	formVal := func(key string) string {
+		if c.Request.Method == http.MethodPost {
+			return strings.TrimSpace(c.Request.FormValue(key))
+		}
+		return strings.TrimSpace(c.Query(key))
+	}
+
 	req := &service.AuthorizeRequest{
-		ClientID:            strings.TrimSpace(c.Query("client_id")),
-		RedirectURI:         strings.TrimSpace(c.Query("redirect_uri")),
-		ResponseType:        strings.TrimSpace(c.Query("response_type")),
-		Scopes:              service.ParseScopes(c.Query("scope")),
-		State:               strings.TrimSpace(c.Query("state")),
-		CodeChallenge:       strings.TrimSpace(c.Query("code_challenge")),
-		CodeChallengeMethod: strings.TrimSpace(c.Query("code_challenge_method")),
+		ClientID:            formVal("client_id"),
+		RedirectURI:         formVal("redirect_uri"),
+		ResponseType:        formVal("response_type"),
+		Scopes:              service.ParseScopes(formVal("scope")),
+		State:               formVal("state"),
+		CodeChallenge:       formVal("code_challenge"),
+		CodeChallengeMethod: formVal("code_challenge_method"),
+	}
+
+	// Issue 23: prompt=none requires a pre-existing session; we never have one
+	// on the /oauth/authorize GET (auth lives in localStorage, not a cookie).
+	// Redirect with interaction_required if redirect_uri looks valid, otherwise
+	// render inline so we don't bounce the user to an unverified URL.
+	if formVal("prompt") == "none" {
+		if redirectURI := formVal("redirect_uri"); redirectURI != "" {
+			state := formVal("state")
+			c.Redirect(http.StatusFound, buildOAuthErrorURL(redirectURI, "interaction_required", "user interaction is required", state))
+		} else {
+			renderOAuthInlineError(c, http.StatusBadRequest, "interaction_required: user interaction is required")
+		}
+		return
 	}
 
 	client, err := h.provider.ValidateAuthorizeRequest(c.Request.Context(), req)
@@ -97,6 +122,8 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Header("X-Frame-Options", "DENY")
 	c.Header("Cache-Control", "no-store")
+	c.Header("Referrer-Policy", "no-referrer")
+	c.Header("Content-Security-Policy", "frame-ancestors 'none'")
 	c.String(http.StatusOK, oauthConsentHTML(client.Name, req, middleware.GetNonceFromContext(c)))
 }
 
@@ -185,6 +212,7 @@ func (h *OAuthProviderHandler) BeginAuthorize(c *gin.Context) {
 		"scopes":         result.Transaction.Scopes,
 		"redirect_uri":   result.Transaction.RedirectURI,
 		"expires_at":     result.Transaction.ExpiresAt,
+		"allowed_groups": result.AllowedGroupsForUser,
 	})
 }
 
@@ -315,7 +343,12 @@ func (h *OAuthProviderHandler) writeApproveError(c *gin.Context, err error, txID
 // Per spec the body MUST be application/x-www-form-urlencoded.
 func (h *OAuthProviderHandler) Token(c *gin.Context) {
 	if !h.provider.IsEnabled(c.Request.Context()) {
-		writeOAuthError(c, http.StatusForbidden, "invalid_client", "oauth provider disabled")
+		writeOAuthError(c, http.StatusServiceUnavailable, "temporarily_unavailable", "oauth provider disabled")
+		return
+	}
+	// Issue 3: reject non-form-encoded bodies before ParseForm, matching Revoke.
+	if !isFormEncoded(c) {
+		writeOAuthError(c, http.StatusBadRequest, "invalid_request", "Content-Type must be application/x-www-form-urlencoded")
 		return
 	}
 	if err := c.Request.ParseForm(); err != nil {
@@ -341,6 +374,11 @@ func (h *OAuthProviderHandler) Token(c *gin.Context) {
 }
 
 func (h *OAuthProviderHandler) tokenAuthorizationCode(c *gin.Context) {
+	// Issue 25: group_id is only valid on refresh_token grants; reject it here.
+	if c.Request.PostFormValue("group_id") != "" {
+		writeOAuthError(c, http.StatusBadRequest, "invalid_request", "group_id is not allowed on authorization_code grant")
+		return
+	}
 	clientID, clientSecret := extractClientCredentials(c)
 	code := strings.TrimSpace(c.Request.PostFormValue("code"))
 	redirectURI := strings.TrimSpace(c.Request.PostFormValue("redirect_uri"))
@@ -352,6 +390,7 @@ func (h *OAuthProviderHandler) tokenAuthorizationCode(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	c.JSON(http.StatusOK, tokenResponseJSON(issued))
 }
 
@@ -372,6 +411,7 @@ func (h *OAuthProviderHandler) tokenRefresh(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	c.JSON(http.StatusOK, tokenResponseJSON(issued))
 }
 
@@ -394,20 +434,32 @@ func extractClientCredentials(c *gin.Context) (clientID, clientSecret string) {
 // ── response helpers ───────────────────────────────────────────────────────
 
 func tokenResponseJSON(issued *service.IssuedToken) gin.H {
-	return gin.H{
-		"access_token":  issued.AccessToken,
-		"token_type":    issued.TokenType,
-		"expires_in":    issued.ExpiresIn,
-		"refresh_token": issued.RefreshToken,
-		"scope":         issued.Scope,
+	resp := gin.H{
+		"access_token": issued.AccessToken,
+		"token_type":   issued.TokenType,
+		"expires_in":   issued.ExpiresIn,
+		"scope":        issued.Scope,
 	}
+	if issued.RefreshToken != "" {
+		resp["refresh_token"] = issued.RefreshToken
+		if issued.RefreshTokenExpiresIn > 0 {
+			resp["refresh_token_expires_in"] = issued.RefreshTokenExpiresIn
+		}
+	}
+	return resp
 }
 
+// writeOAuthError emits a RFC 6749-compliant error response.
+// error_uri points to the Sakrylle docs anchor for the given error code so
+// clients can surface a stable help link. The docs page need not exist yet —
+// the URI is a stable pointer for future documentation.
 func writeOAuthError(c *gin.Context, status int, code, desc string) {
 	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	c.JSON(status, gin.H{
 		"error":             code,
 		"error_description": desc,
+		"error_uri":         "https://doc.sakrylle.com/developers/oauth/errors#" + code,
 	})
 }
 
@@ -627,7 +679,7 @@ func (h *OAuthProviderHandler) discoveryIssuer(c *gin.Context) string {
 // OAuth responses must never be cached.
 func (h *OAuthProviderHandler) Revoke(c *gin.Context) {
 	if !h.provider.IsEnabled(c.Request.Context()) {
-		writeOAuthError(c, http.StatusForbidden, "invalid_client", "oauth provider disabled")
+		writeOAuthError(c, http.StatusServiceUnavailable, "temporarily_unavailable", "oauth provider disabled")
 		return
 	}
 	// §12.9: form-encoded only.
@@ -674,16 +726,11 @@ func (h *OAuthProviderHandler) Revoke(c *gin.Context) {
 }
 
 // writeRevokeSuccess emits §12.9's empty 200 with no-cache headers.
+// RFC 7009 §2.2 requires an empty response body on success.
 func writeRevokeSuccess(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	c.Header("Pragma", "no-cache")
-	c.Header("Content-Type", "application/json")
 	c.Status(http.StatusOK)
-	// RFC 7009 says "the body is empty"; emit a literal `{}` so JSON-only
-	// clients (some HTTP libraries trip on empty responses) stay happy. The
-	// §12.9 acceptance test checks status + headers + no leak; an empty `{}`
-	// is consistent with "no body content".
-	_, _ = c.Writer.Write([]byte("{}"))
 }
 
 // isFormEncoded reports whether the request Content-Type is

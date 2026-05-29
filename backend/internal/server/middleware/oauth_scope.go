@@ -72,6 +72,15 @@ func RequireOAuthScope(svc *service.OAuthProviderService) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
+		// §13.2 kill-switch: when scope enforcement is globally disabled, ALL
+		// sk_oauth_ tokens bypass scope checks immediately — before any DB
+		// metadata load. This ensures the toggle is a true global bypass, not
+		// just a nil-metadata escape hatch.
+		if !svc.IsScopeEnforcementEnabled(ctx) {
+			c.Next()
+			return
+		}
+
 		meta, err := svc.LoadOAuthAccessMetadata(ctx, apiKey.ID)
 		if err != nil {
 			WriteOAuthResourceError(c, OAuthResourceError{
@@ -87,16 +96,7 @@ func RequireOAuthScope(svc *service.OAuthProviderService) gin.HandlerFunc {
 		// mint path makes this unreachable for fresh tokens, but a stale row
 		// (or a future migration) could surface it. Reject with invalid_token
 		// per RFC 6750 rather than fall through to the gateway.
-		//
-		// Caveat: LoadOAuthAccessMetadata also returns (nil, nil) when the
-		// `oauth_scope_enforcement_enabled` feature flag is off — in that
-		// mode we deliberately bypass scope enforcement entirely (§13.2
-		// kill-switch), so re-check the flag before failing closed.
 		if meta == nil {
-			if !svc.IsScopeEnforcementEnabled(ctx) {
-				c.Next()
-				return
-			}
 			slog.Warn("oauth: sk_oauth_ token has no oauth_access_tokens row — failing closed",
 				"api_key_id", apiKey.ID,
 				"path", c.Request.URL.Path,
@@ -165,6 +165,10 @@ func LoadOAuthMetadata(svc *service.OAuthProviderService) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if !svc.IsScopeEnforcementEnabled(c.Request.Context()) {
+			c.Next()
+			return
+		}
 		meta, err := svc.LoadOAuthAccessMetadata(c.Request.Context(), apiKey.ID)
 		if err != nil {
 			WriteOAuthResourceError(c, OAuthResourceError{
@@ -204,6 +208,10 @@ func RejectOAuthTokensForUnlistedResource(svc *service.OAuthProviderService) gin
 			return
 		}
 		if !service.IsOAuthAccessToken(apiKey.Key) {
+			c.Next()
+			return
+		}
+		if !svc.IsScopeEnforcementEnabled(c.Request.Context()) {
 			c.Next()
 			return
 		}

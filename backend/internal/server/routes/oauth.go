@@ -17,9 +17,14 @@ import (
 //
 //	GET  /.well-known/oauth-authorization-server  — public discovery (RFC 8414)
 //	GET  /oauth/authorize                         — public, renders consent page (rate-limited 30/min per IP)
+//	POST /oauth/authorize                         — public, form-encoded consent (rate-limited 30/min per IP)
 //	POST /oauth/token                             — public, RFC 6749 token endpoint, form-encoded (rate-limited 20/min per IP)
 //	POST /oauth/revoke                            — public, RFC 7009 revocation endpoint, form-encoded (rate-limited 30/min per IP)
+//	POST /oauth/device/code                       — public, RFC 8628 device authorization (rate-limited 20/min per IP)
+//	GET  /oauth/device                            — public, renders device verification page (rate-limited 30/min per IP)
 //	POST /api/v1/oauth/authorize/approve          — JWT-protected, called by consent page JS
+//	POST /api/v1/oauth/device/approve             — JWT-protected, approves a device user_code
+//	POST /api/v1/oauth/device/deny                — JWT-protected, denies a device user_code
 //	GET  /api/v1/oauth/authorized-apps            — JWT-protected, lists per-device grants (§12.10)
 //	DELETE /api/v1/oauth/authorized-apps/:grant_id — JWT-protected, revokes one device grant
 //	DELETE /api/v1/oauth/authorized-apps/client/:client_id — JWT-protected, revokes all devices for a client
@@ -51,16 +56,19 @@ func RegisterOAuthRoutes(
 	// Discovery is public read-only and cacheable; no rate limit.
 	r.GET("/.well-known/oauth-authorization-server", h.OAuthProvider.Metadata)
 
-	r.GET("/oauth/authorize",
-		rateLimiter.LimitWithOptions("oauth-authorize", 30, time.Minute, middleware.RateLimitOptions{
-			FailureMode: middleware.RateLimitFailClose,
-		}),
-		h.OAuthProvider.Authorize,
-	)
+	// GET renders the consent page; POST accepts form-encoded body for the
+	// same flow (some clients POST the authorization request directly).
+	authorizeLimit := rateLimiter.LimitWithOptions("oauth-authorize", 30, time.Minute, middleware.RateLimitOptions{
+		FailureMode: middleware.RateLimitFailClose,
+	})
+	r.GET("/oauth/authorize", authorizeLimit, h.OAuthProvider.Authorize)
+	r.POST("/oauth/authorize", authorizeLimit, h.OAuthProvider.Authorize)
+
 	r.POST("/oauth/token",
 		rateLimiter.LimitWithOptions("oauth-token", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}),
+		servermiddleware.RequestBodyLimit(32*1024),
 		h.OAuthProvider.Token,
 	)
 	// §12.9: revoke runs idempotency + bcrypt for confidential clients, so a
@@ -69,11 +77,32 @@ func RegisterOAuthRoutes(
 		rateLimiter.LimitWithOptions("oauth-revoke", 30, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}),
+		servermiddleware.RequestBodyLimit(32*1024),
 		h.OAuthProvider.Revoke,
 	)
 
+	// RFC 8628 Device Authorization Grant (§12.6–§12.8).
+	// POST /oauth/device/code — mints device+user code pair (20/min, fail-close).
+	// GET  /oauth/device     — renders the verification page (30/min, fail-close).
+	if h.OAuthDevice != nil {
+		r.POST("/oauth/device/code",
+			rateLimiter.LimitWithOptions("oauth-device-code", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			servermiddleware.RequestBodyLimit(32*1024),
+			h.OAuthDevice.DeviceAuthorize,
+		)
+		r.GET("/oauth/device",
+			rateLimiter.LimitWithOptions("oauth-device-verify", 30, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.OAuthDevice.DeviceVerificationPage,
+		)
+	}
+
 	oauth := v1.Group("/oauth")
 	oauth.Use(gin.HandlerFunc(jwtAuth))
+	oauth.Use(servermiddleware.RequestBodyLimit(32 * 1024))
 	{
 		// FIX A1 / §10.3: /begin opens the server-side authorize transaction
 		// for the JWT subject. The consent page POSTs the original /authorize
@@ -84,13 +113,28 @@ func RegisterOAuthRoutes(
 		oauth.POST("/authorize/begin", h.OAuthProvider.BeginAuthorize)
 		oauth.POST("/authorize/approve", h.OAuthProvider.Approve)
 
+		// RFC 8628 device approve/deny — JWT-protected, called by the
+		// verification page JS after the user types the user_code (§12.8).
+		if h.OAuthDevice != nil {
+			oauth.POST("/device/approve", h.OAuthDevice.DeviceApprove)
+			oauth.POST("/device/deny", h.OAuthDevice.DeviceDeny)
+		}
+
 		// Legacy v1 client-aggregate endpoints kept for compatibility (§12.10).
 		oauth.GET("/grants", h.OAuthProvider.ListGrants)
 		oauth.DELETE("/grants/:client_id", h.OAuthProvider.RevokeGrant)
 
 		// v2 per-device authorized apps (§12.10).
+		// DELETE endpoints require step-up auth (JWT issued within 15 min) to
+		// prevent session-hijacking attacks from revoking a user's app grants.
 		oauth.GET("/authorized-apps", h.OAuthProvider.ListAuthorizedApps)
-		oauth.DELETE("/authorized-apps/:grant_id", h.OAuthProvider.RevokeAuthorizedApp)
-		oauth.DELETE("/authorized-apps/client/:client_id", h.OAuthProvider.RevokeAuthorizedClient)
+		oauth.DELETE("/authorized-apps/:grant_id",
+			gin.HandlerFunc(servermiddleware.RequireRecentAuth(15*time.Minute)),
+			h.OAuthProvider.RevokeAuthorizedApp,
+		)
+		oauth.DELETE("/authorized-apps/client/:client_id",
+			gin.HandlerFunc(servermiddleware.RequireRecentAuth(15*time.Minute)),
+			h.OAuthProvider.RevokeAuthorizedClient,
+		)
 	}
 }
