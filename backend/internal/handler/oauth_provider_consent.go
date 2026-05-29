@@ -89,13 +89,13 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   .status.error { background:rgba(220,38,38,.12); color:#dc2626; display:block; }
   .status.info { background:rgba(145,129,189,.12); color:var(--primary); display:block; }
   .group-wrap { margin-bottom:24px; display:none; }
-  .group-wrap > .group-title { display:block; font-size:13px; color:var(--muted); margin-bottom:8px; }
-  .group-list { display:flex; flex-direction:column; gap:6px; }
+  .group-wrap > .group-title { display:block; font-size:13px; color:var(--muted); margin-bottom:8px; font-weight:500; }
+  .group-list { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
   .group-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--card); cursor:pointer; transition:border-color .15s; }
   .group-item:has(input:checked) { border-color:var(--primary); background:rgba(145,129,189,.06); }
   .group-item input[type=checkbox] { accent-color:var(--primary); width:16px; height:16px; cursor:pointer; }
-  .group-item .g-name { font-size:14px; color:var(--fg); flex:1; }
-  .group-item .g-badge { font-size:11px; padding:2px 8px; border-radius:4px; background:rgba(145,129,189,.12); color:var(--primary); }
+  .group-item .g-name { font-size:14px; color:var(--fg); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .group-item .g-badge { font-size:11px; padding:2px 8px; border-radius:4px; background:rgba(145,129,189,.12); color:var(--primary); flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -103,9 +103,13 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   <h1>授权请求</h1>
   <p class="lead">应用 <span class="client">` + html.EscapeString(clientName) + `</span> 请求访问您的 Sakrylle API 账户。</p>
   <ul class="scopes">` + scopeListHTML + `</ul>
-  <div class="group-wrap" id="group-wrap">
-    <span class="group-title">选择分组 / Select groups</span>
-    <div class="group-list" id="group-list"></div>
+  <div class="group-wrap" id="image-group-wrap">
+    <span class="group-title">Image API 分组 / Image API Groups</span>
+    <div class="group-list" id="image-group-list"></div>
+  </div>
+  <div class="group-wrap" id="responses-group-wrap">
+    <span class="group-title">Responses API 分组 / Responses API Groups</span>
+    <div class="group-list" id="responses-group-list"></div>
   </div>
   <div class="actions">
     <button class="deny" id="deny" disabled>拒绝</button>
@@ -169,36 +173,60 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
         return;
       }
       tx = { transaction_id: out.data.transaction_id, csrf_token: out.data.csrf_token };
-      // Populate group selector from allowed_groups returned by /begin.
-      // Hide the wrapper when only one group is available (no choice to make).
+      // Populate group selectors from allowed_groups returned by /begin.
+      // Split into two categories: Image API groups and Responses API groups.
       var groups = (out.data.allowed_groups && Array.isArray(out.data.allowed_groups)) ? out.data.allowed_groups : [];
-      var $groupWrap = document.getElementById("group-wrap");
-      var $groupList = document.getElementById("group-list");
-      if (groups.length > 1) {
-        $groupList.innerHTML = "";
-        for (var i = 0; i < groups.length; i++) {
-          var g = groups[i];
+      var imageGroups = [];
+      var responsesGroups = [];
+      for (var i = 0; i < groups.length; i++) {
+        var g = groups[i];
+        if (g.allow_image_generation) {
+          imageGroups.push(g);
+        } else {
+          responsesGroups.push(g);
+        }
+      }
+
+      // Render Image API groups
+      var $imageWrap = document.getElementById("image-group-wrap");
+      var $imageList = document.getElementById("image-group-list");
+      if (imageGroups.length > 0) {
+        $imageList.innerHTML = "";
+        for (var i = 0; i < imageGroups.length; i++) {
+          var g = imageGroups[i];
           var id = g.id || g;
           var name = g.name || String(id);
-          var badge = g.allow_image_generation ? "Image" : (g.rate_multiplier ? g.rate_multiplier + "x" : "");
+          var badge = "Image";
+          var item = document.createElement("label");
+          item.className = "group-item";
+          item.innerHTML = '<input type="checkbox" name="group_ids" value="' + id + '" checked>' +
+            '<span class="g-name">' + name + '</span>' +
+            '<span class="g-badge">' + badge + '</span>';
+          $imageList.appendChild(item);
+        }
+        $imageWrap.style.display = "block";
+      }
+
+      // Render Responses API groups
+      var $responsesWrap = document.getElementById("responses-group-wrap");
+      var $responsesList = document.getElementById("responses-group-list");
+      if (responsesGroups.length > 0) {
+        $responsesList.innerHTML = "";
+        for (var i = 0; i < responsesGroups.length; i++) {
+          var g = responsesGroups[i];
+          var id = g.id || g;
+          var name = g.name || String(id);
+          var badge = g.rate_multiplier ? g.rate_multiplier + "x" : "";
           var item = document.createElement("label");
           item.className = "group-item";
           item.innerHTML = '<input type="checkbox" name="group_ids" value="' + id + '" checked>' +
             '<span class="g-name">' + name + '</span>' +
             (badge ? '<span class="g-badge">' + badge + '</span>' : '');
-          $groupList.appendChild(item);
+          $responsesList.appendChild(item);
         }
-        $groupWrap.style.display = "block";
-      } else if (groups.length === 1) {
-        $groupList.innerHTML = "";
-        var g = groups[0];
-        var id = g.id || g;
-        var item = document.createElement("label");
-        item.className = "group-item";
-        item.innerHTML = '<input type="checkbox" name="group_ids" value="' + id + '" checked disabled>' +
-          '<span class="g-name">' + (g.name || String(id)) + '</span>';
-        $groupList.appendChild(item);
+        $responsesWrap.style.display = "block";
       }
+
       $approve.disabled = false;
       $deny.disabled = false;
     }).catch(function(err) {
