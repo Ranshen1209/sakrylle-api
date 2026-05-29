@@ -88,6 +88,9 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   .status { margin-top:16px; padding:12px; border-radius:8px; font-size:13px; display:none; }
   .status.error { background:rgba(220,38,38,.12); color:#dc2626; display:block; }
   .status.info { background:rgba(145,129,189,.12); color:var(--primary); display:block; }
+  .group-wrap { margin-bottom:24px; display:none; }
+  .group-wrap label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .group-wrap select { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--fg); font-size:14px; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -95,6 +98,10 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   <h1>授权请求</h1>
   <p class="lead">应用 <span class="client">` + html.EscapeString(clientName) + `</span> 请求访问您的 Sakrylle API 账户。</p>
   <ul class="scopes">` + scopeListHTML + `</ul>
+  <div class="group-wrap" id="group-wrap">
+    <label for="group-select">选择分组 / Select group</label>
+    <select id="group-select"></select>
+  </div>
   <div class="actions">
     <button class="deny" id="deny" disabled>拒绝</button>
     <button class="approve" id="approve" disabled>授权</button>
@@ -157,6 +164,27 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
         return;
       }
       tx = { transaction_id: out.data.transaction_id, csrf_token: out.data.csrf_token };
+      // Populate group selector from allowed_groups returned by /begin.
+      // Hide the wrapper when only one group is available (no choice to make).
+      var groups = (out.data.allowed_groups && Array.isArray(out.data.allowed_groups)) ? out.data.allowed_groups : [];
+      var $groupWrap = document.getElementById("group-wrap");
+      var $groupSelect = document.getElementById("group-select");
+      if (groups.length > 1) {
+        $groupSelect.innerHTML = "";
+        for (var i = 0; i < groups.length; i++) {
+          var opt = document.createElement("option");
+          opt.value = String(groups[i].id || groups[i]);
+          opt.textContent = groups[i].name || String(groups[i].id || groups[i]);
+          $groupSelect.appendChild(opt);
+        }
+        $groupWrap.style.display = "block";
+      } else if (groups.length === 1) {
+        $groupSelect.innerHTML = "";
+        var opt = document.createElement("option");
+        opt.value = String(groups[0].id || groups[0]);
+        opt.textContent = groups[0].name || String(groups[0].id || groups[0]);
+        $groupSelect.appendChild(opt);
+      }
       $approve.disabled = false;
       $deny.disabled = false;
     }).catch(function(err) {
@@ -184,6 +212,8 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
       csrf_token: tx.csrf_token,
       decision: decision
     };
+    var $sel = document.getElementById("group-select");
+    if ($sel && $sel.value) { body.group_id = parseInt($sel.value, 10); }
     fetch("/api/v1/oauth/authorize/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + jwt },
@@ -249,9 +279,21 @@ func mustMarshalJSONForScript(v any, panicLabel string) string {
 // scopeBulletsHTML renders scope <li>s with a friendly description per known scope.
 func scopeBulletsHTML(scopes []string) string {
 	descs := map[string]string{
-		"image_generation": "调用图像生成 API（gpt-image-2 等）",
-		"balance:read":     "读取您的账户余额",
-		"models:read":      "读取可用模型列表",
+		// legacy scopes (kept for backward compat)
+		"image_generation": "调用图像生成 API（gpt-image-2 等）/ Call image generation API",
+		"balance:read":     "读取您的账户余额 / Read your balance",
+		// v2 canonical scopes
+		"profile:read":            "读取您的用户名和头像 / Read your username and avatar",
+		"email:read":              "读取您的邮箱地址 / Read your email address",
+		"account:read":            "读取账户信息和分组 / Read account info and groups",
+		"account:balance:read":    "读取余额 / Read your balance",
+		"models:read":             "查看可用模型列表 / View available models",
+		"chat.completions:create": "发送对话请求 / Send chat requests",
+		"responses:create":        "发送 Responses API 请求 / Send Responses API requests",
+		"messages:create":         "发送 Messages API 请求 / Send Messages API requests",
+		"images:create":           "生成和编辑图片 / Generate and edit images",
+		"usage:read":              "查看使用记录 / View usage records",
+		"offline_access":          "保持登录状态 / Stay signed in",
 	}
 	var b strings.Builder
 	for _, s := range scopes {

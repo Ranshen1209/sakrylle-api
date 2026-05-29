@@ -12,14 +12,16 @@ import (
 //
 // See docs/OAUTH_V2_DESIGN.md §11.4.
 type GroupAccessPolicy interface {
-	// AllowedGroupsForUser returns the IDs of all active groups the user may
-	// bind. The result mirrors APIKeyService.GetAvailableGroups() filtering
-	// (active + subscription + AllowedGroups + exclusive). Used both for the
-	// authorize transaction's allowed_groups_snapshot and for /v1/me.
-	AllowedGroupsForUser(ctx context.Context, userID int64) ([]int64, error)
-	// UserHasAccessToGroup reports whether user can bind groupID under the
-	// same rules used by AllowedGroupsForUser.
-	UserHasAccessToGroup(ctx context.Context, userID int64, groupID int64) (bool, error)
+	// CanUserUseGroup reports whether user can bind groupID under the same
+	// rules used by ListUserAllowedGroupsForOAuth.
+	CanUserUseGroup(ctx context.Context, userID int64, groupID int64) (bool, error)
+	// ListUserAllowedGroupsForOAuth returns the rich group objects for all
+	// active groups the user may bind, filtered by:
+	//   - client.AllowedGroupIDs (when non-nil)
+	//   - scope-based capability: image-only clients see only image groups;
+	//     chat-only clients exclude image-only groups.
+	// Pass nil client and empty scopes for non-OAuth paths (no extra filtering).
+	ListUserAllowedGroupsForOAuth(ctx context.Context, userID int64, client *OAuthClient, scopes []string) ([]OAuthAllowedGroup, error)
 }
 
 // defaultGroupAccessPolicy implements GroupAccessPolicy by reusing the
@@ -48,9 +50,14 @@ func NewDefaultGroupAccessPolicy(
 	}
 }
 
-func (p *defaultGroupAccessPolicy) AllowedGroupsForUser(ctx context.Context, userID int64) ([]int64, error) {
+func (p *defaultGroupAccessPolicy) ListUserAllowedGroupsForOAuth(
+	ctx context.Context,
+	userID int64,
+	client *OAuthClient,
+	scopes []string,
+) ([]OAuthAllowedGroup, error) {
 	if p.groupRepo == nil || p.userRepo == nil {
-		return []int64{}, nil
+		return []OAuthAllowedGroup{}, nil
 	}
 	user, err := p.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -70,18 +77,73 @@ func (p *defaultGroupAccessPolicy) AllowedGroupsForUser(ctx context.Context, use
 			subscribed[s.GroupID] = true
 		}
 	}
-	out := make([]int64, 0, len(allGroups))
+
+	// Build client-level group allowlist for fast lookup (nil = no restriction).
+	var clientAllowSet map[int64]struct{}
+	if client != nil && len(client.AllowedGroupIDs) > 0 {
+		clientAllowSet = make(map[int64]struct{}, len(client.AllowedGroupIDs))
+		for _, id := range client.AllowedGroupIDs {
+			clientAllowSet[id] = struct{}{}
+		}
+	}
+
+	// Determine scope-based capability filter.
+	wantsImage := hasAnyScope(scopes, ScopeImagesCreate)
+	wantsChat := hasAnyScope(scopes,
+		ScopeChatCompletionsCreate,
+		ScopeMessagesCreate,
+		ScopeResponsesCreate,
+	)
+
+	out := make([]OAuthAllowedGroup, 0, len(allGroups))
 	for i := range allGroups {
 		g := &allGroups[i]
 		if !p.canBind(user, g, subscribed) {
 			continue
 		}
-		out = append(out, g.ID)
+		// Client-level group restriction.
+		if clientAllowSet != nil {
+			if _, ok := clientAllowSet[g.ID]; !ok {
+				continue
+			}
+		}
+		// Scope-based capability filter:
+		//   - image-only scope (images:create, no chat): only image-capable groups.
+		//   - chat-only scope (no images:create): exclude image-only groups.
+		//   - both or neither: include all accessible groups.
+		if wantsImage && !wantsChat && !g.AllowImageGeneration {
+			continue
+		}
+		if wantsChat && !wantsImage && g.AllowImageGeneration {
+			// Exclude groups that are image-only. For phase 1 we use
+			// AllowImageGeneration as the proxy: a group with
+			// allow_image_generation=true is treated as image-capable; chat
+			// clients that don't request images:create skip it.
+			continue
+		}
+		out = append(out, OAuthAllowedGroup{
+			ID:                   g.ID,
+			Name:                 g.Name,
+			RateMultiplier:       g.RateMultiplier,
+			AllowImageGeneration: g.AllowImageGeneration,
+		})
 	}
 	return out, nil
 }
 
-func (p *defaultGroupAccessPolicy) UserHasAccessToGroup(ctx context.Context, userID, groupID int64) (bool, error) {
+// hasAnyScope returns true if scopes contains any of the targets.
+func hasAnyScope(scopes []string, targets ...string) bool {
+	for _, s := range scopes {
+		for _, t := range targets {
+			if s == t {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (p *defaultGroupAccessPolicy) CanUserUseGroup(ctx context.Context, userID, groupID int64) (bool, error) {
 	if groupID <= 0 {
 		return false, nil
 	}

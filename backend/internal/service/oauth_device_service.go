@@ -213,8 +213,9 @@ func (s *OAuthProviderService) GetDeviceCodeMetadata(
 
 	var allowed []int64
 	if userIDForGroupCheck > 0 && s.groupAccess != nil {
-		raw, gerr := s.groupAccess.AllowedGroupsForUser(ctx, userIDForGroupCheck)
+		groups, gerr := s.groupAccess.ListUserAllowedGroupsForOAuth(ctx, userIDForGroupCheck, client, NormalizeScopes(row.Scopes))
 		if gerr == nil {
+			raw := oauthAllowedGroupIDs(groups)
 			allowed = filterAllowedByClient(client, raw)
 		}
 	}

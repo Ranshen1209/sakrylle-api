@@ -442,7 +442,7 @@ func (s *OAuthProviderService) ResolveOAuthGroup(
 		}
 	}
 	if s.groupAccess != nil {
-		ok, err := s.groupAccess.UserHasAccessToGroup(ctx, userID, candidate)
+		ok, err := s.groupAccess.CanUserUseGroup(ctx, userID, candidate)
 		if err != nil {
 			return 0, fmt.Errorf("group access policy: %w", err)
 		}
@@ -502,13 +502,14 @@ func (s *OAuthProviderService) BeginAuthorizeTransaction(
 	}
 
 	// Compute allowed_groups_snapshot using the same policy /v1/me uses.
-	var allowed []int64
+	var allowedGroups []OAuthAllowedGroup
 	if s.groupAccess != nil {
-		allowed, err = s.groupAccess.AllowedGroupsForUser(ctx, params.UserID)
+		allowedGroups, err = s.groupAccess.ListUserAllowedGroupsForOAuth(ctx, params.UserID, client, scopes)
 		if err != nil {
 			return nil, err
 		}
 	}
+	allowed := oauthAllowedGroupIDs(allowedGroups)
 	allowed = filterAllowedByClient(client, allowed)
 
 	// Pre-validate requestedGroupID is at least in the snapshot when supplied.
@@ -999,6 +1000,14 @@ func (s *OAuthProviderService) handleRefreshReuse(ctx context.Context, row *OAut
 		return
 	}
 	now := time.Now()
+	// Stamp reuse_detected_at on the replayed row before revoking the family.
+	// Best-effort: log on failure but do not abort the containment cascade.
+	if s.refreshRepo != nil && row.TokenHash != "" {
+		if err := s.refreshRepo.MarkReuseDetected(ctx, row.TokenHash, now); err != nil {
+			slog.Warn("oauth: mark reuse_detected_at failed",
+				"token_hash_prefix", row.TokenHash[:8], "err", err)
+		}
+	}
 	family := *row.TokenFamilyID
 	var apiKeyIDs []int64
 	if s.refreshRepo != nil {
@@ -1286,24 +1295,39 @@ func (s *OAuthProviderService) LoadOAuthAccessMetadata(ctx context.Context, apiK
 	return meta, nil
 }
 
-// AllowedGroupsForUser returns the IDs of every active group the authenticated
-// user may bind. Wraps the GroupAccessPolicy interface so handlers can build
-// the §12.11 `allowed_groups` array without depending on internal types.
+// AllowedGroupsForUser returns the rich group objects for every active group
+// the authenticated user may bind. Wraps GroupAccessPolicy so handlers can
+// build the §12.11 `allowed_groups` array without depending on internal types.
 //
-// Returns an empty slice (not nil) when the policy is unconfigured, so a JSON
-// encoder produces `[]` not `null`.
-func (s *OAuthProviderService) AllowedGroupsForUser(ctx context.Context, userID int64) ([]int64, error) {
+// client and scopes are forwarded to ListUserAllowedGroupsForOAuth for
+// scope-based and client-level filtering. Pass nil/empty for non-OAuth paths.
+//
+// Returns an empty slice (not nil) when the policy is unconfigured.
+func (s *OAuthProviderService) AllowedGroupsForUser(ctx context.Context, userID int64, client *OAuthClient, scopes []string) ([]OAuthAllowedGroup, error) {
 	if s.groupAccess == nil {
-		return []int64{}, nil
+		return []OAuthAllowedGroup{}, nil
 	}
-	out, err := s.groupAccess.AllowedGroupsForUser(ctx, userID)
+	out, err := s.groupAccess.ListUserAllowedGroupsForOAuth(ctx, userID, client, scopes)
 	if err != nil {
 		return nil, err
 	}
 	if out == nil {
-		out = []int64{}
+		out = []OAuthAllowedGroup{}
 	}
 	return out, nil
+}
+
+// oauthAllowedGroupIDs extracts the ID slice from a []OAuthAllowedGroup.
+// Used to build the int64 snapshot stored on authorize transactions.
+func oauthAllowedGroupIDs(groups []OAuthAllowedGroup) []int64 {
+	if len(groups) == 0 {
+		return []int64{}
+	}
+	ids := make([]int64, len(groups))
+	for i, g := range groups {
+		ids[i] = g.ID
+	}
+	return ids
 }
 
 // LookupGroup returns a group by ID using the same repo the OAuth resolver

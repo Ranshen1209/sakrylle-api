@@ -372,6 +372,20 @@ func (r *oauthProviderRepository) RevokeRefreshTokensByUserAndClient(ctx context
 	)
 }
 
+// MarkReuseDetected stamps reuse_detected_at on the specific row identified by
+// tokenHash. Best-effort: the caller logs failures but does not abort the
+// reuse-containment cascade on error.
+func (r *oauthProviderRepository) MarkReuseDetected(ctx context.Context, tokenHash string, now time.Time) error {
+	_, err := r.client.OAuthRefreshToken.Update().
+		Where(oauthrefreshtoken.TokenHashEQ(tokenHash)).
+		SetReuseDetectedAt(now).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("mark reuse_detected_at: %w", err)
+	}
+	return nil
+}
+
 // ── OAuthAccessTokenRepository ──────────────────────────────────────────────
 
 func (r *oauthProviderRepository) CreateAccessToken(ctx context.Context, token *service.OAuthAccessToken) error {

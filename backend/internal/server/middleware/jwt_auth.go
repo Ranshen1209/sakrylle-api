@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -77,9 +78,14 @@ func jwtAuth(authService *service.AuthService, userService jwtUserReader, activi
 			return
 		}
 
+		issuedAt := time.Time{}
+		if claims.IssuedAt != nil {
+			issuedAt = claims.IssuedAt.Time
+		}
 		c.Set(string(ContextKeyUser), AuthSubject{
 			UserID:      user.ID,
 			Concurrency: user.Concurrency,
+			IssuedAt:    issuedAt,
 		})
 		c.Set(string(ContextKeyUserRole), user.Role)
 		if activityToucher != nil {
