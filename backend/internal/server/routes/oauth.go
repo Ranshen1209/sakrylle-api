@@ -94,13 +94,6 @@ func RegisterOAuthRoutes(
 		oauth.POST("/authorize/begin", h.OAuthProvider.BeginAuthorize)
 		oauth.POST("/authorize/approve", h.OAuthProvider.Approve)
 
-		// RFC 8628 device approve/deny — JWT-protected, called by the
-		// verification page JS after the user types the user_code (§12.8).
-		if h.OAuthDevice != nil {
-			oauth.POST("/device/approve", h.OAuthDevice.DeviceApprove)
-			oauth.POST("/device/deny", h.OAuthDevice.DeviceDeny)
-		}
-
 		// Legacy v1 client-aggregate endpoints kept for compatibility (§12.10).
 		oauth.GET("/grants", h.OAuthProvider.ListGrants)
 		oauth.DELETE("/grants/:client_id", h.OAuthProvider.RevokeGrant)
