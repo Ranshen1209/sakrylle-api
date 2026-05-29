@@ -231,10 +231,10 @@ type OAuthAuthorizedGrant struct {
 // ListUserAllowedGroupsForOAuth. It carries the fields the consent page and
 // /v1/me need without requiring a second GroupRepository lookup.
 type OAuthAllowedGroup struct {
-	ID                   int64
-	Name                 string
-	RateMultiplier       float64
-	AllowImageGeneration bool
+	ID                   int64   `json:"id"`
+	Name                 string  `json:"name"`
+	RateMultiplier       float64 `json:"rate_multiplier"`
+	AllowImageGeneration bool    `json:"allow_image_generation"`
 }
 
 // ── Repository interfaces ───────────────────────────────────────────────────

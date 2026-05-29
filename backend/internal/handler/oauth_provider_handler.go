@@ -138,10 +138,11 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 // the consent page user sees scopes for client A, but the JS could submit
 // scopes for client B and we'd happily mint a code.
 type ApproveRequest struct {
-	TransactionID string `json:"transaction_id" binding:"required"`
-	CSRFToken     string `json:"csrf_token" binding:"required"`
-	Decision      string `json:"decision" binding:"required,oneof=approve deny"`
-	GroupID       *int64 `json:"group_id"`
+	TransactionID string  `json:"transaction_id" binding:"required"`
+	CSRFToken     string  `json:"csrf_token" binding:"required"`
+	Decision      string  `json:"decision" binding:"required,oneof=approve deny"`
+	GroupID       *int64  `json:"group_id"`
+	GroupIDs      []int64 `json:"group_ids"`
 }
 
 // BeginAuthorizeRequest is the body of POST /api/v1/oauth/authorize/begin.
@@ -272,7 +273,7 @@ func (h *OAuthProviderHandler) Approve(c *gin.Context) {
 		return
 	}
 
-	result, err := h.provider.ApproveAuthorization(c.Request.Context(), txID, csrf, subject.UserID, body.GroupID)
+	result, err := h.provider.ApproveAuthorization(c.Request.Context(), txID, csrf, subject.UserID, body.GroupID, body.GroupIDs)
 	if err != nil {
 		h.writeApproveError(c, err, txID)
 		return
@@ -445,6 +446,20 @@ func tokenResponseJSON(issued *service.IssuedToken) gin.H {
 		if issued.RefreshTokenExpiresIn > 0 {
 			resp["refresh_token_expires_in"] = issued.RefreshTokenExpiresIn
 		}
+	}
+	if issued.GroupID > 0 {
+		resp["group"] = gin.H{"id": issued.GroupID, "name": issued.GroupName}
+	}
+	if len(issued.AdditionalTokens) > 0 {
+		extra := make([]gin.H, 0, len(issued.AdditionalTokens))
+		for _, t := range issued.AdditionalTokens {
+			extra = append(extra, gin.H{
+				"access_token": t.AccessToken,
+				"expires_in":   t.ExpiresIn,
+				"group":        gin.H{"id": t.GroupID, "name": t.GroupName},
+			})
+		}
+		resp["additional_tokens"] = extra
 	}
 	return resp
 }
