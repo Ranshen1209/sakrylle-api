@@ -106,7 +106,7 @@
       <div class="h-48 w-48">
         <Doughnut :data="chartData" :options="doughnutOptions" />
       </div>
-      <div class="max-h-72 flex-1 overflow-y-auto">
+      <div class="max-h-96 flex-1 overflow-y-auto">
         <table class="w-full text-xs">
           <thead>
             <tr class="text-gray-500 dark:text-gray-400">
@@ -183,7 +183,7 @@
       <div class="h-48 w-48">
         <Doughnut :data="rankingChartData" :options="rankingDoughnutOptions" />
       </div>
-      <div class="max-h-72 flex-1 overflow-y-auto">
+      <div class="max-h-96 flex-1 overflow-y-auto">
         <table class="w-full text-xs">
           <thead>
             <tr class="text-gray-500 dark:text-gray-400">
