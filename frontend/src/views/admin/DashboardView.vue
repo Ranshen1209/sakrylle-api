@@ -251,7 +251,6 @@
 
           <!-- Charts Grid -->
           <div class="grid grid-cols-1 gap-6">
-            <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
             <ModelDistributionChart
               :model-stats="modelStats"
               :enable-ranking-view="true"
@@ -266,6 +265,7 @@
               :end-date="endDate"
               @ranking-click="goToUserUsage"
             />
+            <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
           </div>
 
           <!-- User Usage Trend (Full Width) -->
