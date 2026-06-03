@@ -29,6 +29,18 @@ type OAuthProviderHandler struct {
 	provider *service.OAuthProviderService
 	settings *service.SettingService
 	device   *OAuthDeviceHandler
+	// oidcKeys signs id_tokens and publishes JWKS. Nil-safe: when unset the
+	// JWKS endpoint reports unavailable and no id_token is issued (the OAuth
+	// flows are unaffected).
+	oidcKeys *service.OIDCKeyService
+}
+
+// SetOIDCKeyService wires the OIDC signing key service post-construction
+// (mirrors SetDeviceHandler) so DI need not thread it through the constructor.
+func (h *OAuthProviderHandler) SetOIDCKeyService(k *service.OIDCKeyService) {
+	if h != nil {
+		h.oidcKeys = k
+	}
 }
 
 func NewOAuthProviderHandler(provider *service.OAuthProviderService, settings *service.SettingService) *OAuthProviderHandler {
@@ -449,6 +461,9 @@ func tokenResponseJSON(issued *service.IssuedToken) gin.H {
 			resp["refresh_token_expires_in"] = issued.RefreshTokenExpiresIn
 		}
 	}
+	if issued.IDToken != "" {
+		resp["id_token"] = issued.IDToken
+	}
 	if issued.GroupID > 0 {
 		resp["group"] = gin.H{"id": issued.GroupID, "name": issued.GroupName}
 	}
@@ -644,6 +659,66 @@ func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
 	c.Header("Cache-Control", "public, max-age=60")
 	c.JSON(http.StatusOK, resp)
+}
+
+// OpenIDConfiguration serves GET /.well-known/openid-configuration
+// (OpenID Connect Discovery 1.0). It reuses the same issuer resolver as the
+// RFC 8414 OAuth metadata so `iss` in id_tokens, the device verification_uri,
+// and both discovery documents can never disagree.
+//
+// id_token_signing_alg_values_supported advertises only RS256 (ES256 is a
+// planned drop-in second key, not yet published). subject_types_supported is
+// "public": sub is the stable user id, not a pairwise pseudonym.
+func (h *OAuthProviderHandler) OpenIDConfiguration(c *gin.Context) {
+	issuer := h.discoveryIssuer(c)
+	resp := gin.H{
+		"issuer":                                issuer,
+		"authorization_endpoint":                issuer + "/oauth/authorize",
+		"token_endpoint":                        issuer + "/oauth/token",
+		"userinfo_endpoint":                     issuer + "/v1/me",
+		"jwks_uri":                              issuer + "/.well-known/jwks.json",
+		"response_types_supported":              []string{"code"},
+		"response_modes_supported":              []string{"query"},
+		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
+		"subject_types_supported":               []string{"public"},
+		"id_token_signing_alg_values_supported": []string{"RS256"},
+		"scopes_supported":                      canonicalScopesForDiscovery,
+		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
+		"code_challenge_methods_supported":      []string{"S256"},
+		"claims_supported": []string{
+			"iss", "sub", "aud", "exp", "iat", "nonce",
+			"name", "preferred_username", "email",
+		},
+		"service_documentation": "https://doc.sakrylle.com/developers/oauth/",
+	}
+	c.Header("Content-Type", "application/json")
+	c.Header("Cache-Control", "public, max-age=60")
+	c.JSON(http.StatusOK, resp)
+}
+
+// JWKS serves GET /.well-known/jwks.json — the public RS256 verification keys.
+//
+// Only public key material is published (the JWK type cannot carry private
+// components). Cache-Control max-age is 3600s: longer than the discovery TTL
+// because key rotation uses a publish-then-sign window, and relying parties
+// should cache the key set across requests.
+func (h *OAuthProviderHandler) JWKS(c *gin.Context) {
+	if h.oidcKeys == nil {
+		c.Header("Cache-Control", "no-store")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "oidc signing key unavailable"})
+		return
+	}
+	jwks, err := h.oidcKeys.PublicJWKS()
+	if err != nil {
+		// Never include key material or the raw error detail in the response.
+		slog.Error("oidc jwks unavailable", "error", err)
+		c.Header("Cache-Control", "no-store")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "oidc signing key unavailable"})
+		return
+	}
+	c.Header("Content-Type", "application/json")
+	c.Header("Cache-Control", "public, max-age=3600")
+	c.JSON(http.StatusOK, jwks)
 }
 
 // discoveryIssuer resolves the discovery `issuer` URL.

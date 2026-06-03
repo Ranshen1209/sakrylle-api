@@ -19,6 +19,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -40,6 +41,9 @@ type IssuedToken struct {
 	GroupID               int64
 	GroupName             string
 	AdditionalTokens      []AdditionalToken
+	// IDToken is a signed OIDC id_token, set only when the granted scopes
+	// include `openid` and the OIDC signer is wired. Empty otherwise.
+	IDToken string
 }
 
 type AdditionalToken struct {
@@ -156,6 +160,12 @@ type OAuthProviderService struct {
 	// TouchAccessTokenLastUsed can short-circuit at 60s granularity without a
 	// DB hit. See §11.6.
 	lastUsedThrottle sync.Map // map[int64]time.Time
+
+	// OIDC id_token issuance. All three are nil unless WithOIDC is called.
+	// When nil, no id_token is issued (the OAuth flows are unaffected).
+	oidcSign   func(claims jwt.MapClaims) (string, error)
+	oidcIssuer func(ctx context.Context) string
+	oidcUser   func(ctx context.Context, userID int64) (OIDCUserClaims, error)
 }
 
 // NewOAuthProviderService is the v2 constructor. See §11.2.
@@ -208,6 +218,56 @@ func (s *OAuthProviderService) WithTokenMintRepo(repo OAuthTokenMintRepository) 
 		s.mintRepo = repo
 	}
 	return s
+}
+
+// WithOIDC wires OIDC id_token issuance into the service.
+//
+//   - sign signs a claim set with the current RS256 key (e.g. OIDCKeyService.Sign).
+//   - issuer resolves the fixed provider issuer (https://sub.sakrylle.com).
+//   - userClaims fetches identity fields for profile/email claims by user id.
+//
+// When this is not called, no id_token is ever issued and the OAuth flows are
+// completely unaffected.
+func (s *OAuthProviderService) WithOIDC(
+	sign func(claims jwt.MapClaims) (string, error),
+	issuer func(ctx context.Context) string,
+	userClaims func(ctx context.Context, userID int64) (OIDCUserClaims, error),
+) *OAuthProviderService {
+	if s != nil {
+		s.oidcSign = sign
+		s.oidcIssuer = issuer
+		s.oidcUser = userClaims
+	}
+	return s
+}
+
+// maybeSignIDToken returns a signed id_token when (and only when) the granted
+// scopes include `openid` and the OIDC signer is wired.
+//
+// Fail-closed: if OIDC is wired and `openid` was granted but the issuer is
+// unresolved or signing fails, it returns an error so the token request fails
+// loudly rather than emitting a malformed identity assertion. When OIDC is not
+// wired at all (feature off), it returns ("", nil) and the OAuth flow proceeds.
+func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID string, userID int64, scopes []string, nonce string) (string, error) {
+	if s.oidcSign == nil || s.oidcIssuer == nil || !HasScope(scopes, ScopeOpenID) {
+		return "", nil
+	}
+	issuer := s.oidcIssuer(ctx)
+	if issuer == "" {
+		return "", fmt.Errorf("oidc: issuer unresolved; cannot sign id_token")
+	}
+	u := OIDCUserClaims{UserID: userID}
+	if s.oidcUser != nil && HasAnyScope(scopes, ScopeProfile, ScopeEmail) {
+		if got, err := s.oidcUser(ctx, userID); err == nil {
+			got.UserID = userID
+			u = got
+		}
+	}
+	claims, err := BuildIDTokenClaims(issuer, clientID, u, scopes, nonce, time.Now(), DefaultOIDCIDTokenTTL)
+	if err != nil {
+		return "", fmt.Errorf("oidc: build id_token claims: %w", err)
+	}
+	return s.oidcSign(claims)
 }
 
 // IsEnabled reports whether the OAuth provider is enabled in DB settings.
@@ -992,6 +1052,10 @@ func (s *OAuthProviderService) RefreshAccessToken(
 		}
 	}
 
+	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, row.UserID, scopes, "")
+	if idErr != nil {
+		return nil, idErr
+	}
 	return &IssuedToken{
 		AccessToken:           newAccessKey,
 		TokenType:             "Bearer",
@@ -1000,6 +1064,7 @@ func (s *OAuthProviderService) RefreshAccessToken(
 		RefreshTokenExpiresIn: rtExpiresIn,
 		Scope:                 strings.Join(scopes, " "),
 		GroupID:               targetGroup,
+		IDToken:               idTok,
 	}, nil
 }
 
@@ -1783,6 +1848,10 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		}
 	}
 
+	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, code.UserID, scopes, "")
+	if idErr != nil {
+		return nil, idErr
+	}
 	return &IssuedToken{
 		AccessToken:           accessKey,
 		TokenType:             "Bearer",
@@ -1793,6 +1862,7 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		GroupID:               groupID,
 		GroupName:             primaryGroupName,
 		AdditionalTokens:      additionalTokens,
+		IDToken:               idTok,
 	}, nil
 }
 

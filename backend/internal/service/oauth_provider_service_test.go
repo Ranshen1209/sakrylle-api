@@ -235,6 +235,16 @@ func (s *stubRefreshRepo) RevokeRefreshTokensByUserAndClient(_ context.Context, 
 	return ids, nil
 }
 
+func (s *stubRefreshRepo) MarkReuseDetected(_ context.Context, tokenHash string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if row, ok := s.tokens[tokenHash]; ok {
+		t := now
+		row.ReuseDetectedAt = &t
+	}
+	return nil
+}
+
 // stubAPIKeyRepo is a minimal in-memory APIKeyRepository for OAuth tests.
 type stubAPIKeyRepo struct {
 	mu     sync.Mutex
