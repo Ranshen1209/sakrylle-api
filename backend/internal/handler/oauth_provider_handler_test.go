@@ -253,6 +253,16 @@ func (s *oauthHandlerRefreshRepoStub) RevokeRefreshTokensByUserAndClient(_ conte
 	return ids, nil
 }
 
+func (s *oauthHandlerRefreshRepoStub) MarkReuseDetected(_ context.Context, tokenHash string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if row, ok := s.tokens[tokenHash]; ok {
+		t := now
+		row.ReuseDetectedAt = &t
+	}
+	return nil
+}
+
 // oauthHandlerAPIKeyOAuthAdapter adapts the handler stub APIKeyRepository to
 // the v2 OAuthAPIKeyRepository surface for tests that don't need real
 // batch-disable semantics.

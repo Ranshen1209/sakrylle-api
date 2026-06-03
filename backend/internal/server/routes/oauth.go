@@ -55,6 +55,9 @@ func RegisterOAuthRoutes(
 
 	// Discovery is public read-only and cacheable; no rate limit.
 	r.GET("/.well-known/oauth-authorization-server", h.OAuthProvider.Metadata)
+	// OIDC discovery + JWKS (public, cacheable). issuer is https://sub.sakrylle.com.
+	r.GET("/.well-known/openid-configuration", h.OAuthProvider.OpenIDConfiguration)
+	r.GET("/.well-known/jwks.json", h.OAuthProvider.JWKS)
 
 	// GET renders the consent page; POST accepts form-encoded body for the
 	// same flow (some clients POST the authorization request directly).

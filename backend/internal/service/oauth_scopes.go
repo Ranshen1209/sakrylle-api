@@ -8,6 +8,14 @@ import (
 
 // Canonical OAuth v2 scope identifiers. See docs/OAUTH_V2_DESIGN.md §7.1.
 const (
+	// OIDC standard scopes. `openid` gates id_token issuance; `profile` and
+	// `email` gate the corresponding standard OIDC claims. These are distinct
+	// from the commercial `profile:read` / `email:read` permissions below and
+	// are deliberately NOT aliased to them.
+	ScopeOpenID  = "openid"
+	ScopeProfile = "profile"
+	ScopeEmail   = "email"
+
 	ScopeProfileRead           = "profile:read"
 	ScopeEmailRead             = "email:read"
 	ScopeAccountRead           = "account:read"
@@ -23,6 +31,9 @@ const (
 
 // canonicalScopes is the set of scopes the server recognises after normalization.
 var canonicalScopes = map[string]struct{}{
+	ScopeOpenID:                {},
+	ScopeProfile:               {},
+	ScopeEmail:                 {},
 	ScopeProfileRead:           {},
 	ScopeEmailRead:             {},
 	ScopeAccountRead:           {},
@@ -184,6 +195,18 @@ func normalizeDisplayLocale(locale string) string {
 
 // scopeLabels powers the consent UI and Authorized Apps page. See §14.1.
 var scopeLabels = map[string]map[string]string{
+	ScopeOpenID: {
+		"zh": "使用您的账户登录（OpenID Connect）",
+		"en": "Sign in with your account (OpenID Connect)",
+	},
+	ScopeProfile: {
+		"zh": "查看您的基本资料（用户名）",
+		"en": "Read your basic profile (username)",
+	},
+	ScopeEmail: {
+		"zh": "查看您的邮箱地址",
+		"en": "Read your email address",
+	},
 	ScopeProfileRead: {
 		"zh": "查看您的档案（用户名、头像）",
 		"en": "Read your profile (username, avatar)",

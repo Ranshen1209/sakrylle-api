@@ -514,6 +514,7 @@ func TestSecurity_AuthorizeTransactionForeignSubject(t *testing.T) {
 		begin.CSRFTokenPlaintext,
 		userB,
 		nil,
+		nil,
 	); !errors.Is(err, ErrOAuthSubjectMismatch) {
 		t.Fatalf("foreign-subject approve must return ErrOAuthSubjectMismatch; got %v", err)
 	}
@@ -542,6 +543,7 @@ func TestSecurity_AuthorizeTransactionForeignSubject(t *testing.T) {
 		begin.Transaction.TransactionID,
 		begin.CSRFTokenPlaintext,
 		userA,
+		nil,
 		nil,
 	)
 	if err != nil {
