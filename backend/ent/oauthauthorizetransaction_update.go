@@ -333,6 +333,26 @@ func (_u *OAuthAuthorizeTransactionUpdate) ClearCreatedUserAgent() *OAuthAuthori
 	return _u
 }
 
+// SetNonce sets the "nonce" field.
+func (_u *OAuthAuthorizeTransactionUpdate) SetNonce(v string) *OAuthAuthorizeTransactionUpdate {
+	_u.mutation.SetNonce(v)
+	return _u
+}
+
+// SetNillableNonce sets the "nonce" field if the given value is not nil.
+func (_u *OAuthAuthorizeTransactionUpdate) SetNillableNonce(v *string) *OAuthAuthorizeTransactionUpdate {
+	if v != nil {
+		_u.SetNonce(*v)
+	}
+	return _u
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (_u *OAuthAuthorizeTransactionUpdate) ClearNonce() *OAuthAuthorizeTransactionUpdate {
+	_u.mutation.ClearNonce()
+	return _u
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_u *OAuthAuthorizeTransactionUpdate) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _u.mutation
@@ -531,6 +551,12 @@ func (_u *OAuthAuthorizeTransactionUpdate) sqlSave(ctx context.Context) (_node i
 	}
 	if _u.mutation.CreatedUserAgentCleared() {
 		_spec.ClearField(oauthauthorizetransaction.FieldCreatedUserAgent, field.TypeString)
+	}
+	if value, ok := _u.mutation.Nonce(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldNonce, field.TypeString, value)
+	}
+	if _u.mutation.NonceCleared() {
+		_spec.ClearField(oauthauthorizetransaction.FieldNonce, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -856,6 +882,26 @@ func (_u *OAuthAuthorizeTransactionUpdateOne) ClearCreatedUserAgent() *OAuthAuth
 	return _u
 }
 
+// SetNonce sets the "nonce" field.
+func (_u *OAuthAuthorizeTransactionUpdateOne) SetNonce(v string) *OAuthAuthorizeTransactionUpdateOne {
+	_u.mutation.SetNonce(v)
+	return _u
+}
+
+// SetNillableNonce sets the "nonce" field if the given value is not nil.
+func (_u *OAuthAuthorizeTransactionUpdateOne) SetNillableNonce(v *string) *OAuthAuthorizeTransactionUpdateOne {
+	if v != nil {
+		_u.SetNonce(*v)
+	}
+	return _u
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (_u *OAuthAuthorizeTransactionUpdateOne) ClearNonce() *OAuthAuthorizeTransactionUpdateOne {
+	_u.mutation.ClearNonce()
+	return _u
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_u *OAuthAuthorizeTransactionUpdateOne) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _u.mutation
@@ -1084,6 +1130,12 @@ func (_u *OAuthAuthorizeTransactionUpdateOne) sqlSave(ctx context.Context) (_nod
 	}
 	if _u.mutation.CreatedUserAgentCleared() {
 		_spec.ClearField(oauthauthorizetransaction.FieldCreatedUserAgent, field.TypeString)
+	}
+	if value, ok := _u.mutation.Nonce(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldNonce, field.TypeString, value)
+	}
+	if _u.mutation.NonceCleared() {
+		_spec.ClearField(oauthauthorizetransaction.FieldNonce, field.TypeString)
 	}
 	_node = &OAuthAuthorizeTransaction{config: _u.config}
 	_spec.Assign = _node.assignValues

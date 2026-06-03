@@ -144,6 +144,11 @@ func CreatedUserAgent(v string) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldEQ(FieldCreatedUserAgent, v))
 }
 
+// Nonce applies equality check predicate on the "nonce" field. It's identical to NonceEQ.
+func Nonce(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldEQ(FieldNonce, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldEQ(FieldCreatedAt, v))
@@ -1222,6 +1227,81 @@ func CreatedUserAgentEqualFold(v string) predicate.OAuthAuthorizeTransaction {
 // CreatedUserAgentContainsFold applies the ContainsFold predicate on the "created_user_agent" field.
 func CreatedUserAgentContainsFold(v string) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldContainsFold(FieldCreatedUserAgent, v))
+}
+
+// NonceEQ applies the EQ predicate on the "nonce" field.
+func NonceEQ(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldEQ(FieldNonce, v))
+}
+
+// NonceNEQ applies the NEQ predicate on the "nonce" field.
+func NonceNEQ(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldNEQ(FieldNonce, v))
+}
+
+// NonceIn applies the In predicate on the "nonce" field.
+func NonceIn(vs ...string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldIn(FieldNonce, vs...))
+}
+
+// NonceNotIn applies the NotIn predicate on the "nonce" field.
+func NonceNotIn(vs ...string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldNotIn(FieldNonce, vs...))
+}
+
+// NonceGT applies the GT predicate on the "nonce" field.
+func NonceGT(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldGT(FieldNonce, v))
+}
+
+// NonceGTE applies the GTE predicate on the "nonce" field.
+func NonceGTE(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldGTE(FieldNonce, v))
+}
+
+// NonceLT applies the LT predicate on the "nonce" field.
+func NonceLT(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldLT(FieldNonce, v))
+}
+
+// NonceLTE applies the LTE predicate on the "nonce" field.
+func NonceLTE(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldLTE(FieldNonce, v))
+}
+
+// NonceContains applies the Contains predicate on the "nonce" field.
+func NonceContains(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldContains(FieldNonce, v))
+}
+
+// NonceHasPrefix applies the HasPrefix predicate on the "nonce" field.
+func NonceHasPrefix(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldHasPrefix(FieldNonce, v))
+}
+
+// NonceHasSuffix applies the HasSuffix predicate on the "nonce" field.
+func NonceHasSuffix(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldHasSuffix(FieldNonce, v))
+}
+
+// NonceIsNil applies the IsNil predicate on the "nonce" field.
+func NonceIsNil() predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldIsNull(FieldNonce))
+}
+
+// NonceNotNil applies the NotNil predicate on the "nonce" field.
+func NonceNotNil() predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldNotNull(FieldNonce))
+}
+
+// NonceEqualFold applies the EqualFold predicate on the "nonce" field.
+func NonceEqualFold(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldEqualFold(FieldNonce, v))
+}
+
+// NonceContainsFold applies the ContainsFold predicate on the "nonce" field.
+func NonceContainsFold(v string) predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldContainsFold(FieldNonce, v))
 }
 
 // And groups predicates with the AND operator between them.

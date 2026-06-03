@@ -124,6 +124,11 @@ func DeviceName(v string) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldEQ(FieldDeviceName, v))
 }
 
+// Nonce applies equality check predicate on the "nonce" field. It's identical to NonceEQ.
+func Nonce(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldNonce, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldEQ(FieldCreatedAt, v))
@@ -932,6 +937,81 @@ func DeviceNameEqualFold(v string) predicate.OAuthCode {
 // DeviceNameContainsFold applies the ContainsFold predicate on the "device_name" field.
 func DeviceNameContainsFold(v string) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldContainsFold(FieldDeviceName, v))
+}
+
+// NonceEQ applies the EQ predicate on the "nonce" field.
+func NonceEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldNonce, v))
+}
+
+// NonceNEQ applies the NEQ predicate on the "nonce" field.
+func NonceNEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNEQ(FieldNonce, v))
+}
+
+// NonceIn applies the In predicate on the "nonce" field.
+func NonceIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIn(FieldNonce, vs...))
+}
+
+// NonceNotIn applies the NotIn predicate on the "nonce" field.
+func NonceNotIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotIn(FieldNonce, vs...))
+}
+
+// NonceGT applies the GT predicate on the "nonce" field.
+func NonceGT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGT(FieldNonce, v))
+}
+
+// NonceGTE applies the GTE predicate on the "nonce" field.
+func NonceGTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGTE(FieldNonce, v))
+}
+
+// NonceLT applies the LT predicate on the "nonce" field.
+func NonceLT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLT(FieldNonce, v))
+}
+
+// NonceLTE applies the LTE predicate on the "nonce" field.
+func NonceLTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLTE(FieldNonce, v))
+}
+
+// NonceContains applies the Contains predicate on the "nonce" field.
+func NonceContains(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContains(FieldNonce, v))
+}
+
+// NonceHasPrefix applies the HasPrefix predicate on the "nonce" field.
+func NonceHasPrefix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasPrefix(FieldNonce, v))
+}
+
+// NonceHasSuffix applies the HasSuffix predicate on the "nonce" field.
+func NonceHasSuffix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasSuffix(FieldNonce, v))
+}
+
+// NonceIsNil applies the IsNil predicate on the "nonce" field.
+func NonceIsNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIsNull(FieldNonce))
+}
+
+// NonceNotNil applies the NotNil predicate on the "nonce" field.
+func NonceNotNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotNull(FieldNonce))
+}
+
+// NonceEqualFold applies the EqualFold predicate on the "nonce" field.
+func NonceEqualFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEqualFold(FieldNonce, v))
+}
+
+// NonceContainsFold applies the ContainsFold predicate on the "nonce" field.
+func NonceContainsFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContainsFold(FieldNonce, v))
 }
 
 // And groups predicates with the AND operator between them.

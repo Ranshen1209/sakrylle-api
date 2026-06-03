@@ -49,7 +49,9 @@ type OAuthCode struct {
 	// Optional client-provided install/session identifier
 	DeviceID *string `json:"device_id,omitempty"`
 	// Sanitized device display name shown in Authorized Apps
-	DeviceName   *string `json:"device_name,omitempty"`
+	DeviceName *string `json:"device_name,omitempty"`
+	// OIDC nonce from the authorize request; echoed in id_token nonce claim
+	Nonce        string `json:"nonce,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -62,7 +64,7 @@ func (*OAuthCode) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case oauthcode.FieldID, oauthcode.FieldUserID, oauthcode.FieldGroupID:
 			values[i] = new(sql.NullInt64)
-		case oauthcode.FieldCodeHash, oauthcode.FieldClientID, oauthcode.FieldRedirectURI, oauthcode.FieldCodeChallenge, oauthcode.FieldCodeChallengeMethod, oauthcode.FieldGrantID, oauthcode.FieldDeviceID, oauthcode.FieldDeviceName:
+		case oauthcode.FieldCodeHash, oauthcode.FieldClientID, oauthcode.FieldRedirectURI, oauthcode.FieldCodeChallenge, oauthcode.FieldCodeChallengeMethod, oauthcode.FieldGrantID, oauthcode.FieldDeviceID, oauthcode.FieldDeviceName, oauthcode.FieldNonce:
 			values[i] = new(sql.NullString)
 		case oauthcode.FieldCreatedAt, oauthcode.FieldUpdatedAt, oauthcode.FieldExpiresAt, oauthcode.FieldUsedAt:
 			values[i] = new(sql.NullTime)
@@ -192,6 +194,12 @@ func (_m *OAuthCode) assignValues(columns []string, values []any) error {
 				_m.DeviceName = new(string)
 				*_m.DeviceName = value.String
 			}
+		case oauthcode.FieldNonce:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field nonce", values[i])
+			} else if value.Valid {
+				_m.Nonce = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -285,6 +293,9 @@ func (_m *OAuthCode) String() string {
 		builder.WriteString("device_name=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("nonce=")
+	builder.WriteString(_m.Nonce)
 	builder.WriteByte(')')
 	return builder.String()
 }

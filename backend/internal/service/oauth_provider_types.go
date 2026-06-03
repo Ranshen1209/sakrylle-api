@@ -84,6 +84,15 @@ type OAuthCode struct {
 	AllowedGroupsSnapshot []int64
 	DeviceID              *string
 	DeviceName            *string
+
+	// Nonce is the OIDC nonce from the authorize request, carried through to
+	// the id_token's nonce claim (OIDC Core §3.1.3.7). Empty when the RP did
+	// not supply one.
+	Nonce string
+	// CreatedAt is when the code row was written (≈ when the user completed
+	// authentication + consent). Used as the id_token auth_time on the initial
+	// mint. Zero for legacy rows / the in-memory test path.
+	CreatedAt time.Time
 }
 
 // OAuthRefreshToken records a refresh token bound to a specific access_token (api_keys row).
@@ -202,6 +211,11 @@ type OAuthAuthorizeTransaction struct {
 	CreatedIP             *string
 	CreatedUserAgent      *string
 	CreatedAt             time.Time
+
+	// Nonce is the OIDC nonce captured server-side at /oauth/authorize so the
+	// approve POST cannot tamper with it; copied into the OAuthCode at approval
+	// and ultimately into the id_token nonce claim. Empty when not supplied.
+	Nonce string
 }
 
 // OAuthAuthorizedGrant is the v2 user-facing per-device grant projection
