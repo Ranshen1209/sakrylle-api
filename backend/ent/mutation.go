@@ -21729,6 +21729,7 @@ type OAuthAuthorizeTransactionMutation struct {
 	expires_at                    *time.Time
 	created_ip                    *string
 	created_user_agent            *string
+	nonce                         *string
 	clearedFields                 map[string]struct{}
 	done                          bool
 	oldValue                      func(context.Context) (*OAuthAuthorizeTransaction, error)
@@ -22702,6 +22703,55 @@ func (m *OAuthAuthorizeTransactionMutation) ResetCreatedUserAgent() {
 	delete(m.clearedFields, oauthauthorizetransaction.FieldCreatedUserAgent)
 }
 
+// SetNonce sets the "nonce" field.
+func (m *OAuthAuthorizeTransactionMutation) SetNonce(s string) {
+	m.nonce = &s
+}
+
+// Nonce returns the value of the "nonce" field in the mutation.
+func (m *OAuthAuthorizeTransactionMutation) Nonce() (r string, exists bool) {
+	v := m.nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNonce returns the old "nonce" field's value of the OAuthAuthorizeTransaction entity.
+// If the OAuthAuthorizeTransaction object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthAuthorizeTransactionMutation) OldNonce(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNonce: %w", err)
+	}
+	return oldValue.Nonce, nil
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (m *OAuthAuthorizeTransactionMutation) ClearNonce() {
+	m.nonce = nil
+	m.clearedFields[oauthauthorizetransaction.FieldNonce] = struct{}{}
+}
+
+// NonceCleared returns if the "nonce" field was cleared in this mutation.
+func (m *OAuthAuthorizeTransactionMutation) NonceCleared() bool {
+	_, ok := m.clearedFields[oauthauthorizetransaction.FieldNonce]
+	return ok
+}
+
+// ResetNonce resets all changes to the "nonce" field.
+func (m *OAuthAuthorizeTransactionMutation) ResetNonce() {
+	m.nonce = nil
+	delete(m.clearedFields, oauthauthorizetransaction.FieldNonce)
+}
+
 // Where appends a list predicates to the OAuthAuthorizeTransactionMutation builder.
 func (m *OAuthAuthorizeTransactionMutation) Where(ps ...predicate.OAuthAuthorizeTransaction) {
 	m.predicates = append(m.predicates, ps...)
@@ -22736,7 +22786,7 @@ func (m *OAuthAuthorizeTransactionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuthAuthorizeTransactionMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.created_at != nil {
 		fields = append(fields, oauthauthorizetransaction.FieldCreatedAt)
 	}
@@ -22797,6 +22847,9 @@ func (m *OAuthAuthorizeTransactionMutation) Fields() []string {
 	if m.created_user_agent != nil {
 		fields = append(fields, oauthauthorizetransaction.FieldCreatedUserAgent)
 	}
+	if m.nonce != nil {
+		fields = append(fields, oauthauthorizetransaction.FieldNonce)
+	}
 	return fields
 }
 
@@ -22845,6 +22898,8 @@ func (m *OAuthAuthorizeTransactionMutation) Field(name string) (ent.Value, bool)
 		return m.CreatedIP()
 	case oauthauthorizetransaction.FieldCreatedUserAgent:
 		return m.CreatedUserAgent()
+	case oauthauthorizetransaction.FieldNonce:
+		return m.Nonce()
 	}
 	return nil, false
 }
@@ -22894,6 +22949,8 @@ func (m *OAuthAuthorizeTransactionMutation) OldField(ctx context.Context, name s
 		return m.OldCreatedIP(ctx)
 	case oauthauthorizetransaction.FieldCreatedUserAgent:
 		return m.OldCreatedUserAgent(ctx)
+	case oauthauthorizetransaction.FieldNonce:
+		return m.OldNonce(ctx)
 	}
 	return nil, fmt.Errorf("unknown OAuthAuthorizeTransaction field %s", name)
 }
@@ -23043,6 +23100,13 @@ func (m *OAuthAuthorizeTransactionMutation) SetField(name string, value ent.Valu
 		}
 		m.SetCreatedUserAgent(v)
 		return nil
+	case oauthauthorizetransaction.FieldNonce:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNonce(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OAuthAuthorizeTransaction field %s", name)
 }
@@ -23118,6 +23182,9 @@ func (m *OAuthAuthorizeTransactionMutation) ClearedFields() []string {
 	if m.FieldCleared(oauthauthorizetransaction.FieldCreatedUserAgent) {
 		fields = append(fields, oauthauthorizetransaction.FieldCreatedUserAgent)
 	}
+	if m.FieldCleared(oauthauthorizetransaction.FieldNonce) {
+		fields = append(fields, oauthauthorizetransaction.FieldNonce)
+	}
 	return fields
 }
 
@@ -23149,6 +23216,9 @@ func (m *OAuthAuthorizeTransactionMutation) ClearField(name string) error {
 		return nil
 	case oauthauthorizetransaction.FieldCreatedUserAgent:
 		m.ClearCreatedUserAgent()
+		return nil
+	case oauthauthorizetransaction.FieldNonce:
+		m.ClearNonce()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthAuthorizeTransaction nullable field %s", name)
@@ -23217,6 +23287,9 @@ func (m *OAuthAuthorizeTransactionMutation) ResetField(name string) error {
 		return nil
 	case oauthauthorizetransaction.FieldCreatedUserAgent:
 		m.ResetCreatedUserAgent()
+		return nil
+	case oauthauthorizetransaction.FieldNonce:
+		m.ResetNonce()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthAuthorizeTransaction field %s", name)
@@ -25254,6 +25327,7 @@ type OAuthCodeMutation struct {
 	appendallowed_groups_snapshot []int64
 	device_id                     *string
 	device_name                   *string
+	nonce                         *string
 	clearedFields                 map[string]struct{}
 	done                          bool
 	oldValue                      func(context.Context) (*OAuthCode, error)
@@ -26070,6 +26144,55 @@ func (m *OAuthCodeMutation) ResetDeviceName() {
 	delete(m.clearedFields, oauthcode.FieldDeviceName)
 }
 
+// SetNonce sets the "nonce" field.
+func (m *OAuthCodeMutation) SetNonce(s string) {
+	m.nonce = &s
+}
+
+// Nonce returns the value of the "nonce" field in the mutation.
+func (m *OAuthCodeMutation) Nonce() (r string, exists bool) {
+	v := m.nonce
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNonce returns the old "nonce" field's value of the OAuthCode entity.
+// If the OAuthCode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthCodeMutation) OldNonce(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNonce is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNonce requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNonce: %w", err)
+	}
+	return oldValue.Nonce, nil
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (m *OAuthCodeMutation) ClearNonce() {
+	m.nonce = nil
+	m.clearedFields[oauthcode.FieldNonce] = struct{}{}
+}
+
+// NonceCleared returns if the "nonce" field was cleared in this mutation.
+func (m *OAuthCodeMutation) NonceCleared() bool {
+	_, ok := m.clearedFields[oauthcode.FieldNonce]
+	return ok
+}
+
+// ResetNonce resets all changes to the "nonce" field.
+func (m *OAuthCodeMutation) ResetNonce() {
+	m.nonce = nil
+	delete(m.clearedFields, oauthcode.FieldNonce)
+}
+
 // Where appends a list predicates to the OAuthCodeMutation builder.
 func (m *OAuthCodeMutation) Where(ps ...predicate.OAuthCode) {
 	m.predicates = append(m.predicates, ps...)
@@ -26104,7 +26227,7 @@ func (m *OAuthCodeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuthCodeMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.created_at != nil {
 		fields = append(fields, oauthcode.FieldCreatedAt)
 	}
@@ -26153,6 +26276,9 @@ func (m *OAuthCodeMutation) Fields() []string {
 	if m.device_name != nil {
 		fields = append(fields, oauthcode.FieldDeviceName)
 	}
+	if m.nonce != nil {
+		fields = append(fields, oauthcode.FieldNonce)
+	}
 	return fields
 }
 
@@ -26193,6 +26319,8 @@ func (m *OAuthCodeMutation) Field(name string) (ent.Value, bool) {
 		return m.DeviceID()
 	case oauthcode.FieldDeviceName:
 		return m.DeviceName()
+	case oauthcode.FieldNonce:
+		return m.Nonce()
 	}
 	return nil, false
 }
@@ -26234,6 +26362,8 @@ func (m *OAuthCodeMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldDeviceID(ctx)
 	case oauthcode.FieldDeviceName:
 		return m.OldDeviceName(ctx)
+	case oauthcode.FieldNonce:
+		return m.OldNonce(ctx)
 	}
 	return nil, fmt.Errorf("unknown OAuthCode field %s", name)
 }
@@ -26355,6 +26485,13 @@ func (m *OAuthCodeMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDeviceName(v)
 		return nil
+	case oauthcode.FieldNonce:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNonce(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OAuthCode field %s", name)
 }
@@ -26427,6 +26564,9 @@ func (m *OAuthCodeMutation) ClearedFields() []string {
 	if m.FieldCleared(oauthcode.FieldDeviceName) {
 		fields = append(fields, oauthcode.FieldDeviceName)
 	}
+	if m.FieldCleared(oauthcode.FieldNonce) {
+		fields = append(fields, oauthcode.FieldNonce)
+	}
 	return fields
 }
 
@@ -26455,6 +26595,9 @@ func (m *OAuthCodeMutation) ClearField(name string) error {
 		return nil
 	case oauthcode.FieldDeviceName:
 		m.ClearDeviceName()
+		return nil
+	case oauthcode.FieldNonce:
+		m.ClearNonce()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthCode nullable field %s", name)
@@ -26511,6 +26654,9 @@ func (m *OAuthCodeMutation) ResetField(name string) error {
 		return nil
 	case oauthcode.FieldDeviceName:
 		m.ResetDeviceName()
+		return nil
+	case oauthcode.FieldNonce:
+		m.ResetNonce()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthCode field %s", name)

@@ -157,6 +157,29 @@ func HasAnyScope(granted []string, any ...string) bool {
 	return false
 }
 
+// stripScopes returns a copy of granted with every scope in remove omitted.
+// Comparison is on the raw scope strings (canonical scopes are passed in), so
+// it is safe to call before or after normalization. Used by the OIDC signer to
+// drop profile/email from the claim-scope set when the user lookup fails, so
+// the id_token never advertises a scope whose claims it does not carry.
+func stripScopes(granted []string, remove ...string) []string {
+	if len(granted) == 0 || len(remove) == 0 {
+		return granted
+	}
+	drop := make(map[string]struct{}, len(remove))
+	for _, r := range remove {
+		drop[r] = struct{}{}
+	}
+	out := make([]string, 0, len(granted))
+	for _, g := range granted {
+		if _, skip := drop[strings.TrimSpace(g)]; skip {
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
 // ScopeDisplay returns the human-readable label for a scope in the given
 // locale. Falls back to the raw scope identifier for unknown scopes.
 //

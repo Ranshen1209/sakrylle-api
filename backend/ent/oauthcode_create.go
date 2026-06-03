@@ -182,6 +182,20 @@ func (_c *OAuthCodeCreate) SetNillableDeviceName(v *string) *OAuthCodeCreate {
 	return _c
 }
 
+// SetNonce sets the "nonce" field.
+func (_c *OAuthCodeCreate) SetNonce(v string) *OAuthCodeCreate {
+	_c.mutation.SetNonce(v)
+	return _c
+}
+
+// SetNillableNonce sets the "nonce" field if the given value is not nil.
+func (_c *OAuthCodeCreate) SetNillableNonce(v *string) *OAuthCodeCreate {
+	if v != nil {
+		_c.SetNonce(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_c *OAuthCodeCreate) Mutation() *OAuthCodeMutation {
 	return _c.mutation
@@ -400,6 +414,10 @@ func (_c *OAuthCodeCreate) createSpec() (*OAuthCode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DeviceName(); ok {
 		_spec.SetField(oauthcode.FieldDeviceName, field.TypeString, value)
 		_node.DeviceName = &value
+	}
+	if value, ok := _c.mutation.Nonce(); ok {
+		_spec.SetField(oauthcode.FieldNonce, field.TypeString, value)
+		_node.Nonce = value
 	}
 	return _node, _spec
 }
@@ -672,6 +690,24 @@ func (u *OAuthCodeUpsert) UpdateDeviceName() *OAuthCodeUpsert {
 // ClearDeviceName clears the value of the "device_name" field.
 func (u *OAuthCodeUpsert) ClearDeviceName() *OAuthCodeUpsert {
 	u.SetNull(oauthcode.FieldDeviceName)
+	return u
+}
+
+// SetNonce sets the "nonce" field.
+func (u *OAuthCodeUpsert) SetNonce(v string) *OAuthCodeUpsert {
+	u.Set(oauthcode.FieldNonce, v)
+	return u
+}
+
+// UpdateNonce sets the "nonce" field to the value that was provided on create.
+func (u *OAuthCodeUpsert) UpdateNonce() *OAuthCodeUpsert {
+	u.SetExcluded(oauthcode.FieldNonce)
+	return u
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (u *OAuthCodeUpsert) ClearNonce() *OAuthCodeUpsert {
+	u.SetNull(oauthcode.FieldNonce)
 	return u
 }
 
@@ -976,6 +1012,27 @@ func (u *OAuthCodeUpsertOne) UpdateDeviceName() *OAuthCodeUpsertOne {
 func (u *OAuthCodeUpsertOne) ClearDeviceName() *OAuthCodeUpsertOne {
 	return u.Update(func(s *OAuthCodeUpsert) {
 		s.ClearDeviceName()
+	})
+}
+
+// SetNonce sets the "nonce" field.
+func (u *OAuthCodeUpsertOne) SetNonce(v string) *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetNonce(v)
+	})
+}
+
+// UpdateNonce sets the "nonce" field to the value that was provided on create.
+func (u *OAuthCodeUpsertOne) UpdateNonce() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateNonce()
+	})
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (u *OAuthCodeUpsertOne) ClearNonce() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearNonce()
 	})
 }
 
@@ -1446,6 +1503,27 @@ func (u *OAuthCodeUpsertBulk) UpdateDeviceName() *OAuthCodeUpsertBulk {
 func (u *OAuthCodeUpsertBulk) ClearDeviceName() *OAuthCodeUpsertBulk {
 	return u.Update(func(s *OAuthCodeUpsert) {
 		s.ClearDeviceName()
+	})
+}
+
+// SetNonce sets the "nonce" field.
+func (u *OAuthCodeUpsertBulk) SetNonce(v string) *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetNonce(v)
+	})
+}
+
+// UpdateNonce sets the "nonce" field to the value that was provided on create.
+func (u *OAuthCodeUpsertBulk) UpdateNonce() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateNonce()
+	})
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (u *OAuthCodeUpsertBulk) ClearNonce() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearNonce()
 	})
 }
 

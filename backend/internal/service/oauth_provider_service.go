@@ -62,6 +62,7 @@ type AuthorizeRequest struct {
 	State               string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	Nonce               string
 }
 
 // BeginAuthorizeParams is the input to BeginAuthorizeTransaction.
@@ -83,6 +84,7 @@ type BeginAuthorizeParams struct {
 	UserID              int64 // logged-in user; required so allowed_groups_snapshot is computed
 	CreatedIP           *string
 	CreatedUserAgent    *string
+	Nonce               string // OIDC nonce captured from the authorize request
 }
 
 // BeginAuthorizeResult carries the rendering payload + plaintext CSRF token
@@ -248,7 +250,7 @@ func (s *OAuthProviderService) WithOIDC(
 // unresolved or signing fails, it returns an error so the token request fails
 // loudly rather than emitting a malformed identity assertion. When OIDC is not
 // wired at all (feature off), it returns ("", nil) and the OAuth flow proceeds.
-func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID string, userID int64, scopes []string, nonce string) (string, error) {
+func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID string, userID int64, scopes []string, nonce string, authTime time.Time) (string, error) {
 	if s.oidcSign == nil || s.oidcIssuer == nil || !HasScope(scopes, ScopeOpenID) {
 		return "", nil
 	}
@@ -256,14 +258,25 @@ func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID st
 	if issuer == "" {
 		return "", fmt.Errorf("oidc: issuer unresolved; cannot sign id_token")
 	}
+	// Claim scopes drive which identity claims we promise. If we cannot load
+	// the user (MEDIUM-1), do NOT emit a token that advertises profile/email
+	// scope but carries no name/email claim — a strict RP would treat that as
+	// a provider defect. Instead log and strip those scopes so the id_token
+	// honestly reflects what it contains.
+	claimScopes := scopes
 	u := OIDCUserClaims{UserID: userID}
 	if s.oidcUser != nil && HasAnyScope(scopes, ScopeProfile, ScopeEmail) {
-		if got, err := s.oidcUser(ctx, userID); err == nil {
+		got, err := s.oidcUser(ctx, userID)
+		if err != nil {
+			slog.Warn("oidc: user claim lookup failed; stripping profile/email from id_token",
+				"user_id", userID, "client_id", clientID, "err", err)
+			claimScopes = stripScopes(scopes, ScopeProfile, ScopeEmail)
+		} else {
 			got.UserID = userID
 			u = got
 		}
 	}
-	claims, err := BuildIDTokenClaims(issuer, clientID, u, scopes, nonce, time.Now(), DefaultOIDCIDTokenTTL)
+	claims, err := BuildIDTokenClaims(issuer, clientID, u, claimScopes, nonce, authTime, time.Now(), DefaultOIDCIDTokenTTL)
 	if err != nil {
 		return "", fmt.Errorf("oidc: build id_token claims: %w", err)
 	}
@@ -617,6 +630,7 @@ func (s *OAuthProviderService) BeginAuthorizeTransaction(
 		ExpiresAt:             now.Add(authorizeTransactionTTL),
 		CreatedIP:             params.CreatedIP,
 		CreatedUserAgent:      params.CreatedUserAgent,
+		Nonce:                 params.Nonce,
 	}
 	if err := s.authzTxRepo.CreateAuthorizeTransaction(ctx, tx); err != nil {
 		return nil, fmt.Errorf("create authorize transaction: %w", err)
@@ -776,6 +790,8 @@ func (s *OAuthProviderService) ApproveAuthorization(
 		AllowedGroupsSnapshot: selectedGroupsOrDefault(selectedGroups, tx.AllowedGroupsSnapshot),
 		DeviceID:            tx.DeviceID,
 		DeviceName:          tx.DeviceName,
+		Nonce:               tx.Nonce,
+		CreatedAt:           now,
 	}
 	if atomic, ok := s.authzTxRepo.(OAuthAuthorizeAtomicRepository); ok {
 		// FIX A4: pass userIDFromJWT so the atomic consume re-checks the
@@ -1052,7 +1068,11 @@ func (s *OAuthProviderService) RefreshAccessToken(
 		}
 	}
 
-	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, row.UserID, scopes, "")
+	// OIDC Core §12.2: an id_token issued from a refresh grant SHOULD NOT
+	// carry a nonce claim (nonce binds the original authentication request,
+	// not this rotation) and has no fresh auth_time (no re-authentication
+	// happened here). So we deliberately pass empty nonce + zero authTime.
+	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, row.UserID, scopes, "", time.Time{})
 	if idErr != nil {
 		return nil, idErr
 	}
@@ -1848,7 +1868,7 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		}
 	}
 
-	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, code.UserID, scopes, "")
+	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, code.UserID, scopes, code.Nonce, code.CreatedAt)
 	if idErr != nil {
 		return nil, idErr
 	}

@@ -222,6 +222,20 @@ func (_c *OAuthAuthorizeTransactionCreate) SetNillableCreatedUserAgent(v *string
 	return _c
 }
 
+// SetNonce sets the "nonce" field.
+func (_c *OAuthAuthorizeTransactionCreate) SetNonce(v string) *OAuthAuthorizeTransactionCreate {
+	_c.mutation.SetNonce(v)
+	return _c
+}
+
+// SetNillableNonce sets the "nonce" field if the given value is not nil.
+func (_c *OAuthAuthorizeTransactionCreate) SetNillableNonce(v *string) *OAuthAuthorizeTransactionCreate {
+	if v != nil {
+		_c.SetNonce(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_c *OAuthAuthorizeTransactionCreate) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _c.mutation
@@ -483,6 +497,10 @@ func (_c *OAuthAuthorizeTransactionCreate) createSpec() (*OAuthAuthorizeTransact
 	if value, ok := _c.mutation.CreatedUserAgent(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldCreatedUserAgent, field.TypeString, value)
 		_node.CreatedUserAgent = &value
+	}
+	if value, ok := _c.mutation.Nonce(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldNonce, field.TypeString, value)
+		_node.Nonce = value
 	}
 	return _node, _spec
 }
@@ -809,6 +827,24 @@ func (u *OAuthAuthorizeTransactionUpsert) UpdateCreatedUserAgent() *OAuthAuthori
 // ClearCreatedUserAgent clears the value of the "created_user_agent" field.
 func (u *OAuthAuthorizeTransactionUpsert) ClearCreatedUserAgent() *OAuthAuthorizeTransactionUpsert {
 	u.SetNull(oauthauthorizetransaction.FieldCreatedUserAgent)
+	return u
+}
+
+// SetNonce sets the "nonce" field.
+func (u *OAuthAuthorizeTransactionUpsert) SetNonce(v string) *OAuthAuthorizeTransactionUpsert {
+	u.Set(oauthauthorizetransaction.FieldNonce, v)
+	return u
+}
+
+// UpdateNonce sets the "nonce" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsert) UpdateNonce() *OAuthAuthorizeTransactionUpsert {
+	u.SetExcluded(oauthauthorizetransaction.FieldNonce)
+	return u
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (u *OAuthAuthorizeTransactionUpsert) ClearNonce() *OAuthAuthorizeTransactionUpsert {
+	u.SetNull(oauthauthorizetransaction.FieldNonce)
 	return u
 }
 
@@ -1176,6 +1212,27 @@ func (u *OAuthAuthorizeTransactionUpsertOne) UpdateCreatedUserAgent() *OAuthAuth
 func (u *OAuthAuthorizeTransactionUpsertOne) ClearCreatedUserAgent() *OAuthAuthorizeTransactionUpsertOne {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.ClearCreatedUserAgent()
+	})
+}
+
+// SetNonce sets the "nonce" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) SetNonce(v string) *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.SetNonce(v)
+	})
+}
+
+// UpdateNonce sets the "nonce" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsertOne) UpdateNonce() *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.UpdateNonce()
+	})
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) ClearNonce() *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.ClearNonce()
 	})
 }
 
@@ -1709,6 +1766,27 @@ func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateCreatedUserAgent() *OAuthAut
 func (u *OAuthAuthorizeTransactionUpsertBulk) ClearCreatedUserAgent() *OAuthAuthorizeTransactionUpsertBulk {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.ClearCreatedUserAgent()
+	})
+}
+
+// SetNonce sets the "nonce" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) SetNonce(v string) *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.SetNonce(v)
+	})
+}
+
+// UpdateNonce sets the "nonce" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateNonce() *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.UpdateNonce()
+	})
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) ClearNonce() *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.ClearNonce()
 	})
 }
 

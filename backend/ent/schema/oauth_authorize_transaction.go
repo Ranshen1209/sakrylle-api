@@ -94,6 +94,13 @@ func (OAuthAuthorizeTransaction) Fields() []ent.Field {
 		field.Text("created_user_agent").
 			Optional().
 			Nillable(),
+
+		// ── OIDC (migration 149) ──────────────────────────────────────────
+
+		field.String("nonce").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Optional().
+			Comment("OIDC nonce captured at /authorize; copied to the code, then the id_token"),
 	}
 }
 

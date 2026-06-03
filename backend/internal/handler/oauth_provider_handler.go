@@ -100,6 +100,7 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 		State:               formVal("state"),
 		CodeChallenge:       formVal("code_challenge"),
 		CodeChallengeMethod: formVal("code_challenge_method"),
+		Nonce:               formVal("nonce"),
 	}
 
 	// Issue 23: prompt=none requires a pre-existing session; we never have one
@@ -175,6 +176,7 @@ type BeginAuthorizeRequest struct {
 	CodeChallengeMethod string `json:"code_challenge_method"`
 	GroupID             *int64 `json:"group_id"`
 	DeviceName          string `json:"device_name"`
+	Nonce               string `json:"nonce"`
 }
 
 // BeginAuthorize creates the server-side authorize transaction for the
@@ -210,6 +212,7 @@ func (h *OAuthProviderHandler) BeginAuthorize(c *gin.Context) {
 		RequestedGroupID:    body.GroupID,
 		DeviceName:          stringPtrIfNotEmpty(strings.TrimSpace(body.DeviceName)),
 		UserID:              subject.UserID,
+		Nonce:               strings.TrimSpace(body.Nonce),
 	}
 	result, err := h.provider.BeginAuthorizeTransaction(c.Request.Context(), params)
 	if err != nil {

@@ -88,6 +88,13 @@ func (OAuthCode) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Sanitized device display name shown in Authorized Apps"),
+
+		// ── OIDC (migration 149) ──────────────────────────────────────────
+
+		field.String("nonce").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Optional().
+			Comment("OIDC nonce from the authorize request; echoed in id_token nonce claim"),
 	}
 }
 
