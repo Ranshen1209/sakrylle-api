@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -185,6 +186,23 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 		},
 	}
 
+	// OIDC UserInfo claims: when the standard `openid` scope was granted, expose
+	// `sub` (stable user id as string) plus `name`/`preferred_username` (profile)
+	// and `email` (email). These are OIDC-standard top-level claims, distinct
+	// from the commercial profile:read/email:read blocks below. Real-time
+	// business state (balance/group/capabilities) is never emitted here as an
+	// OIDC claim — it stays in the existing scoped blocks / gateway only.
+	if service.HasScope(meta.Scopes, service.ScopeOpenID) {
+		resp["sub"] = strconv.FormatInt(user.ID, 10)
+		if service.HasScope(meta.Scopes, service.ScopeProfile) {
+			resp["name"] = user.Username
+			resp["preferred_username"] = user.Username
+		}
+		if service.HasScope(meta.Scopes, service.ScopeEmail) {
+			resp["email"] = user.Email
+		}
+	}
+
 	if hasProfile {
 		userBlock := gin.H{
 			"id":           user.ID,
@@ -212,7 +230,7 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 			resp["current_group"] = groupSummary(apiKey.Group, user, false)
 		}
 		var oauthClient *service.OAuthClient
-		if meta.ClientID != "" {
+		if meta.ClientID != "" && h.oauthService != nil {
 			oauthClient, _ = h.oauthService.LookupClient(c.Request.Context(), meta.ClientID)
 		}
 		resp["allowed_groups"] = h.allowedGroupsForUser(c, user.ID, apiKey.Group, oauthClient, meta.Scopes)

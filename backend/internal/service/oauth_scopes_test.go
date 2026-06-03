@@ -86,8 +86,8 @@ func TestIsLegacyAlias(t *testing.T) {
 
 func TestCanonicalScopes_StableSorted(t *testing.T) {
 	got := CanonicalScopes()
-	if len(got) != 11 {
-		t.Fatalf("expected 11 canonical scopes, got %d: %v", len(got), got)
+	if len(got) != 14 {
+		t.Fatalf("expected 14 canonical scopes, got %d: %v", len(got), got)
 	}
 	for i := 1; i < len(got); i++ {
 		if got[i-1] >= got[i] {
