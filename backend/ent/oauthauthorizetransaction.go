@@ -58,7 +58,9 @@ type OAuthAuthorizeTransaction struct {
 	CreatedIP *string `json:"created_ip,omitempty"`
 	// CreatedUserAgent holds the value of the "created_user_agent" field.
 	CreatedUserAgent *string `json:"created_user_agent,omitempty"`
-	selectValues     sql.SelectValues
+	// OIDC nonce captured at /authorize; copied to the code, then the id_token
+	Nonce        string `json:"nonce,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -70,7 +72,7 @@ func (*OAuthAuthorizeTransaction) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case oauthauthorizetransaction.FieldID, oauthauthorizetransaction.FieldUserID, oauthauthorizetransaction.FieldRequestedGroupID:
 			values[i] = new(sql.NullInt64)
-		case oauthauthorizetransaction.FieldTransactionID, oauthauthorizetransaction.FieldCsrfHash, oauthauthorizetransaction.FieldClientID, oauthauthorizetransaction.FieldRedirectURI, oauthauthorizetransaction.FieldResponseType, oauthauthorizetransaction.FieldState, oauthauthorizetransaction.FieldCodeChallenge, oauthauthorizetransaction.FieldCodeChallengeMethod, oauthauthorizetransaction.FieldDeviceID, oauthauthorizetransaction.FieldDeviceName, oauthauthorizetransaction.FieldCreatedIP, oauthauthorizetransaction.FieldCreatedUserAgent:
+		case oauthauthorizetransaction.FieldTransactionID, oauthauthorizetransaction.FieldCsrfHash, oauthauthorizetransaction.FieldClientID, oauthauthorizetransaction.FieldRedirectURI, oauthauthorizetransaction.FieldResponseType, oauthauthorizetransaction.FieldState, oauthauthorizetransaction.FieldCodeChallenge, oauthauthorizetransaction.FieldCodeChallengeMethod, oauthauthorizetransaction.FieldDeviceID, oauthauthorizetransaction.FieldDeviceName, oauthauthorizetransaction.FieldCreatedIP, oauthauthorizetransaction.FieldCreatedUserAgent, oauthauthorizetransaction.FieldNonce:
 			values[i] = new(sql.NullString)
 		case oauthauthorizetransaction.FieldCreatedAt, oauthauthorizetransaction.FieldUpdatedAt, oauthauthorizetransaction.FieldConsumedAt, oauthauthorizetransaction.FieldExpiresAt:
 			values[i] = new(sql.NullTime)
@@ -225,6 +227,12 @@ func (_m *OAuthAuthorizeTransaction) assignValues(columns []string, values []any
 				_m.CreatedUserAgent = new(string)
 				*_m.CreatedUserAgent = value.String
 			}
+		case oauthauthorizetransaction.FieldNonce:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field nonce", values[i])
+			} else if value.Valid {
+				_m.Nonce = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -332,6 +340,9 @@ func (_m *OAuthAuthorizeTransaction) String() string {
 		builder.WriteString("created_user_agent=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("nonce=")
+	builder.WriteString(_m.Nonce)
 	builder.WriteByte(')')
 	return builder.String()
 }

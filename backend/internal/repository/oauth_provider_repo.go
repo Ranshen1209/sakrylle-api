@@ -118,6 +118,9 @@ func (r *oauthProviderRepository) CreateCode(ctx context.Context, code *service.
 	if code.DeviceName != nil {
 		q = q.SetDeviceName(*code.DeviceName)
 	}
+	if code.Nonce != "" {
+		q = q.SetNonce(code.Nonce)
+	}
 	if _, err := q.Save(ctx); err != nil {
 		return fmt.Errorf("create oauth code: %w", err)
 	}
@@ -923,6 +926,9 @@ func (r *oauthProviderRepository) CreateAuthorizeTransaction(ctx context.Context
 	if tx.CreatedUserAgent != nil {
 		q = q.SetCreatedUserAgent(*tx.CreatedUserAgent)
 	}
+	if tx.Nonce != "" {
+		q = q.SetNonce(tx.Nonce)
+	}
 	if _, err := q.Save(ctx); err != nil {
 		return fmt.Errorf("create oauth authorize transaction: %w", err)
 	}
@@ -1043,6 +1049,9 @@ func (r *oauthProviderRepository) ConsumeAuthorizeTransactionAndIssueCode(
 		if code.DeviceName != nil {
 			cq = cq.SetDeviceName(*code.DeviceName)
 		}
+		if code.Nonce != "" {
+			cq = cq.SetNonce(code.Nonce)
+		}
 		if _, cerr := cq.Save(ctx); cerr != nil {
 			return fmt.Errorf("persist authorization code: %w", cerr)
 		}
@@ -1127,6 +1136,8 @@ func entOAuthCodeToService(row *dbent.OAuthCode) *service.OAuthCode {
 		GrantID:               row.GrantID,
 		DeviceID:              row.DeviceID,
 		DeviceName:            row.DeviceName,
+		Nonce:                 row.Nonce,
+		CreatedAt:             row.CreatedAt,
 	}
 	return out
 }
@@ -1225,6 +1236,7 @@ func entOAuthAuthorizeTransactionToService(row *dbent.OAuthAuthorizeTransaction)
 		CreatedIP:             row.CreatedIP,
 		CreatedUserAgent:      row.CreatedUserAgent,
 		CreatedAt:             row.CreatedAt,
+		Nonce:                 row.Nonce,
 	}
 }
 

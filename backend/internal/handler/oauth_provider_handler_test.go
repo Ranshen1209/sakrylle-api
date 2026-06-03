@@ -1014,6 +1014,38 @@ func TestConsentHTMLCarriesCSPNonce(t *testing.T) {
 	}
 }
 
+// TestConsentHTMLForwardsNonceToBegin pins the HIGH-1 regression: the GET
+// /authorize handler parses the OIDC nonce into AuthorizeRequest.Nonce, but the
+// consent page POSTs to /begin from the server-rendered beginPayload — so the
+// nonce reaches the transaction (and ultimately the id_token) ONLY if that
+// payload includes it. An earlier cut parsed nonce but omitted it from the
+// payload, silently dropping it for the entire browser flow.
+func TestConsentHTMLForwardsNonceToBegin(t *testing.T) {
+	req := &service.AuthorizeRequest{
+		ClientID:            testOAuthClientID,
+		RedirectURI:         testOAuthRedirectURI,
+		ResponseType:        "code",
+		Scopes:              []string{"openid", "profile"},
+		State:               "abc",
+		CodeChallenge:       "challenge",
+		CodeChallengeMethod: "S256",
+		Nonce:               "n-browser-flow-123",
+	}
+	got := oauthConsentHTML(testOAuthClientName, req, "")
+
+	require.Contains(t, got, `"nonce":"n-browser-flow-123"`,
+		"consent beginPayload must carry the nonce; without it the browser POST to "+
+			"/begin drops nonce and every id_token lacks the claim")
+
+	// Absent nonce must not synthesize one — it renders as an empty string,
+	// and the service omits the claim for empty nonce.
+	reqNoNonce := *req
+	reqNoNonce.Nonce = ""
+	gotNo := oauthConsentHTML(testOAuthClientName, &reqNoNonce, "")
+	require.Contains(t, gotNo, `"nonce":""`,
+		"absent nonce should render as empty string in beginPayload, not be dropped or invented")
+}
+
 // ── confidential client (Basic auth) coverage ──────────────────────────────
 
 const (

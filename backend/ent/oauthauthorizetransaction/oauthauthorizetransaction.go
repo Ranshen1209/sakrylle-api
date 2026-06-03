@@ -53,6 +53,8 @@ const (
 	FieldCreatedIP = "created_ip"
 	// FieldCreatedUserAgent holds the string denoting the created_user_agent field in the database.
 	FieldCreatedUserAgent = "created_user_agent"
+	// FieldNonce holds the string denoting the nonce field in the database.
+	FieldNonce = "nonce"
 	// Table holds the table name of the oauthauthorizetransaction in the database.
 	Table = "oauth_authorize_transactions"
 )
@@ -80,6 +82,7 @@ var Columns = []string{
 	FieldExpiresAt,
 	FieldCreatedIP,
 	FieldCreatedUserAgent,
+	FieldNonce,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -225,4 +228,9 @@ func ByCreatedIP(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedUserAgent orders the results by the created_user_agent field.
 func ByCreatedUserAgent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedUserAgent, opts...).ToFunc()
+}
+
+// ByNonce orders the results by the nonce field.
+func ByNonce(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNonce, opts...).ToFunc()
 }

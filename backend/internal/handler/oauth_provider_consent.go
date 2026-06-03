@@ -55,6 +55,10 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
 		"state":                 req.State,
 		"code_challenge":        req.CodeChallenge,
 		"code_challenge_method": req.CodeChallengeMethod,
+		// OIDC: forward the nonce parsed on the GET /authorize so the consent
+		// page's POST to /begin persists it into the transaction; without this
+		// the browser flow drops nonce and every id_token lacks the claim.
+		"nonce": req.Nonce,
 	})
 
 	return `<!DOCTYPE html>

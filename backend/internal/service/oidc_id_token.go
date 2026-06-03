@@ -46,17 +46,23 @@ var forbiddenIDTokenClaims = map[string]struct{}{
 //
 //   - iss is fixed to the provider issuer (https://sub.sakrylle.com).
 //   - sub is the user's stable ID as a string (never email).
-//   - aud is the OAuth client_id.
+//   - aud is a single-element array of the OAuth client_id. OIDC Core §2
+//     allows a string or an array; we emit an array so strict JS/Python RP
+//     libraries that always iterate aud do not throw.
 //   - nonce is echoed only when the authorize request supplied one.
+//   - auth_time is emitted only when known (non-zero); RPs requesting max_age
+//     or doing step-up rely on it.
 //   - profile scope yields name/preferred_username; email scope yields email.
-//     email_verified is intentionally omitted: there is no per-user
-//     verification flag in the data model, and asserting an unverified address
-//     as verified would be a security defect.
+//     When email is emitted we also emit email_verified=false: there is no
+//     per-user verification flag in the data model, and OIDC Core §5.1 says an
+//     absent email_verified is treated as unverified, so we state it honestly
+//     rather than letting an RP guess.
 func BuildIDTokenClaims(
 	issuer, clientID string,
 	u OIDCUserClaims,
 	grantedScopes []string,
 	nonce string,
+	authTime time.Time,
 	now time.Time,
 	ttl time.Duration,
 ) (jwt.MapClaims, error) {
@@ -76,12 +82,15 @@ func BuildIDTokenClaims(
 	claims := jwt.MapClaims{
 		"iss": issuer,
 		"sub": strconv.FormatInt(u.UserID, 10),
-		"aud": clientID,
+		"aud": []string{clientID},
 		"iat": now.Unix(),
 		"exp": now.Add(ttl).Unix(),
 	}
 	if nonce != "" {
 		claims["nonce"] = nonce
+	}
+	if !authTime.IsZero() {
+		claims["auth_time"] = authTime.Unix()
 	}
 	if HasScope(grantedScopes, ScopeProfile) && u.Username != "" {
 		claims["name"] = u.Username
@@ -89,6 +98,7 @@ func BuildIDTokenClaims(
 	}
 	if HasScope(grantedScopes, ScopeEmail) && u.Email != "" {
 		claims["email"] = u.Email
+		claims["email_verified"] = false
 	}
 
 	if err := assertNoForbiddenClaims(claims); err != nil {

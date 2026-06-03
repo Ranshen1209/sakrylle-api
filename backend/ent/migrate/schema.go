@@ -894,6 +894,7 @@ var (
 		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "created_ip", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "created_user_agent", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "nonce", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// OauthAuthorizeTransactionsTable holds the schema information for the "oauth_authorize_transactions" table.
 	OauthAuthorizeTransactionsTable = &schema.Table{
@@ -979,6 +980,7 @@ var (
 		{Name: "allowed_groups_snapshot", Type: field.TypeJSON},
 		{Name: "device_id", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "device_name", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "nonce", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 	}
 	// OauthCodesTable holds the schema information for the "oauth_codes" table.
 	OauthCodesTable = &schema.Table{

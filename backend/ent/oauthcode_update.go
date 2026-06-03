@@ -271,6 +271,26 @@ func (_u *OAuthCodeUpdate) ClearDeviceName() *OAuthCodeUpdate {
 	return _u
 }
 
+// SetNonce sets the "nonce" field.
+func (_u *OAuthCodeUpdate) SetNonce(v string) *OAuthCodeUpdate {
+	_u.mutation.SetNonce(v)
+	return _u
+}
+
+// SetNillableNonce sets the "nonce" field if the given value is not nil.
+func (_u *OAuthCodeUpdate) SetNillableNonce(v *string) *OAuthCodeUpdate {
+	if v != nil {
+		_u.SetNonce(*v)
+	}
+	return _u
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (_u *OAuthCodeUpdate) ClearNonce() *OAuthCodeUpdate {
+	_u.mutation.ClearNonce()
+	return _u
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_u *OAuthCodeUpdate) Mutation() *OAuthCodeMutation {
 	return _u.mutation
@@ -444,6 +464,12 @@ func (_u *OAuthCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.DeviceNameCleared() {
 		_spec.ClearField(oauthcode.FieldDeviceName, field.TypeString)
+	}
+	if value, ok := _u.mutation.Nonce(); ok {
+		_spec.SetField(oauthcode.FieldNonce, field.TypeString, value)
+	}
+	if _u.mutation.NonceCleared() {
+		_spec.ClearField(oauthcode.FieldNonce, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -707,6 +733,26 @@ func (_u *OAuthCodeUpdateOne) ClearDeviceName() *OAuthCodeUpdateOne {
 	return _u
 }
 
+// SetNonce sets the "nonce" field.
+func (_u *OAuthCodeUpdateOne) SetNonce(v string) *OAuthCodeUpdateOne {
+	_u.mutation.SetNonce(v)
+	return _u
+}
+
+// SetNillableNonce sets the "nonce" field if the given value is not nil.
+func (_u *OAuthCodeUpdateOne) SetNillableNonce(v *string) *OAuthCodeUpdateOne {
+	if v != nil {
+		_u.SetNonce(*v)
+	}
+	return _u
+}
+
+// ClearNonce clears the value of the "nonce" field.
+func (_u *OAuthCodeUpdateOne) ClearNonce() *OAuthCodeUpdateOne {
+	_u.mutation.ClearNonce()
+	return _u
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_u *OAuthCodeUpdateOne) Mutation() *OAuthCodeMutation {
 	return _u.mutation
@@ -910,6 +956,12 @@ func (_u *OAuthCodeUpdateOne) sqlSave(ctx context.Context) (_node *OAuthCode, er
 	}
 	if _u.mutation.DeviceNameCleared() {
 		_spec.ClearField(oauthcode.FieldDeviceName, field.TypeString)
+	}
+	if value, ok := _u.mutation.Nonce(); ok {
+		_spec.SetField(oauthcode.FieldNonce, field.TypeString, value)
+	}
+	if _u.mutation.NonceCleared() {
+		_spec.ClearField(oauthcode.FieldNonce, field.TypeString)
 	}
 	_node = &OAuthCode{config: _u.config}
 	_spec.Assign = _node.assignValues
