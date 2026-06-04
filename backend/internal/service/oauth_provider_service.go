@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -64,6 +63,9 @@ type AuthorizeRequest struct {
 	CodeChallenge       string
 	CodeChallengeMethod string
 	Nonce               string
+	// Claims is the parsed OIDC §5.5 voluntary claims request.
+	// nil when the RP did not send the claims parameter.
+	Claims *ClaimsRequest
 }
 
 // BeginAuthorizeParams is the input to BeginAuthorizeTransaction.
@@ -273,13 +275,18 @@ func resolveSigningAlgorithm(raw string) SigningAlgorithm {
 // unresolved or signing fails, it returns an error so the token request fails
 // loudly rather than emitting a malformed identity assertion. When OIDC is not
 // wired at all (feature off), it returns ("", nil) and the OAuth flow proceeds.
-func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID string, signingAlg string, userID int64, scopes []string, nonce string, authTime time.Time) (string, error) {
+func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, client *OAuthClient, userID int64, scopes []string, nonce string, authTime time.Time) (string, error) {
 	if s.oidcSign == nil || s.oidcIssuer == nil || !HasScope(scopes, ScopeOpenID) {
 		return "", nil
 	}
 	issuer := s.oidcIssuer(ctx)
 	if issuer == "" {
 		return "", fmt.Errorf("oidc: issuer unresolved; cannot sign id_token")
+	}
+	// Compute pairwise sub when the client requires it (OIDC Core §8).
+	var pairwiseSub string
+	if client != nil && client.SubjectType == "pairwise" {
+		pairwiseSub = ResolvePairwiseSub(issuer, userID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs)
 	}
 	// Claim scopes drive which identity claims we promise. If we cannot load
 	// the user (MEDIUM-1), do NOT emit a token that advertises profile/email
@@ -292,18 +299,18 @@ func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID st
 		got, err := s.oidcUser(ctx, userID)
 		if err != nil {
 			slog.Warn("oidc: user claim lookup failed; stripping profile/email from id_token",
-				"user_id", userID, "client_id", clientID, "err", err)
+				"user_id", userID, "client_id", client.ClientID, "err", err)
 			claimScopes = stripScopes(scopes, ScopeProfile, ScopeEmail)
 		} else {
 			got.UserID = userID
 			u = got
 		}
 	}
-	claims, err := BuildIDTokenClaims(issuer, clientID, u, claimScopes, nonce, authTime, time.Now(), DefaultOIDCIDTokenTTL)
+	claims, err := BuildIDTokenClaims(issuer, client.ClientID, u, claimScopes, nonce, authTime, time.Now(), DefaultOIDCIDTokenTTL, pairwiseSub)
 	if err != nil {
 		return "", fmt.Errorf("oidc: build id_token claims: %w", err)
 	}
-	return s.oidcSign(claims, resolveSigningAlgorithm(signingAlg))
+	return s.oidcSign(claims, resolveSigningAlgorithm(client.SigningAlgorithm))
 }
 
 // IsEnabled reports whether the OAuth provider is enabled in DB settings.
@@ -1108,7 +1115,7 @@ func (s *OAuthProviderService) RefreshAccessToken(
 	// carry a nonce claim (nonce binds the original authentication request,
 	// not this rotation) and has no fresh auth_time (no re-authentication
 	// happened here). So we deliberately pass empty nonce + zero authTime.
-	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, client.SigningAlgorithm, row.UserID, scopes, "", time.Time{})
+	idTok, idErr := s.maybeSignIDToken(ctx, client, row.UserID, scopes, "", time.Time{})
 	if idErr != nil {
 		return nil, idErr
 	}
@@ -1904,7 +1911,7 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		}
 	}
 
-	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, client.SigningAlgorithm, code.UserID, scopes, code.Nonce, code.CreatedAt)
+	idTok, idErr := s.maybeSignIDToken(ctx, client, code.UserID, scopes, code.Nonce, code.CreatedAt)
 	if idErr != nil {
 		return nil, idErr
 	}
@@ -1922,35 +1929,6 @@ func (s *OAuthProviderService) mintTokensFromCode(
 	}, nil
 }
 
-// resolveDefaultGroupID is the v1 fallback used by tests still hitting the
-// legacy mintTokens path. v2 uses ResolveOAuthGroup directly.
-func (s *OAuthProviderService) resolveDefaultGroupID(ctx context.Context, client *OAuthClient) (int64, error) {
-	var groupID int64
-	if client.DefaultGroupID != nil && *client.DefaultGroupID > 0 {
-		groupID = *client.DefaultGroupID
-	} else {
-		value, err := s.settingRepo.GetValue(ctx, "oauth_default_group_id")
-		if err == nil {
-			if id, perr := strconv.ParseInt(strings.TrimSpace(value), 10, 64); perr == nil && id > 0 {
-				groupID = id
-			}
-		}
-	}
-	if groupID <= 0 {
-		return 0, ErrOAuthGroupNotConfigured
-	}
-	if s.groupRepo != nil {
-		group, err := s.groupRepo.GetByID(ctx, groupID)
-		if err != nil {
-			return 0, fmt.Errorf("%w: group %d not found", ErrOAuthGroupNotConfigured, groupID)
-		}
-		if !group.IsActive() {
-			return 0, fmt.Errorf("%w: group %d disabled", ErrOAuthGroupNotConfigured, groupID)
-		}
-	}
-	return groupID, nil
-}
-
 // ── pure helpers ────────────────────────────────────────────────────────────
 
 func redirectURIAllowed(allowed []string, candidate string) bool {
@@ -1964,7 +1942,13 @@ func redirectURIAllowed(allowed []string, candidate string) bool {
 	}
 	for _, uri := range allowed {
 		if uri == target {
-			return true
+			// Exact match is sufficient for non-loopback URIs.
+			// Loopback URIs registered without an explicit port must follow
+			// RFC 8252 port-relaxation rules — a redirect without a port is
+			// not valid and must be rejected by isLoopbackRedirect below.
+			if u, err := parseLoopbackRedirectURL(uri); err != nil || u.Port() != "" {
+				return true
+			}
 		}
 		if isLoopbackRedirect(uri, target) {
 			return true
@@ -2149,7 +2133,7 @@ func (s *OAuthProviderService) ValidateLogoutRedirectURI(ctx context.Context, cl
 	}
 
 	// Empty whitelist means no redirect URIs allowed
-	if client.LogoutRedirectURIs == nil || len(client.LogoutRedirectURIs) == 0 {
+	if len(client.LogoutRedirectURIs) == 0 {
 		return false, nil
 	}
 

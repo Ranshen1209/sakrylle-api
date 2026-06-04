@@ -75,19 +75,19 @@ func WriteOAuthResourceError(c *gin.Context, e OAuthResourceError) {
 // when supplied is harmless and matches the §12.12 example).
 func buildBearerChallenge(errorCode, description string, scopes []string, resourceMetadata string) string {
 	var b strings.Builder
-	b.WriteString("Bearer error=")
-	b.WriteString(quoteBearerParam(errorCode))
+	_, _ = b.WriteString("Bearer error=")
+	_, _ = b.WriteString(quoteBearerParam(errorCode))
 	if description != "" {
-		b.WriteString(", error_description=")
-		b.WriteString(quoteBearerParam(description))
+		_, _ = b.WriteString(", error_description=")
+		_, _ = b.WriteString(quoteBearerParam(description))
 	}
 	if len(scopes) > 0 {
-		b.WriteString(", scope=")
-		b.WriteString(quoteBearerParam(strings.Join(scopes, " ")))
+		_, _ = b.WriteString(", scope=")
+		_, _ = b.WriteString(quoteBearerParam(strings.Join(scopes, " ")))
 	}
 	if resourceMetadata != "" {
-		b.WriteString(", resource_metadata=")
-		b.WriteString(quoteBearerParam(resourceMetadata))
+		_, _ = b.WriteString(", resource_metadata=")
+		_, _ = b.WriteString(quoteBearerParam(resourceMetadata))
 	}
 	return b.String()
 }

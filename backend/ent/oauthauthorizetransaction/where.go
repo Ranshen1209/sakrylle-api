@@ -1304,6 +1304,16 @@ func NonceContainsFold(v string) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldContainsFold(FieldNonce, v))
 }
 
+// ClaimsIsNil applies the IsNil predicate on the "claims" field.
+func ClaimsIsNil() predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldIsNull(FieldClaims))
+}
+
+// ClaimsNotNil applies the NotNil predicate on the "claims" field.
+func ClaimsNotNil() predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldNotNull(FieldClaims))
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.OAuthAuthorizeTransaction) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.AndPredicates(predicates...))

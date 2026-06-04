@@ -208,11 +208,19 @@ func TestMe_OAuthToken_FullScopes_RendersAllFamilies(t *testing.T) {
 	// images:create but group has allow_image_generation=false → false.
 	caps, _ := resp["effective_capabilities"].(map[string]any)
 	require.NotNil(t, caps)
-	require.True(t, caps["models_read"].(bool))
-	require.False(t, caps["images_create"].(bool),
+	modelsRead, ok := caps["models_read"].(bool)
+	require.True(t, ok)
+	require.True(t, modelsRead)
+	imagesCreate, ok := caps["images_create"].(bool)
+	require.True(t, ok)
+	require.False(t, imagesCreate,
 		"§12.11: images:create scope + group.allow_image_generation=false → images_create=false in effective_capabilities")
-	require.True(t, caps["account_read"].(bool))
-	require.True(t, caps["email_read"].(bool))
+	accountRead, ok := caps["account_read"].(bool)
+	require.True(t, ok)
+	require.True(t, accountRead)
+	emailRead, ok := caps["email_read"].(bool)
+	require.True(t, ok)
+	require.True(t, emailRead)
 }
 
 func TestMe_OAuthToken_ProfileOnly_OmitsEmail(t *testing.T) {

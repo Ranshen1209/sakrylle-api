@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Wei-Shaw/sub2api/ent"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 )
@@ -26,13 +25,13 @@ var (
 // logical key name (e.g., "oidc_signing_current_kid", "oidc_signing_key_rs256_<kid>");
 // the value field stores the encrypted PEM-encoded private key as a base64 string.
 type SecuritySecretsOIDCKeyStore struct {
-	client *ent.Client
+	client *dbent.Client
 	enc    SecretEncryptor
 }
 
 // NewSecuritySecretsOIDCKeyStore creates a new key store backed by the
 // security_secrets table.
-func NewSecuritySecretsOIDCKeyStore(client *ent.Client, enc SecretEncryptor) *SecuritySecretsOIDCKeyStore {
+func NewSecuritySecretsOIDCKeyStore(client *dbent.Client, enc SecretEncryptor) *SecuritySecretsOIDCKeyStore {
 	return &SecuritySecretsOIDCKeyStore{
 		client: client,
 		enc:    enc,

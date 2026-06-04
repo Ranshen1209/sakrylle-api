@@ -353,6 +353,18 @@ func (_u *OAuthAuthorizeTransactionUpdate) ClearNonce() *OAuthAuthorizeTransacti
 	return _u
 }
 
+// SetClaims sets the "claims" field.
+func (_u *OAuthAuthorizeTransactionUpdate) SetClaims(v map[string]interface{}) *OAuthAuthorizeTransactionUpdate {
+	_u.mutation.SetClaims(v)
+	return _u
+}
+
+// ClearClaims clears the value of the "claims" field.
+func (_u *OAuthAuthorizeTransactionUpdate) ClearClaims() *OAuthAuthorizeTransactionUpdate {
+	_u.mutation.ClearClaims()
+	return _u
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_u *OAuthAuthorizeTransactionUpdate) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _u.mutation
@@ -557,6 +569,12 @@ func (_u *OAuthAuthorizeTransactionUpdate) sqlSave(ctx context.Context) (_node i
 	}
 	if _u.mutation.NonceCleared() {
 		_spec.ClearField(oauthauthorizetransaction.FieldNonce, field.TypeString)
+	}
+	if value, ok := _u.mutation.Claims(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldClaims, field.TypeJSON, value)
+	}
+	if _u.mutation.ClaimsCleared() {
+		_spec.ClearField(oauthauthorizetransaction.FieldClaims, field.TypeJSON)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -902,6 +920,18 @@ func (_u *OAuthAuthorizeTransactionUpdateOne) ClearNonce() *OAuthAuthorizeTransa
 	return _u
 }
 
+// SetClaims sets the "claims" field.
+func (_u *OAuthAuthorizeTransactionUpdateOne) SetClaims(v map[string]interface{}) *OAuthAuthorizeTransactionUpdateOne {
+	_u.mutation.SetClaims(v)
+	return _u
+}
+
+// ClearClaims clears the value of the "claims" field.
+func (_u *OAuthAuthorizeTransactionUpdateOne) ClearClaims() *OAuthAuthorizeTransactionUpdateOne {
+	_u.mutation.ClearClaims()
+	return _u
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_u *OAuthAuthorizeTransactionUpdateOne) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _u.mutation
@@ -1136,6 +1166,12 @@ func (_u *OAuthAuthorizeTransactionUpdateOne) sqlSave(ctx context.Context) (_nod
 	}
 	if _u.mutation.NonceCleared() {
 		_spec.ClearField(oauthauthorizetransaction.FieldNonce, field.TypeString)
+	}
+	if value, ok := _u.mutation.Claims(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldClaims, field.TypeJSON, value)
+	}
+	if _u.mutation.ClaimsCleared() {
+		_spec.ClearField(oauthauthorizetransaction.FieldClaims, field.TypeJSON)
 	}
 	_node = &OAuthAuthorizeTransaction{config: _u.config}
 	_spec.Assign = _node.assignValues

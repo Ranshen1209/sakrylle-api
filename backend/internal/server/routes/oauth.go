@@ -59,6 +59,11 @@ func RegisterOAuthRoutes(
 	r.GET("/.well-known/openid-configuration", h.OAuthProvider.OpenIDConfiguration)
 	r.GET("/.well-known/jwks.json", h.OAuthProvider.JWKS)
 
+	// OIDC UserInfo endpoint (§5.3). Outside /v1 so it is not gated on billing,
+	// balance, quota, or group assignment. Only validates Bearer token identity.
+	r.GET("/userinfo", h.OAuthProvider.UserInfo)
+	r.POST("/userinfo", h.OAuthProvider.UserInfo)
+
 	// RP-Initiated Logout (OIDC Session Management §5)
 	// GET/POST /oauth/logout accepts id_token_hint + post_logout_redirect_uri.
 	// No rate limit (logout is user-initiated, low volume).

@@ -45,7 +45,10 @@ var forbiddenIDTokenClaims = map[string]struct{}{
 // BuildIDTokenClaims constructs the OIDC id_token claim set.
 //
 //   - iss is fixed to the provider issuer (https://sub.sakrylle.com).
-//   - sub is the user's stable ID as a string (never email).
+//   - sub is the user's stable ID as a string (never email) for public clients,
+//     or the pairwise pseudonym for pairwise clients (OIDC Core §8).
+//   - pairwiseSub, when non-empty, overrides the public sub with the
+//     per-client pseudonym. Callers should compute it via ResolvePairwiseSub.
 //   - aud is a single-element array of the OAuth client_id. OIDC Core §2
 //     allows a string or an array; we emit an array so strict JS/Python RP
 //     libraries that always iterate aud do not throw.
@@ -65,6 +68,7 @@ func BuildIDTokenClaims(
 	authTime time.Time,
 	now time.Time,
 	ttl time.Duration,
+	pairwiseSub string,
 ) (jwt.MapClaims, error) {
 	if issuer == "" {
 		return nil, fmt.Errorf("oidc: issuer is required for id_token iss claim")
@@ -79,9 +83,14 @@ func BuildIDTokenClaims(
 		ttl = DefaultOIDCIDTokenTTL
 	}
 
+	sub := pairwiseSub
+	if sub == "" {
+		sub = strconv.FormatInt(u.UserID, 10)
+	}
+
 	claims := jwt.MapClaims{
 		"iss": issuer,
-		"sub": strconv.FormatInt(u.UserID, 10),
+		"sub": sub,
 		"aud": []string{clientID},
 		"iat": now.Unix(),
 		"exp": now.Add(ttl).Unix(),

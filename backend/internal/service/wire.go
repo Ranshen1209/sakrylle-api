@@ -569,6 +569,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIOAuthService,
 	NewGrokOAuthService,
 	ProvideOIDCKeyService,
+	ProvideOIDCKeyRotationScheduler,
 	ProvideOAuthProviderService,
 	NewDefaultGroupAccessPolicy,
 	NewGeminiOAuthService,
@@ -708,6 +709,19 @@ func ProvideOIDCKeyService(
 		println("[Service] Warning: OIDC key service initialization failed:", err.Error())
 	}
 	return svc
+}
+
+// ProvideOIDCKeyRotationScheduler creates the automatic key rotation scheduler
+// and starts its background goroutine. The scheduler reads configuration from
+// settings and periodically rotates OIDC signing keys (both RSA and EC).
+// Callers must call Stop() during graceful shutdown.
+func ProvideOIDCKeyRotationScheduler(
+	keySvc *OIDCKeyService,
+	settingRepo SettingRepository,
+) *OIDCKeyRotationScheduler {
+	scheduler := NewOIDCKeyRotationScheduler(keySvc, settingRepo)
+	scheduler.Start()
+	return scheduler
 }
 
 // ProvideOAuthProviderService wires OAuthProviderService and attaches the

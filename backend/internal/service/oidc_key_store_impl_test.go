@@ -38,7 +38,7 @@ func (m *mockEncryptor) Decrypt(ciphertext string) (string, error) {
 func TestSecuritySecretsOIDCKeyStore_Put_Success(t *testing.T) {
 	ctx := context.Background()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	enc := &mockEncryptor{}
 	store := NewSecuritySecretsOIDCKeyStore(client, enc)
@@ -66,7 +66,7 @@ func TestSecuritySecretsOIDCKeyStore_Put_Success(t *testing.T) {
 func TestSecuritySecretsOIDCKeyStore_Put_Upsert(t *testing.T) {
 	ctx := context.Background()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	enc := &mockEncryptor{}
 	store := NewSecuritySecretsOIDCKeyStore(client, enc)
@@ -111,7 +111,7 @@ func TestSecuritySecretsOIDCKeyStore_Put_Upsert(t *testing.T) {
 func TestSecuritySecretsOIDCKeyStore_Get_Success(t *testing.T) {
 	ctx := context.Background()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	enc := &mockEncryptor{}
 	store := NewSecuritySecretsOIDCKeyStore(client, enc)
@@ -144,7 +144,7 @@ func TestSecuritySecretsOIDCKeyStore_Get_Success(t *testing.T) {
 func TestSecuritySecretsOIDCKeyStore_Get_NotFound(t *testing.T) {
 	ctx := context.Background()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	enc := &mockEncryptor{}
 	store := NewSecuritySecretsOIDCKeyStore(client, enc)
@@ -166,7 +166,7 @@ func TestSecuritySecretsOIDCKeyStore_Get_NotFound(t *testing.T) {
 func TestSecuritySecretsOIDCKeyStore_Get_QueryError(t *testing.T) {
 	ctx := context.Background()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	client.Close() // Close client to trigger query error
+	_ = client.Close() // Close client to trigger query error
 
 	enc := &mockEncryptor{}
 	store := NewSecuritySecretsOIDCKeyStore(client, enc)
@@ -180,7 +180,7 @@ func TestSecuritySecretsOIDCKeyStore_Get_QueryError(t *testing.T) {
 func TestSecuritySecretsOIDCKeyStore_Integration_WithOIDCKeyService(t *testing.T) {
 	ctx := context.Background()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Use b64Encryptor from oidc_key_service_test.go (reversible test encryptor)
 	enc := b64Encryptor{}
@@ -248,7 +248,7 @@ func TestSecuritySecretsOIDCKeyStore_Integration_WithOIDCKeyService(t *testing.T
 func TestSecuritySecretsOIDCKeyStore_DecryptFailure_Handling(t *testing.T) {
 	ctx := context.Background()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Store a key with valid encryption
 	goodEnc := &mockEncryptor{}
@@ -285,7 +285,7 @@ func TestSecuritySecretsOIDCKeyStore_DecryptFailure_Handling(t *testing.T) {
 func TestSecuritySecretsOIDCKeyStore_EmptyValue_Rejected(t *testing.T) {
 	ctx := context.Background()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	enc := &mockEncryptor{}
 	store := NewSecuritySecretsOIDCKeyStore(client, enc)

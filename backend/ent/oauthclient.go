@@ -70,7 +70,17 @@ type OAuthClient struct {
 	TermsURL *string `json:"terms_url,omitempty"`
 	// JWS algorithm for id_token signing: RS256 or ES256; defaults to RS256
 	SigningAlgorithm string `json:"signing_algorithm,omitempty"`
-	selectValues     sql.SelectValues
+	// Pre-registered HTTPS URIs for fetching request objects; empty = not supported
+	RequestUris []string `json:"request_uris,omitempty"`
+	// URI that receives a logout_token POST on user logout; NULL means no back-channel notification
+	BackchannelLogoutURI *string `json:"backchannel_logout_uri,omitempty"`
+	// When true, include sid claim in id_tokens for back-channel logout
+	BackchannelLogoutSessionRequired bool `json:"backchannel_logout_session_required,omitempty"`
+	// Subject identifier type: public (same sub for all clients) or pairwise (per-client pseudonym)
+	SubjectType string `json:"subject_type,omitempty"`
+	// URI for fetching the sector identifier JSON document; empty means use redirect_uris hosts
+	SectorIdentifierURI *string `json:"sector_identifier_uri,omitempty"`
+	selectValues        sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -78,13 +88,13 @@ func (*OAuthClient) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case oauthclient.FieldRedirectUris, oauthclient.FieldAllowedScopes, oauthclient.FieldDefaultScopes, oauthclient.FieldAllowedGroupIds, oauthclient.FieldAllowedOrigins, oauthclient.FieldLogoutRedirectUris:
+		case oauthclient.FieldRedirectUris, oauthclient.FieldAllowedScopes, oauthclient.FieldDefaultScopes, oauthclient.FieldAllowedGroupIds, oauthclient.FieldAllowedOrigins, oauthclient.FieldLogoutRedirectUris, oauthclient.FieldRequestUris:
 			values[i] = new([]byte)
-		case oauthclient.FieldPkceRequired, oauthclient.FieldDisabled, oauthclient.FieldTrustedFirstParty, oauthclient.FieldDeviceFlowEnabled, oauthclient.FieldAllowRefreshWithoutOfflineAccess:
+		case oauthclient.FieldPkceRequired, oauthclient.FieldDisabled, oauthclient.FieldTrustedFirstParty, oauthclient.FieldDeviceFlowEnabled, oauthclient.FieldAllowRefreshWithoutOfflineAccess, oauthclient.FieldBackchannelLogoutSessionRequired:
 			values[i] = new(sql.NullBool)
 		case oauthclient.FieldID, oauthclient.FieldDefaultGroupID, oauthclient.FieldAccessTokenTTLSeconds, oauthclient.FieldRefreshTokenTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case oauthclient.FieldClientID, oauthclient.FieldName, oauthclient.FieldClientSecretHash, oauthclient.FieldClientType, oauthclient.FieldAppType, oauthclient.FieldIconURL, oauthclient.FieldHomepageURL, oauthclient.FieldPrivacyURL, oauthclient.FieldTermsURL, oauthclient.FieldSigningAlgorithm:
+		case oauthclient.FieldClientID, oauthclient.FieldName, oauthclient.FieldClientSecretHash, oauthclient.FieldClientType, oauthclient.FieldAppType, oauthclient.FieldIconURL, oauthclient.FieldHomepageURL, oauthclient.FieldPrivacyURL, oauthclient.FieldTermsURL, oauthclient.FieldSigningAlgorithm, oauthclient.FieldBackchannelLogoutURI, oauthclient.FieldSubjectType, oauthclient.FieldSectorIdentifierURI:
 			values[i] = new(sql.NullString)
 		case oauthclient.FieldCreatedAt, oauthclient.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -283,6 +293,40 @@ func (_m *OAuthClient) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.SigningAlgorithm = value.String
 			}
+		case oauthclient.FieldRequestUris:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field request_uris", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.RequestUris); err != nil {
+					return fmt.Errorf("unmarshal field request_uris: %w", err)
+				}
+			}
+		case oauthclient.FieldBackchannelLogoutURI:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field backchannel_logout_uri", values[i])
+			} else if value.Valid {
+				_m.BackchannelLogoutURI = new(string)
+				*_m.BackchannelLogoutURI = value.String
+			}
+		case oauthclient.FieldBackchannelLogoutSessionRequired:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field backchannel_logout_session_required", values[i])
+			} else if value.Valid {
+				_m.BackchannelLogoutSessionRequired = value.Bool
+			}
+		case oauthclient.FieldSubjectType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field subject_type", values[i])
+			} else if value.Valid {
+				_m.SubjectType = value.String
+			}
+		case oauthclient.FieldSectorIdentifierURI:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sector_identifier_uri", values[i])
+			} else if value.Valid {
+				_m.SectorIdentifierURI = new(string)
+				*_m.SectorIdentifierURI = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -408,6 +452,25 @@ func (_m *OAuthClient) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("signing_algorithm=")
 	builder.WriteString(_m.SigningAlgorithm)
+	builder.WriteString(", ")
+	builder.WriteString("request_uris=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RequestUris))
+	builder.WriteString(", ")
+	if v := _m.BackchannelLogoutURI; v != nil {
+		builder.WriteString("backchannel_logout_uri=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("backchannel_logout_session_required=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BackchannelLogoutSessionRequired))
+	builder.WriteString(", ")
+	builder.WriteString("subject_type=")
+	builder.WriteString(_m.SubjectType)
+	builder.WriteString(", ")
+	if v := _m.SectorIdentifierURI; v != nil {
+		builder.WriteString("sector_identifier_uri=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

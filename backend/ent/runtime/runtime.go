@@ -1299,6 +1299,20 @@ func init() {
 	oauthclient.DefaultSigningAlgorithm = oauthclientDescSigningAlgorithm.Default.(string)
 	// oauthclient.SigningAlgorithmValidator is a validator for the "signing_algorithm" field. It is called by the builders before save.
 	oauthclient.SigningAlgorithmValidator = oauthclientDescSigningAlgorithm.Validators[0].(func(string) error)
+	// oauthclientDescRequestUris is the schema descriptor for request_uris field.
+	oauthclientDescRequestUris := oauthclientFields[24].Descriptor()
+	// oauthclient.DefaultRequestUris holds the default value on creation for the request_uris field.
+	oauthclient.DefaultRequestUris = oauthclientDescRequestUris.Default.([]string)
+	// oauthclientDescBackchannelLogoutSessionRequired is the schema descriptor for backchannel_logout_session_required field.
+	oauthclientDescBackchannelLogoutSessionRequired := oauthclientFields[26].Descriptor()
+	// oauthclient.DefaultBackchannelLogoutSessionRequired holds the default value on creation for the backchannel_logout_session_required field.
+	oauthclient.DefaultBackchannelLogoutSessionRequired = oauthclientDescBackchannelLogoutSessionRequired.Default.(bool)
+	// oauthclientDescSubjectType is the schema descriptor for subject_type field.
+	oauthclientDescSubjectType := oauthclientFields[27].Descriptor()
+	// oauthclient.DefaultSubjectType holds the default value on creation for the subject_type field.
+	oauthclient.DefaultSubjectType = oauthclientDescSubjectType.Default.(string)
+	// oauthclient.SubjectTypeValidator is a validator for the "subject_type" field. It is called by the builders before save.
+	oauthclient.SubjectTypeValidator = oauthclientDescSubjectType.Validators[0].(func(string) error)
 	oauthcodeMixin := schema.OAuthCode{}.Mixin()
 	oauthcodeMixinFields0 := oauthcodeMixin[0].Fields()
 	_ = oauthcodeMixinFields0

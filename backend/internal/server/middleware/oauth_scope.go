@@ -72,10 +72,11 @@ func RequireOAuthScope(svc *service.OAuthProviderService) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		// §13.2 kill-switch: when scope enforcement is globally disabled, ALL
-		// sk_oauth_ tokens bypass scope checks immediately — before any DB
-		// metadata load. This ensures the toggle is a true global bypass, not
-		// just a nil-metadata escape hatch.
+
+		// §13.2 kill-switch: when scope enforcement is globally disabled,
+		// skip the metadata load and scope check entirely. The companion
+		// LoadOAuthMetadata middleware handles metadata loading for
+		// downstream handlers that need it (e.g. /v1/me field-level cropping).
 		if !svc.IsScopeEnforcementEnabled(ctx) {
 			c.Next()
 			return
@@ -110,6 +111,10 @@ func RequireOAuthScope(svc *service.OAuthProviderService) gin.HandlerFunc {
 			return
 		}
 
+		// Stash metadata for handlers that want it (e.g. /v1/me).
+		c.Set(string(ContextKeyOAuthMetadata), meta)
+		svc.TouchAccessTokenLastUsed(ctx, apiKey.ID, c.ClientIP(), c.Request.UserAgent())
+
 		method := c.Request.Method
 		path := requestPath(c)
 		required, listed := service.OAuthScopePolicyForRequest(method, path)
@@ -134,22 +139,21 @@ func RequireOAuthScope(svc *service.OAuthProviderService) gin.HandlerFunc {
 			return
 		}
 
-		// Stash metadata for handlers that want it (e.g. /v1/me). Throttled
-		// last_used touch is best-effort; the service swallows failures.
-		c.Set(string(ContextKeyOAuthMetadata), meta)
-		svc.TouchAccessTokenLastUsed(ctx, apiKey.ID, c.ClientIP(), c.Request.UserAgent())
-
 		c.Next()
 	}
 }
 
 // LoadOAuthMetadata loads OAuth metadata into gin context but does NOT
-// enforce a scope check. Used for /v1/me where the handler crops fields by
-// scope itself (any of profile:read / account:read / account:balance:read is
-// sufficient and unlocks different field families).
+// enforce a scope check. Used for /v1/me and /userinfo where the handler
+// crops fields by scope itself.
 //
-// Behaviour mirrors RequireOAuthScope's metadata-load step — manual API keys
-// pass through unchanged.
+// This middleware always loads OAuth metadata for sk_oauth_ tokens regardless
+// of the oauth_scope_enforcement_enabled kill-switch. The kill-switch controls
+// scope ENFORCEMENT (rejecting requests with insufficient scopes), not metadata
+// AVAILABILITY. Without metadata, the /v1/me handler cannot distinguish OAuth
+// tokens from manual API keys and falls through to the full-account-view path.
+//
+// Manual API keys pass through unchanged.
 func LoadOAuthMetadata(svc *service.OAuthProviderService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if svc == nil {
@@ -165,10 +169,11 @@ func LoadOAuthMetadata(svc *service.OAuthProviderService) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if !svc.IsScopeEnforcementEnabled(c.Request.Context()) {
-			c.Next()
-			return
-		}
+
+		// Always load OAuth metadata for sk_oauth_ tokens. The kill-switch
+		// controls scope enforcement, not metadata availability — without
+		// metadata the /v1/me handler treats OAuth tokens as manual API keys
+		// and returns the full account view without OIDC sub claim.
 		meta, err := svc.LoadOAuthAccessMetadata(c.Request.Context(), apiKey.ID)
 		if err != nil {
 			WriteOAuthResourceError(c, OAuthResourceError{
@@ -211,10 +216,6 @@ func RejectOAuthTokensForUnlistedResource(svc *service.OAuthProviderService) gin
 			c.Next()
 			return
 		}
-		if !svc.IsScopeEnforcementEnabled(c.Request.Context()) {
-			c.Next()
-			return
-		}
 		meta, err := svc.LoadOAuthAccessMetadata(c.Request.Context(), apiKey.ID)
 		if err != nil {
 			WriteOAuthResourceError(c, OAuthResourceError{
@@ -226,11 +227,19 @@ func RejectOAuthTokensForUnlistedResource(svc *service.OAuthProviderService) gin
 			return
 		}
 		if meta == nil {
-			// Either feature flag off, or legacy sk_oauth_ row without v2
-			// metadata. Pass through; v1 tokens predate the matrix.
+			// Legacy sk_oauth_ row without v2 metadata. Pass through; v1 tokens
+			// predate the matrix.
 			c.Next()
 			return
 		}
+
+		// §13.2 kill-switch: when scope enforcement is globally disabled,
+		// allow OAuth tokens through to unlisted resources.
+		if !svc.IsScopeEnforcementEnabled(c.Request.Context()) {
+			c.Next()
+			return
+		}
+
 		WriteOAuthResourceError(c, OAuthResourceError{
 			Status:              http.StatusForbidden,
 			Code:                OAuthErrInsufficientScope,
