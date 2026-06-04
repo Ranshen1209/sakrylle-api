@@ -1,7 +1,6 @@
 package handler_test
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -62,7 +61,7 @@ func TestOIDCDiscovery(t *testing.T) {
 			assert.Equal(t, tt.wantStatus, w.Code)
 
 			if !tt.wantError {
-				var discovery map[string]interface{}
+				var discovery map[string]any
 				err := json.Unmarshal(w.Body.Bytes(), &discovery)
 				require.NoError(t, err, "discovery must be valid JSON")
 
@@ -87,24 +86,24 @@ func TestOIDCDiscovery(t *testing.T) {
 				assert.Equal(t, "https://sub.sakrylle.com", issuer)
 
 				// Verify algorithms
-				algs, ok := discovery["id_token_signing_alg_values_supported"].([]interface{})
+				algs, ok := discovery["id_token_signing_alg_values_supported"].([]any)
 				require.True(t, ok, "algs must be array")
 				assert.Contains(t, algs, "RS256", "must support RS256")
 
 				// Verify subject_types
-				subjectTypes, ok := discovery["subject_types_supported"].([]interface{})
+				subjectTypes, ok := discovery["subject_types_supported"].([]any)
 				require.True(t, ok, "subject_types must be array")
 				assert.Contains(t, subjectTypes, "public")
 
 				// Verify scopes
-				scopes, ok := discovery["scopes_supported"].([]interface{})
+				scopes, ok := discovery["scopes_supported"].([]any)
 				require.True(t, ok, "scopes must be array")
 				assert.Contains(t, scopes, "openid")
 				assert.Contains(t, scopes, "profile")
 				assert.Contains(t, scopes, "email")
 
 				// Verify claims
-				claims, ok := discovery["claims_supported"].([]interface{})
+				claims, ok := discovery["claims_supported"].([]any)
 				require.True(t, ok, "claims must be array")
 				requiredClaims := []string{"iss", "sub", "aud", "exp", "iat"}
 				for _, claim := range requiredClaims {
@@ -155,17 +154,18 @@ func TestJWKS(t *testing.T) {
 			assert.Equal(t, tt.wantStatus, w.Code)
 
 			if tt.minKeys > 0 {
-				var jwks map[string]interface{}
+				var jwks map[string]any
 				err := json.Unmarshal(w.Body.Bytes(), &jwks)
 				require.NoError(t, err, "jwks must be valid JSON")
 
-				keys, ok := jwks["keys"].([]interface{})
+				keys, ok := jwks["keys"].([]any)
 				require.True(t, ok, "keys must be array")
 				assert.GreaterOrEqual(t, len(keys), tt.minKeys)
 
 				// Verify first key structure
 				if len(keys) > 0 {
-					key := keys[0].(map[string]interface{})
+					key, ok := keys[0].(map[string]any)
+					require.True(t, ok)
 					assert.Contains(t, key, "kty", "key must have kty")
 					assert.Contains(t, key, "kid", "key must have kid")
 					assert.Contains(t, key, "alg", "key must have alg")
@@ -185,7 +185,6 @@ func TestJWKS(t *testing.T) {
 
 // TestIDTokenIssuance verifies id_token is issued when openid scope is requested
 func TestIDTokenIssuance(t *testing.T) {
-	ctx := context.Background()
 	provider := setupTestProvider(t, true)
 
 	// Create test client with OIDC scopes
@@ -195,12 +194,12 @@ func TestIDTokenIssuance(t *testing.T) {
 	}
 
 	tests := []struct {
-		name         string
-		scopes       []string
-		wantIDToken  bool
-		withNonce    bool
-		expectedKid  string
-		expectedAlg  string
+		name        string
+		scopes      []string
+		wantIDToken bool
+		withNonce   bool
+		expectedKid string
+		expectedAlg string
 	}{
 		{
 			name:        "openid scope - should issue id_token",
@@ -234,7 +233,7 @@ func TestIDTokenIssuance(t *testing.T) {
 				nonce = randomString(32)
 			}
 
-			issued, err := provider.IssueAuthorizationCode(ctx, client, 1, &service.AuthorizeRequest{
+			issued, err := provider.IssueAuthorizationCode(t.Context(), client, 1, &service.AuthorizeRequest{
 				ClientID:     client.ClientID,
 				RedirectURI:  "https://app.example.com/callback",
 				ResponseType: "code",
@@ -245,7 +244,7 @@ func TestIDTokenIssuance(t *testing.T) {
 			require.NoError(t, err)
 
 			// Exchange code for tokens
-			tokens, err := provider.ExchangeAuthorizationCode(ctx, client.ClientID, "", issued.Code, "https://app.example.com/callback", "")
+			tokens, err := provider.ExchangeAuthorizationCode(t.Context(), client.ClientID, "", issued.Code, "https://app.example.com/callback", "")
 			require.NoError(t, err)
 
 			if tt.wantIDToken {
@@ -258,7 +257,7 @@ func TestIDTokenIssuance(t *testing.T) {
 				// Decode header
 				headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
 				require.NoError(t, err)
-				var header map[string]interface{}
+				var header map[string]any
 				err = json.Unmarshal(headerJSON, &header)
 				require.NoError(t, err)
 
@@ -270,7 +269,7 @@ func TestIDTokenIssuance(t *testing.T) {
 				// Decode payload
 				payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
 				require.NoError(t, err)
-				var payload map[string]interface{}
+				var payload map[string]any
 				err = json.Unmarshal(payloadJSON, &payload)
 				require.NoError(t, err)
 
@@ -310,17 +309,16 @@ func TestIDTokenIssuance(t *testing.T) {
 
 // TestNonceEcho verifies nonce is correctly echoed in id_token (OIDC Core §3.1.2.1)
 func TestNonceEcho(t *testing.T) {
-	ctx := context.Background()
 	provider := setupTestProvider(t, true)
 
 	nonce := randomString(32)
 
 	// Lookup test client
-	client, err := provider.LookupClient(ctx, "test-client")
+	client, err := provider.LookupClient(t.Context(), "test-client")
 	require.NoError(t, err)
 
 	// Issue code with nonce
-	issued, err := provider.IssueAuthorizationCode(ctx, client, 1, &service.AuthorizeRequest{
+	issued, err := provider.IssueAuthorizationCode(t.Context(), client, 1, &service.AuthorizeRequest{
 		ClientID:     "test-client",
 		RedirectURI:  "https://app.example.com/callback",
 		ResponseType: "code",
@@ -331,7 +329,7 @@ func TestNonceEcho(t *testing.T) {
 	require.NoError(t, err)
 
 	// Exchange code
-	tokens, err := provider.ExchangeAuthorizationCode(ctx, "test-client", "", issued.Code, "https://app.example.com/callback", "")
+	tokens, err := provider.ExchangeAuthorizationCode(t.Context(), "test-client", "", issued.Code, "https://app.example.com/callback", "")
 	require.NoError(t, err)
 	require.NotEmpty(t, tokens.IDToken)
 
@@ -340,7 +338,7 @@ func TestNonceEcho(t *testing.T) {
 	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
 	require.NoError(t, err)
 
-	var payload map[string]interface{}
+	var payload map[string]any
 	err = json.Unmarshal(payloadJSON, &payload)
 	require.NoError(t, err)
 
@@ -353,11 +351,11 @@ func TestUserInfoWithOpenID(t *testing.T) {
 	h := setupTestMeHandler(t)
 
 	tests := []struct {
-		name       string
-		scopes     []string
-		wantSub    bool
-		wantEmail  bool
-		wantName   bool
+		name      string
+		scopes    []string
+		wantSub   bool
+		wantEmail bool
+		wantName  bool
 	}{
 		{
 			name:      "openid scope - returns sub",
@@ -407,7 +405,7 @@ func TestUserInfoWithOpenID(t *testing.T) {
 
 			assert.Equal(t, http.StatusOK, w.Code)
 
-			var response map[string]interface{}
+			var response map[string]any
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			require.NoError(t, err)
 
@@ -458,11 +456,11 @@ func TestLogoutFlow(t *testing.T) {
 			wantStateInURL:     true,
 		},
 		{
-			name:           "no post_logout_redirect_uri - success page",
-			idTokenHint:    validIDToken,
-			postLogoutURI:  "",
-			wantStatus:     http.StatusOK,
-			wantRedirect:   false,
+			name:          "no post_logout_redirect_uri - success page",
+			idTokenHint:   validIDToken,
+			postLogoutURI: "",
+			wantStatus:    http.StatusOK,
+			wantRedirect:  false,
 		},
 		{
 			name:               "post_logout_uri not whitelisted - error",
@@ -527,67 +525,7 @@ func TestLogoutFlow(t *testing.T) {
 
 // TestPromptNone verifies prompt=none silent authentication (OIDC Core §3.1.2.1)
 func TestPromptNone(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	h := setupTestOAuthHandler(t, true)
-
-	validSession := createTestSession(t, 1)
-
-	tests := []struct {
-		name           string
-		session        string
-		wantStatus     int
-		wantError      string
-		wantCode       bool
-	}{
-		{
-			name:       "valid session - issue code",
-			session:    validSession,
-			wantStatus: http.StatusFound,
-			wantCode:   true,
-		},
-		{
-			name:       "no session - login_required",
-			session:    "",
-			wantStatus: http.StatusFound,
-			wantError:  "login_required",
-		},
-		{
-			name:       "invalid session - login_required",
-			session:    "invalid-token",
-			wantStatus: http.StatusFound,
-			wantError:  "login_required",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reqURL := "/oauth/authorize?client_id=test-client&redirect_uri=https://app.example.com/callback&response_type=code&scope=openid&prompt=none&state=test-state"
-
-			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
-			c.Request = httptest.NewRequest("GET", reqURL, nil)
-
-			if tt.session != "" {
-				c.Request.Header.Set("Authorization", "Bearer "+tt.session)
-			}
-
-			h.Authorize(c)
-
-			assert.Equal(t, tt.wantStatus, w.Code)
-
-			location := w.Header().Get("Location")
-			assert.NotEmpty(t, location, "must redirect")
-
-			if tt.wantError != "" {
-				assert.Contains(t, location, "error="+tt.wantError)
-			}
-
-			if tt.wantCode {
-				assert.Contains(t, location, "code=")
-				assert.NotContains(t, location, "error=")
-			}
-		})
-	}
+	t.Skip("OAuth handler test wiring not implemented")
 }
 
 // Helper functions
@@ -652,18 +590,13 @@ func createTestIDToken(t *testing.T, clientID string, userID int64) string {
 	return signed
 }
 
-func createTestSession(t *testing.T, userID int64) string {
-	t.Skip("session test factory not implemented")
-	return ""
-}
-
 func setupLogoutWhitelist(t *testing.T, clientID string, uris []string) {
 	t.Skip("logout whitelist test setup not implemented")
 }
 
 func randomString(n int) string {
 	b := make([]byte, n)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 

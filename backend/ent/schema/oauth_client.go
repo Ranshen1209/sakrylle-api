@@ -127,6 +127,43 @@ func (OAuthClient) Fields() []ent.Field {
 			MaxLen(16).
 			Default("RS256").
 			Comment("JWS algorithm for id_token signing: RS256 or ES256; defaults to RS256"),
+
+		// ── OIDC request_uri (migration 155) ──────────────────────────────
+		// request_uris lists pre-registered HTTPS URIs from which the client's
+		// request objects may be fetched (OIDC Core §6.3). Each entry MUST use
+		// the https scheme (enforced at the application layer).
+		field.JSON("request_uris", []string{}).
+			Default([]string{}).
+			Comment("Pre-registered HTTPS URIs for fetching request objects; empty = not supported"),
+
+		// ── OIDC back-channel logout (migration 156) ──────────────────────
+		// backchannel_logout_uri receives logout_token POSTs when the user
+		// logs out via RP-Initiated Logout. NULL = no back-channel notification.
+		field.Text("backchannel_logout_uri").
+			Optional().
+			Nillable().
+			Comment("URI that receives a logout_token POST on user logout; NULL means no back-channel notification"),
+		// backchannel_logout_session_required: when true, the OP includes a sid
+		// claim in id_tokens so the RP can identify the session in logout tokens.
+		field.Bool("backchannel_logout_session_required").
+			Default(false).
+			Comment("When true, include sid claim in id_tokens for back-channel logout"),
+
+		// ── OIDC pairwise subject (migration 153) ─────────────────────────
+		// subject_type controls whether the sub claim is the user's stable ID
+		// ("public") or a per-client pseudonym ("pairwise", OIDC Core §8).
+		// The DB CHECK constraint restricts values to public|pairwise.
+		field.String("subject_type").
+			MaxLen(16).
+			Default("public").
+			Comment("Subject identifier type: public (same sub for all clients) or pairwise (per-client pseudonym)"),
+		// sector_identifier_uri is the URL from which the client's sector
+		// identifier is fetched. When empty, the sector identifier is derived
+		// from the host portion of the client's redirect_uris (OIDC Core §8.1).
+		field.Text("sector_identifier_uri").
+			Optional().
+			Nillable().
+			Comment("URI for fetching the sector identifier JSON document; empty means use redirect_uris hosts"),
 	}
 }
 

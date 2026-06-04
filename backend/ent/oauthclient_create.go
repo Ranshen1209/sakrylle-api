@@ -322,6 +322,68 @@ func (_c *OAuthClientCreate) SetNillableSigningAlgorithm(v *string) *OAuthClient
 	return _c
 }
 
+// SetRequestUris sets the "request_uris" field.
+func (_c *OAuthClientCreate) SetRequestUris(v []string) *OAuthClientCreate {
+	_c.mutation.SetRequestUris(v)
+	return _c
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (_c *OAuthClientCreate) SetBackchannelLogoutURI(v string) *OAuthClientCreate {
+	_c.mutation.SetBackchannelLogoutURI(v)
+	return _c
+}
+
+// SetNillableBackchannelLogoutURI sets the "backchannel_logout_uri" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableBackchannelLogoutURI(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetBackchannelLogoutURI(*v)
+	}
+	return _c
+}
+
+// SetBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field.
+func (_c *OAuthClientCreate) SetBackchannelLogoutSessionRequired(v bool) *OAuthClientCreate {
+	_c.mutation.SetBackchannelLogoutSessionRequired(v)
+	return _c
+}
+
+// SetNillableBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableBackchannelLogoutSessionRequired(v *bool) *OAuthClientCreate {
+	if v != nil {
+		_c.SetBackchannelLogoutSessionRequired(*v)
+	}
+	return _c
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (_c *OAuthClientCreate) SetSubjectType(v string) *OAuthClientCreate {
+	_c.mutation.SetSubjectType(v)
+	return _c
+}
+
+// SetNillableSubjectType sets the "subject_type" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableSubjectType(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetSubjectType(*v)
+	}
+	return _c
+}
+
+// SetSectorIdentifierURI sets the "sector_identifier_uri" field.
+func (_c *OAuthClientCreate) SetSectorIdentifierURI(v string) *OAuthClientCreate {
+	_c.mutation.SetSectorIdentifierURI(v)
+	return _c
+}
+
+// SetNillableSectorIdentifierURI sets the "sector_identifier_uri" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableSectorIdentifierURI(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetSectorIdentifierURI(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_c *OAuthClientCreate) Mutation() *OAuthClientMutation {
 	return _c.mutation
@@ -417,6 +479,18 @@ func (_c *OAuthClientCreate) defaults() {
 		v := oauthclient.DefaultSigningAlgorithm
 		_c.mutation.SetSigningAlgorithm(v)
 	}
+	if _, ok := _c.mutation.RequestUris(); !ok {
+		v := oauthclient.DefaultRequestUris
+		_c.mutation.SetRequestUris(v)
+	}
+	if _, ok := _c.mutation.BackchannelLogoutSessionRequired(); !ok {
+		v := oauthclient.DefaultBackchannelLogoutSessionRequired
+		_c.mutation.SetBackchannelLogoutSessionRequired(v)
+	}
+	if _, ok := _c.mutation.SubjectType(); !ok {
+		v := oauthclient.DefaultSubjectType
+		_c.mutation.SetSubjectType(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -501,6 +575,20 @@ func (_c *OAuthClientCreate) check() error {
 	if v, ok := _c.mutation.SigningAlgorithm(); ok {
 		if err := oauthclient.SigningAlgorithmValidator(v); err != nil {
 			return &ValidationError{Name: "signing_algorithm", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.signing_algorithm": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.RequestUris(); !ok {
+		return &ValidationError{Name: "request_uris", err: errors.New(`ent: missing required field "OAuthClient.request_uris"`)}
+	}
+	if _, ok := _c.mutation.BackchannelLogoutSessionRequired(); !ok {
+		return &ValidationError{Name: "backchannel_logout_session_required", err: errors.New(`ent: missing required field "OAuthClient.backchannel_logout_session_required"`)}
+	}
+	if _, ok := _c.mutation.SubjectType(); !ok {
+		return &ValidationError{Name: "subject_type", err: errors.New(`ent: missing required field "OAuthClient.subject_type"`)}
+	}
+	if v, ok := _c.mutation.SubjectType(); ok {
+		if err := oauthclient.SubjectTypeValidator(v); err != nil {
+			return &ValidationError{Name: "subject_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.subject_type": %w`, err)}
 		}
 	}
 	return nil
@@ -633,6 +721,26 @@ func (_c *OAuthClientCreate) createSpec() (*OAuthClient, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SigningAlgorithm(); ok {
 		_spec.SetField(oauthclient.FieldSigningAlgorithm, field.TypeString, value)
 		_node.SigningAlgorithm = value
+	}
+	if value, ok := _c.mutation.RequestUris(); ok {
+		_spec.SetField(oauthclient.FieldRequestUris, field.TypeJSON, value)
+		_node.RequestUris = value
+	}
+	if value, ok := _c.mutation.BackchannelLogoutURI(); ok {
+		_spec.SetField(oauthclient.FieldBackchannelLogoutURI, field.TypeString, value)
+		_node.BackchannelLogoutURI = &value
+	}
+	if value, ok := _c.mutation.BackchannelLogoutSessionRequired(); ok {
+		_spec.SetField(oauthclient.FieldBackchannelLogoutSessionRequired, field.TypeBool, value)
+		_node.BackchannelLogoutSessionRequired = value
+	}
+	if value, ok := _c.mutation.SubjectType(); ok {
+		_spec.SetField(oauthclient.FieldSubjectType, field.TypeString, value)
+		_node.SubjectType = value
+	}
+	if value, ok := _c.mutation.SectorIdentifierURI(); ok {
+		_spec.SetField(oauthclient.FieldSectorIdentifierURI, field.TypeString, value)
+		_node.SectorIdentifierURI = &value
 	}
 	return _node, _spec
 }
@@ -1043,6 +1151,78 @@ func (u *OAuthClientUpsert) SetSigningAlgorithm(v string) *OAuthClientUpsert {
 // UpdateSigningAlgorithm sets the "signing_algorithm" field to the value that was provided on create.
 func (u *OAuthClientUpsert) UpdateSigningAlgorithm() *OAuthClientUpsert {
 	u.SetExcluded(oauthclient.FieldSigningAlgorithm)
+	return u
+}
+
+// SetRequestUris sets the "request_uris" field.
+func (u *OAuthClientUpsert) SetRequestUris(v []string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldRequestUris, v)
+	return u
+}
+
+// UpdateRequestUris sets the "request_uris" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateRequestUris() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldRequestUris)
+	return u
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (u *OAuthClientUpsert) SetBackchannelLogoutURI(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldBackchannelLogoutURI, v)
+	return u
+}
+
+// UpdateBackchannelLogoutURI sets the "backchannel_logout_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateBackchannelLogoutURI() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldBackchannelLogoutURI)
+	return u
+}
+
+// ClearBackchannelLogoutURI clears the value of the "backchannel_logout_uri" field.
+func (u *OAuthClientUpsert) ClearBackchannelLogoutURI() *OAuthClientUpsert {
+	u.SetNull(oauthclient.FieldBackchannelLogoutURI)
+	return u
+}
+
+// SetBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field.
+func (u *OAuthClientUpsert) SetBackchannelLogoutSessionRequired(v bool) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldBackchannelLogoutSessionRequired, v)
+	return u
+}
+
+// UpdateBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateBackchannelLogoutSessionRequired() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldBackchannelLogoutSessionRequired)
+	return u
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (u *OAuthClientUpsert) SetSubjectType(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldSubjectType, v)
+	return u
+}
+
+// UpdateSubjectType sets the "subject_type" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateSubjectType() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldSubjectType)
+	return u
+}
+
+// SetSectorIdentifierURI sets the "sector_identifier_uri" field.
+func (u *OAuthClientUpsert) SetSectorIdentifierURI(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldSectorIdentifierURI, v)
+	return u
+}
+
+// UpdateSectorIdentifierURI sets the "sector_identifier_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateSectorIdentifierURI() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldSectorIdentifierURI)
+	return u
+}
+
+// ClearSectorIdentifierURI clears the value of the "sector_identifier_uri" field.
+func (u *OAuthClientUpsert) ClearSectorIdentifierURI() *OAuthClientUpsert {
+	u.SetNull(oauthclient.FieldSectorIdentifierURI)
 	return u
 }
 
@@ -1508,6 +1688,90 @@ func (u *OAuthClientUpsertOne) SetSigningAlgorithm(v string) *OAuthClientUpsertO
 func (u *OAuthClientUpsertOne) UpdateSigningAlgorithm() *OAuthClientUpsertOne {
 	return u.Update(func(s *OAuthClientUpsert) {
 		s.UpdateSigningAlgorithm()
+	})
+}
+
+// SetRequestUris sets the "request_uris" field.
+func (u *OAuthClientUpsertOne) SetRequestUris(v []string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetRequestUris(v)
+	})
+}
+
+// UpdateRequestUris sets the "request_uris" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateRequestUris() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateRequestUris()
+	})
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (u *OAuthClientUpsertOne) SetBackchannelLogoutURI(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetBackchannelLogoutURI(v)
+	})
+}
+
+// UpdateBackchannelLogoutURI sets the "backchannel_logout_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateBackchannelLogoutURI() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateBackchannelLogoutURI()
+	})
+}
+
+// ClearBackchannelLogoutURI clears the value of the "backchannel_logout_uri" field.
+func (u *OAuthClientUpsertOne) ClearBackchannelLogoutURI() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearBackchannelLogoutURI()
+	})
+}
+
+// SetBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field.
+func (u *OAuthClientUpsertOne) SetBackchannelLogoutSessionRequired(v bool) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetBackchannelLogoutSessionRequired(v)
+	})
+}
+
+// UpdateBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateBackchannelLogoutSessionRequired() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateBackchannelLogoutSessionRequired()
+	})
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (u *OAuthClientUpsertOne) SetSubjectType(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetSubjectType(v)
+	})
+}
+
+// UpdateSubjectType sets the "subject_type" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateSubjectType() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateSubjectType()
+	})
+}
+
+// SetSectorIdentifierURI sets the "sector_identifier_uri" field.
+func (u *OAuthClientUpsertOne) SetSectorIdentifierURI(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetSectorIdentifierURI(v)
+	})
+}
+
+// UpdateSectorIdentifierURI sets the "sector_identifier_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateSectorIdentifierURI() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateSectorIdentifierURI()
+	})
+}
+
+// ClearSectorIdentifierURI clears the value of the "sector_identifier_uri" field.
+func (u *OAuthClientUpsertOne) ClearSectorIdentifierURI() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearSectorIdentifierURI()
 	})
 }
 
@@ -2139,6 +2403,90 @@ func (u *OAuthClientUpsertBulk) SetSigningAlgorithm(v string) *OAuthClientUpsert
 func (u *OAuthClientUpsertBulk) UpdateSigningAlgorithm() *OAuthClientUpsertBulk {
 	return u.Update(func(s *OAuthClientUpsert) {
 		s.UpdateSigningAlgorithm()
+	})
+}
+
+// SetRequestUris sets the "request_uris" field.
+func (u *OAuthClientUpsertBulk) SetRequestUris(v []string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetRequestUris(v)
+	})
+}
+
+// UpdateRequestUris sets the "request_uris" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateRequestUris() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateRequestUris()
+	})
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (u *OAuthClientUpsertBulk) SetBackchannelLogoutURI(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetBackchannelLogoutURI(v)
+	})
+}
+
+// UpdateBackchannelLogoutURI sets the "backchannel_logout_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateBackchannelLogoutURI() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateBackchannelLogoutURI()
+	})
+}
+
+// ClearBackchannelLogoutURI clears the value of the "backchannel_logout_uri" field.
+func (u *OAuthClientUpsertBulk) ClearBackchannelLogoutURI() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearBackchannelLogoutURI()
+	})
+}
+
+// SetBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field.
+func (u *OAuthClientUpsertBulk) SetBackchannelLogoutSessionRequired(v bool) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetBackchannelLogoutSessionRequired(v)
+	})
+}
+
+// UpdateBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateBackchannelLogoutSessionRequired() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateBackchannelLogoutSessionRequired()
+	})
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (u *OAuthClientUpsertBulk) SetSubjectType(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetSubjectType(v)
+	})
+}
+
+// UpdateSubjectType sets the "subject_type" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateSubjectType() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateSubjectType()
+	})
+}
+
+// SetSectorIdentifierURI sets the "sector_identifier_uri" field.
+func (u *OAuthClientUpsertBulk) SetSectorIdentifierURI(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetSectorIdentifierURI(v)
+	})
+}
+
+// UpdateSectorIdentifierURI sets the "sector_identifier_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateSectorIdentifierURI() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateSectorIdentifierURI()
+	})
+}
+
+// ClearSectorIdentifierURI clears the value of the "sector_identifier_uri" field.
+func (u *OAuthClientUpsertBulk) ClearSectorIdentifierURI() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearSectorIdentifierURI()
 	})
 }
 

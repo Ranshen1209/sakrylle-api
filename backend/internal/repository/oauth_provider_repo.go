@@ -1111,6 +1111,11 @@ func entOAuthClientToService(row *dbent.OAuthClient) *service.OAuthClient {
 		PrivacyURL:                       row.PrivacyURL,
 		TermsURL:                         row.TermsURL,
 		SigningAlgorithm:                 row.SigningAlgorithm,
+		SubjectType:                      row.SubjectType,
+		SectorIdentifierURI:             row.SectorIdentifierURI,
+		RequestURIs:                      row.RequestUris,
+		BackchannelLogoutURI:             row.BackchannelLogoutURI,
+		BackchannelLogoutSessionRequired: row.BackchannelLogoutSessionRequired,
 	}
 	if row.ClientSecretHash != nil {
 		out.ClientSecretHash = *row.ClientSecretHash
@@ -1238,16 +1243,17 @@ func entOAuthAuthorizeTransactionToService(row *dbent.OAuthAuthorizeTransaction)
 		CreatedUserAgent:      row.CreatedUserAgent,
 		CreatedAt:             row.CreatedAt,
 		Nonce:                 row.Nonce,
+		Claims:                row.Claims,
 	}
 }
 
 // Compile-time interface assertions.
 var (
-	_ service.OAuthClientRepository                = (*oauthProviderRepository)(nil)
-	_ service.OAuthCodeRepository                  = (*oauthProviderRepository)(nil)
-	_ service.OAuthRefreshTokenRepository          = (*oauthProviderRepository)(nil)
-	_ service.OAuthAccessTokenRepository           = (*oauthProviderRepository)(nil)
-	_ service.OAuthDeviceCodeRepository            = (*oauthProviderRepository)(nil)
-	_ service.OAuthAuthorizeTransactionRepository  = (*oauthProviderRepository)(nil)
-	_ service.OAuthAuthorizeAtomicRepository       = (*oauthProviderRepository)(nil)
+	_ service.OAuthClientRepository               = (*oauthProviderRepository)(nil)
+	_ service.OAuthCodeRepository                 = (*oauthProviderRepository)(nil)
+	_ service.OAuthRefreshTokenRepository         = (*oauthProviderRepository)(nil)
+	_ service.OAuthAccessTokenRepository          = (*oauthProviderRepository)(nil)
+	_ service.OAuthDeviceCodeRepository           = (*oauthProviderRepository)(nil)
+	_ service.OAuthAuthorizeTransactionRepository = (*oauthProviderRepository)(nil)
+	_ service.OAuthAuthorizeAtomicRepository      = (*oauthProviderRepository)(nil)
 )

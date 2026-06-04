@@ -878,6 +878,7 @@ var (
 		{Name: "created_ip", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "created_user_agent", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "nonce", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "claims", Type: field.TypeJSON, Nullable: true},
 	}
 	// OauthAuthorizeTransactionsTable holds the schema information for the "oauth_authorize_transactions" table.
 	OauthAuthorizeTransactionsTable = &schema.Table{
@@ -931,6 +932,11 @@ var (
 		{Name: "privacy_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "terms_url", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "signing_algorithm", Type: field.TypeString, Size: 16, Default: "RS256"},
+		{Name: "request_uris", Type: field.TypeJSON},
+		{Name: "backchannel_logout_uri", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "backchannel_logout_session_required", Type: field.TypeBool, Default: false},
+		{Name: "subject_type", Type: field.TypeString, Size: 16, Default: "public"},
+		{Name: "sector_identifier_uri", Type: field.TypeString, Nullable: true, Size: 2147483647},
 	}
 	// OauthClientsTable holds the schema information for the "oauth_clients" table.
 	OauthClientsTable = &schema.Table{

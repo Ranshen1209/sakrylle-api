@@ -1195,6 +1195,7 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return ids
 	}
 }
+
 // AntigravityModels 返回 Antigravity 支持的全部模型
 // GET /antigravity/models
 func (h *GatewayHandler) AntigravityModels(c *gin.Context) {

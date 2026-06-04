@@ -14,7 +14,7 @@ func baseUser() OIDCUserClaims {
 
 func TestBuildIDTokenClaims_RequiredClaims(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	claims, err := BuildIDTokenClaims(testIssuer, "client-x", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour)
+	claims, err := BuildIDTokenClaims(testIssuer, "client-x", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestBuildIDTokenClaims_ScopeGating(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 
 	// openid only: no profile/email claims.
-	c, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour)
+	c, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour, "")
 	for _, k := range []string{"name", "preferred_username", "email", "email_verified"} {
 		if _, ok := c[k]; ok {
 			t.Errorf("claim %q must be absent without its scope", k)
@@ -49,7 +49,7 @@ func TestBuildIDTokenClaims_ScopeGating(t *testing.T) {
 	}
 
 	// openid + profile + email: claims present.
-	c2, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid", "profile", "email"}, "", time.Time{}, now, time.Hour)
+	c2, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid", "profile", "email"}, "", time.Time{}, now, time.Hour, "")
 	if c2["name"] != "alice" || c2["preferred_username"] != "alice" {
 		t.Errorf("profile scope must yield name/preferred_username; got name=%v pref=%v", c2["name"], c2["preferred_username"])
 	}
@@ -69,12 +69,12 @@ func TestBuildIDTokenClaims_AuthTime(t *testing.T) {
 	authTime := time.Unix(1_699_999_000, 0)
 
 	// auth_time present when supplied (RP may request max_age / step-up).
-	c, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "", authTime, now, time.Hour)
+	c, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "", authTime, now, time.Hour, "")
 	if c["auth_time"] != authTime.Unix() {
 		t.Errorf("auth_time = %v, want %d", c["auth_time"], authTime.Unix())
 	}
 	// auth_time omitted when zero (unknown).
-	c2, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour)
+	c2, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour, "")
 	if _, ok := c2["auth_time"]; ok {
 		t.Error("auth_time must be absent when authTime is zero")
 	}
@@ -82,11 +82,11 @@ func TestBuildIDTokenClaims_AuthTime(t *testing.T) {
 
 func TestBuildIDTokenClaims_NonceRoundTrip(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	withNonce, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "n-123", time.Time{}, now, time.Hour)
+	withNonce, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "n-123", time.Time{}, now, time.Hour, "")
 	if withNonce["nonce"] != "n-123" {
 		t.Errorf("nonce must be echoed; got %v", withNonce["nonce"])
 	}
-	noNonce, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour)
+	noNonce, _ := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour, "")
 	if _, ok := noNonce["nonce"]; ok {
 		t.Error("nonce claim must be absent when no nonce was requested")
 	}
@@ -94,13 +94,13 @@ func TestBuildIDTokenClaims_NonceRoundTrip(t *testing.T) {
 
 func TestBuildIDTokenClaims_Validation(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	if _, err := BuildIDTokenClaims("", "c", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour); err == nil {
+	if _, err := BuildIDTokenClaims("", "c", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour, ""); err == nil {
 		t.Error("empty issuer must error")
 	}
-	if _, err := BuildIDTokenClaims(testIssuer, "", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour); err == nil {
+	if _, err := BuildIDTokenClaims(testIssuer, "", baseUser(), []string{"openid"}, "", time.Time{}, now, time.Hour, ""); err == nil {
 		t.Error("empty client_id must error")
 	}
-	if _, err := BuildIDTokenClaims(testIssuer, "c", OIDCUserClaims{UserID: 0}, []string{"openid"}, "", time.Time{}, now, time.Hour); err == nil {
+	if _, err := BuildIDTokenClaims(testIssuer, "c", OIDCUserClaims{UserID: 0}, []string{"openid"}, "", time.Time{}, now, time.Hour, ""); err == nil {
 		t.Error("zero user id must error")
 	}
 }
@@ -108,7 +108,7 @@ func TestBuildIDTokenClaims_Validation(t *testing.T) {
 // id_token must never carry mutable business/PII state.
 func TestBuildIDTokenClaims_NoBusinessData(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
-	c, err := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid", "profile", "email"}, "n", time.Time{}, now, time.Hour)
+	c, err := BuildIDTokenClaims(testIssuer, "c", baseUser(), []string{"openid", "profile", "email"}, "n", time.Time{}, now, time.Hour, "")
 	if err != nil {
 		t.Fatal(err)
 	}

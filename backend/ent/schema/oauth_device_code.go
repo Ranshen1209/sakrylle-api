@@ -16,8 +16,9 @@ import (
 // /oauth/device/code creation.
 //
 // state machine: pending → approved → consumed (token mint), or
-//                pending → denied (5x failed approval, or explicit deny), or
-//                pending → expired (poll/approval after expires_at)
+//
+//	pending → denied (5x failed approval, or explicit deny), or
+//	pending → expired (poll/approval after expires_at)
 //
 // CHECK constraints in migration 145 ensure status / *_at timestamps cannot
 // contradict each other; the partial unique index keeps user_code_hash

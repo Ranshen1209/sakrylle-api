@@ -21730,6 +21730,7 @@ type OAuthAuthorizeTransactionMutation struct {
 	created_ip                    *string
 	created_user_agent            *string
 	nonce                         *string
+	claims                        *map[string]interface{}
 	clearedFields                 map[string]struct{}
 	done                          bool
 	oldValue                      func(context.Context) (*OAuthAuthorizeTransaction, error)
@@ -22752,6 +22753,55 @@ func (m *OAuthAuthorizeTransactionMutation) ResetNonce() {
 	delete(m.clearedFields, oauthauthorizetransaction.FieldNonce)
 }
 
+// SetClaims sets the "claims" field.
+func (m *OAuthAuthorizeTransactionMutation) SetClaims(value map[string]interface{}) {
+	m.claims = &value
+}
+
+// Claims returns the value of the "claims" field in the mutation.
+func (m *OAuthAuthorizeTransactionMutation) Claims() (r map[string]interface{}, exists bool) {
+	v := m.claims
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaims returns the old "claims" field's value of the OAuthAuthorizeTransaction entity.
+// If the OAuthAuthorizeTransaction object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthAuthorizeTransactionMutation) OldClaims(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaims is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaims requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaims: %w", err)
+	}
+	return oldValue.Claims, nil
+}
+
+// ClearClaims clears the value of the "claims" field.
+func (m *OAuthAuthorizeTransactionMutation) ClearClaims() {
+	m.claims = nil
+	m.clearedFields[oauthauthorizetransaction.FieldClaims] = struct{}{}
+}
+
+// ClaimsCleared returns if the "claims" field was cleared in this mutation.
+func (m *OAuthAuthorizeTransactionMutation) ClaimsCleared() bool {
+	_, ok := m.clearedFields[oauthauthorizetransaction.FieldClaims]
+	return ok
+}
+
+// ResetClaims resets all changes to the "claims" field.
+func (m *OAuthAuthorizeTransactionMutation) ResetClaims() {
+	m.claims = nil
+	delete(m.clearedFields, oauthauthorizetransaction.FieldClaims)
+}
+
 // Where appends a list predicates to the OAuthAuthorizeTransactionMutation builder.
 func (m *OAuthAuthorizeTransactionMutation) Where(ps ...predicate.OAuthAuthorizeTransaction) {
 	m.predicates = append(m.predicates, ps...)
@@ -22786,7 +22836,7 @@ func (m *OAuthAuthorizeTransactionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuthAuthorizeTransactionMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.created_at != nil {
 		fields = append(fields, oauthauthorizetransaction.FieldCreatedAt)
 	}
@@ -22850,6 +22900,9 @@ func (m *OAuthAuthorizeTransactionMutation) Fields() []string {
 	if m.nonce != nil {
 		fields = append(fields, oauthauthorizetransaction.FieldNonce)
 	}
+	if m.claims != nil {
+		fields = append(fields, oauthauthorizetransaction.FieldClaims)
+	}
 	return fields
 }
 
@@ -22900,6 +22953,8 @@ func (m *OAuthAuthorizeTransactionMutation) Field(name string) (ent.Value, bool)
 		return m.CreatedUserAgent()
 	case oauthauthorizetransaction.FieldNonce:
 		return m.Nonce()
+	case oauthauthorizetransaction.FieldClaims:
+		return m.Claims()
 	}
 	return nil, false
 }
@@ -22951,6 +23006,8 @@ func (m *OAuthAuthorizeTransactionMutation) OldField(ctx context.Context, name s
 		return m.OldCreatedUserAgent(ctx)
 	case oauthauthorizetransaction.FieldNonce:
 		return m.OldNonce(ctx)
+	case oauthauthorizetransaction.FieldClaims:
+		return m.OldClaims(ctx)
 	}
 	return nil, fmt.Errorf("unknown OAuthAuthorizeTransaction field %s", name)
 }
@@ -23107,6 +23164,13 @@ func (m *OAuthAuthorizeTransactionMutation) SetField(name string, value ent.Valu
 		}
 		m.SetNonce(v)
 		return nil
+	case oauthauthorizetransaction.FieldClaims:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaims(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OAuthAuthorizeTransaction field %s", name)
 }
@@ -23185,6 +23249,9 @@ func (m *OAuthAuthorizeTransactionMutation) ClearedFields() []string {
 	if m.FieldCleared(oauthauthorizetransaction.FieldNonce) {
 		fields = append(fields, oauthauthorizetransaction.FieldNonce)
 	}
+	if m.FieldCleared(oauthauthorizetransaction.FieldClaims) {
+		fields = append(fields, oauthauthorizetransaction.FieldClaims)
+	}
 	return fields
 }
 
@@ -23219,6 +23286,9 @@ func (m *OAuthAuthorizeTransactionMutation) ClearField(name string) error {
 		return nil
 	case oauthauthorizetransaction.FieldNonce:
 		m.ClearNonce()
+		return nil
+	case oauthauthorizetransaction.FieldClaims:
+		m.ClearClaims()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthAuthorizeTransaction nullable field %s", name)
@@ -23290,6 +23360,9 @@ func (m *OAuthAuthorizeTransactionMutation) ResetField(name string) error {
 		return nil
 	case oauthauthorizetransaction.FieldNonce:
 		m.ResetNonce()
+		return nil
+	case oauthauthorizetransaction.FieldClaims:
+		m.ResetClaims()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthAuthorizeTransaction field %s", name)
@@ -23384,6 +23457,12 @@ type OAuthClientMutation struct {
 	privacy_url                          *string
 	terms_url                            *string
 	signing_algorithm                    *string
+	request_uris                         *[]string
+	appendrequest_uris                   []string
+	backchannel_logout_uri               *string
+	backchannel_logout_session_required  *bool
+	subject_type                         *string
+	sector_identifier_uri                *string
 	clearedFields                        map[string]struct{}
 	done                                 bool
 	oldValue                             func(context.Context) (*OAuthClient, error)
@@ -24667,6 +24746,227 @@ func (m *OAuthClientMutation) ResetSigningAlgorithm() {
 	m.signing_algorithm = nil
 }
 
+// SetRequestUris sets the "request_uris" field.
+func (m *OAuthClientMutation) SetRequestUris(s []string) {
+	m.request_uris = &s
+	m.appendrequest_uris = nil
+}
+
+// RequestUris returns the value of the "request_uris" field in the mutation.
+func (m *OAuthClientMutation) RequestUris() (r []string, exists bool) {
+	v := m.request_uris
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestUris returns the old "request_uris" field's value of the OAuthClient entity.
+// If the OAuthClient object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthClientMutation) OldRequestUris(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestUris is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestUris requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestUris: %w", err)
+	}
+	return oldValue.RequestUris, nil
+}
+
+// AppendRequestUris adds s to the "request_uris" field.
+func (m *OAuthClientMutation) AppendRequestUris(s []string) {
+	m.appendrequest_uris = append(m.appendrequest_uris, s...)
+}
+
+// AppendedRequestUris returns the list of values that were appended to the "request_uris" field in this mutation.
+func (m *OAuthClientMutation) AppendedRequestUris() ([]string, bool) {
+	if len(m.appendrequest_uris) == 0 {
+		return nil, false
+	}
+	return m.appendrequest_uris, true
+}
+
+// ResetRequestUris resets all changes to the "request_uris" field.
+func (m *OAuthClientMutation) ResetRequestUris() {
+	m.request_uris = nil
+	m.appendrequest_uris = nil
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (m *OAuthClientMutation) SetBackchannelLogoutURI(s string) {
+	m.backchannel_logout_uri = &s
+}
+
+// BackchannelLogoutURI returns the value of the "backchannel_logout_uri" field in the mutation.
+func (m *OAuthClientMutation) BackchannelLogoutURI() (r string, exists bool) {
+	v := m.backchannel_logout_uri
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBackchannelLogoutURI returns the old "backchannel_logout_uri" field's value of the OAuthClient entity.
+// If the OAuthClient object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthClientMutation) OldBackchannelLogoutURI(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBackchannelLogoutURI is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBackchannelLogoutURI requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBackchannelLogoutURI: %w", err)
+	}
+	return oldValue.BackchannelLogoutURI, nil
+}
+
+// ClearBackchannelLogoutURI clears the value of the "backchannel_logout_uri" field.
+func (m *OAuthClientMutation) ClearBackchannelLogoutURI() {
+	m.backchannel_logout_uri = nil
+	m.clearedFields[oauthclient.FieldBackchannelLogoutURI] = struct{}{}
+}
+
+// BackchannelLogoutURICleared returns if the "backchannel_logout_uri" field was cleared in this mutation.
+func (m *OAuthClientMutation) BackchannelLogoutURICleared() bool {
+	_, ok := m.clearedFields[oauthclient.FieldBackchannelLogoutURI]
+	return ok
+}
+
+// ResetBackchannelLogoutURI resets all changes to the "backchannel_logout_uri" field.
+func (m *OAuthClientMutation) ResetBackchannelLogoutURI() {
+	m.backchannel_logout_uri = nil
+	delete(m.clearedFields, oauthclient.FieldBackchannelLogoutURI)
+}
+
+// SetBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field.
+func (m *OAuthClientMutation) SetBackchannelLogoutSessionRequired(b bool) {
+	m.backchannel_logout_session_required = &b
+}
+
+// BackchannelLogoutSessionRequired returns the value of the "backchannel_logout_session_required" field in the mutation.
+func (m *OAuthClientMutation) BackchannelLogoutSessionRequired() (r bool, exists bool) {
+	v := m.backchannel_logout_session_required
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBackchannelLogoutSessionRequired returns the old "backchannel_logout_session_required" field's value of the OAuthClient entity.
+// If the OAuthClient object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthClientMutation) OldBackchannelLogoutSessionRequired(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBackchannelLogoutSessionRequired is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBackchannelLogoutSessionRequired requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBackchannelLogoutSessionRequired: %w", err)
+	}
+	return oldValue.BackchannelLogoutSessionRequired, nil
+}
+
+// ResetBackchannelLogoutSessionRequired resets all changes to the "backchannel_logout_session_required" field.
+func (m *OAuthClientMutation) ResetBackchannelLogoutSessionRequired() {
+	m.backchannel_logout_session_required = nil
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (m *OAuthClientMutation) SetSubjectType(s string) {
+	m.subject_type = &s
+}
+
+// SubjectType returns the value of the "subject_type" field in the mutation.
+func (m *OAuthClientMutation) SubjectType() (r string, exists bool) {
+	v := m.subject_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubjectType returns the old "subject_type" field's value of the OAuthClient entity.
+// If the OAuthClient object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthClientMutation) OldSubjectType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubjectType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubjectType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubjectType: %w", err)
+	}
+	return oldValue.SubjectType, nil
+}
+
+// ResetSubjectType resets all changes to the "subject_type" field.
+func (m *OAuthClientMutation) ResetSubjectType() {
+	m.subject_type = nil
+}
+
+// SetSectorIdentifierURI sets the "sector_identifier_uri" field.
+func (m *OAuthClientMutation) SetSectorIdentifierURI(s string) {
+	m.sector_identifier_uri = &s
+}
+
+// SectorIdentifierURI returns the value of the "sector_identifier_uri" field in the mutation.
+func (m *OAuthClientMutation) SectorIdentifierURI() (r string, exists bool) {
+	v := m.sector_identifier_uri
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSectorIdentifierURI returns the old "sector_identifier_uri" field's value of the OAuthClient entity.
+// If the OAuthClient object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthClientMutation) OldSectorIdentifierURI(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSectorIdentifierURI is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSectorIdentifierURI requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSectorIdentifierURI: %w", err)
+	}
+	return oldValue.SectorIdentifierURI, nil
+}
+
+// ClearSectorIdentifierURI clears the value of the "sector_identifier_uri" field.
+func (m *OAuthClientMutation) ClearSectorIdentifierURI() {
+	m.sector_identifier_uri = nil
+	m.clearedFields[oauthclient.FieldSectorIdentifierURI] = struct{}{}
+}
+
+// SectorIdentifierURICleared returns if the "sector_identifier_uri" field was cleared in this mutation.
+func (m *OAuthClientMutation) SectorIdentifierURICleared() bool {
+	_, ok := m.clearedFields[oauthclient.FieldSectorIdentifierURI]
+	return ok
+}
+
+// ResetSectorIdentifierURI resets all changes to the "sector_identifier_uri" field.
+func (m *OAuthClientMutation) ResetSectorIdentifierURI() {
+	m.sector_identifier_uri = nil
+	delete(m.clearedFields, oauthclient.FieldSectorIdentifierURI)
+}
+
 // Where appends a list predicates to the OAuthClientMutation builder.
 func (m *OAuthClientMutation) Where(ps ...predicate.OAuthClient) {
 	m.predicates = append(m.predicates, ps...)
@@ -24701,7 +25001,7 @@ func (m *OAuthClientMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuthClientMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 31)
 	if m.created_at != nil {
 		fields = append(fields, oauthclient.FieldCreatedAt)
 	}
@@ -24780,6 +25080,21 @@ func (m *OAuthClientMutation) Fields() []string {
 	if m.signing_algorithm != nil {
 		fields = append(fields, oauthclient.FieldSigningAlgorithm)
 	}
+	if m.request_uris != nil {
+		fields = append(fields, oauthclient.FieldRequestUris)
+	}
+	if m.backchannel_logout_uri != nil {
+		fields = append(fields, oauthclient.FieldBackchannelLogoutURI)
+	}
+	if m.backchannel_logout_session_required != nil {
+		fields = append(fields, oauthclient.FieldBackchannelLogoutSessionRequired)
+	}
+	if m.subject_type != nil {
+		fields = append(fields, oauthclient.FieldSubjectType)
+	}
+	if m.sector_identifier_uri != nil {
+		fields = append(fields, oauthclient.FieldSectorIdentifierURI)
+	}
 	return fields
 }
 
@@ -24840,6 +25155,16 @@ func (m *OAuthClientMutation) Field(name string) (ent.Value, bool) {
 		return m.TermsURL()
 	case oauthclient.FieldSigningAlgorithm:
 		return m.SigningAlgorithm()
+	case oauthclient.FieldRequestUris:
+		return m.RequestUris()
+	case oauthclient.FieldBackchannelLogoutURI:
+		return m.BackchannelLogoutURI()
+	case oauthclient.FieldBackchannelLogoutSessionRequired:
+		return m.BackchannelLogoutSessionRequired()
+	case oauthclient.FieldSubjectType:
+		return m.SubjectType()
+	case oauthclient.FieldSectorIdentifierURI:
+		return m.SectorIdentifierURI()
 	}
 	return nil, false
 }
@@ -24901,6 +25226,16 @@ func (m *OAuthClientMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldTermsURL(ctx)
 	case oauthclient.FieldSigningAlgorithm:
 		return m.OldSigningAlgorithm(ctx)
+	case oauthclient.FieldRequestUris:
+		return m.OldRequestUris(ctx)
+	case oauthclient.FieldBackchannelLogoutURI:
+		return m.OldBackchannelLogoutURI(ctx)
+	case oauthclient.FieldBackchannelLogoutSessionRequired:
+		return m.OldBackchannelLogoutSessionRequired(ctx)
+	case oauthclient.FieldSubjectType:
+		return m.OldSubjectType(ctx)
+	case oauthclient.FieldSectorIdentifierURI:
+		return m.OldSectorIdentifierURI(ctx)
 	}
 	return nil, fmt.Errorf("unknown OAuthClient field %s", name)
 }
@@ -25092,6 +25427,41 @@ func (m *OAuthClientMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSigningAlgorithm(v)
 		return nil
+	case oauthclient.FieldRequestUris:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestUris(v)
+		return nil
+	case oauthclient.FieldBackchannelLogoutURI:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBackchannelLogoutURI(v)
+		return nil
+	case oauthclient.FieldBackchannelLogoutSessionRequired:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBackchannelLogoutSessionRequired(v)
+		return nil
+	case oauthclient.FieldSubjectType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubjectType(v)
+		return nil
+	case oauthclient.FieldSectorIdentifierURI:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSectorIdentifierURI(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OAuthClient field %s", name)
 }
@@ -25182,6 +25552,12 @@ func (m *OAuthClientMutation) ClearedFields() []string {
 	if m.FieldCleared(oauthclient.FieldTermsURL) {
 		fields = append(fields, oauthclient.FieldTermsURL)
 	}
+	if m.FieldCleared(oauthclient.FieldBackchannelLogoutURI) {
+		fields = append(fields, oauthclient.FieldBackchannelLogoutURI)
+	}
+	if m.FieldCleared(oauthclient.FieldSectorIdentifierURI) {
+		fields = append(fields, oauthclient.FieldSectorIdentifierURI)
+	}
 	return fields
 }
 
@@ -25216,6 +25592,12 @@ func (m *OAuthClientMutation) ClearField(name string) error {
 		return nil
 	case oauthclient.FieldTermsURL:
 		m.ClearTermsURL()
+		return nil
+	case oauthclient.FieldBackchannelLogoutURI:
+		m.ClearBackchannelLogoutURI()
+		return nil
+	case oauthclient.FieldSectorIdentifierURI:
+		m.ClearSectorIdentifierURI()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthClient nullable field %s", name)
@@ -25302,6 +25684,21 @@ func (m *OAuthClientMutation) ResetField(name string) error {
 		return nil
 	case oauthclient.FieldSigningAlgorithm:
 		m.ResetSigningAlgorithm()
+		return nil
+	case oauthclient.FieldRequestUris:
+		m.ResetRequestUris()
+		return nil
+	case oauthclient.FieldBackchannelLogoutURI:
+		m.ResetBackchannelLogoutURI()
+		return nil
+	case oauthclient.FieldBackchannelLogoutSessionRequired:
+		m.ResetBackchannelLogoutSessionRequired()
+		return nil
+	case oauthclient.FieldSubjectType:
+		m.ResetSubjectType()
+		return nil
+	case oauthclient.FieldSectorIdentifierURI:
+		m.ResetSectorIdentifierURI()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthClient field %s", name)

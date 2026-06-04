@@ -513,6 +513,15 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 	return apiKey, nil
 }
 
+// GetByKeyForAuth is an auth-first lookup that returns the full APIKey
+// with User populated. Used by the OIDC /userinfo endpoint (OIDC Core §5.3)
+// which validates Bearer tokens directly, bypassing the /v1 gateway chain.
+//
+// Implements APIKeyLookup.
+func (s *APIKeyService) GetByKeyForAuth(ctx context.Context, key string) (*APIKey, error) {
+	return s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+}
+
 // Update 更新API Key
 func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req UpdateAPIKeyRequest) (*APIKey, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, id)

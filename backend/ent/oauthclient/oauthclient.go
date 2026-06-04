@@ -65,6 +65,16 @@ const (
 	FieldTermsURL = "terms_url"
 	// FieldSigningAlgorithm holds the string denoting the signing_algorithm field in the database.
 	FieldSigningAlgorithm = "signing_algorithm"
+	// FieldRequestUris holds the string denoting the request_uris field in the database.
+	FieldRequestUris = "request_uris"
+	// FieldBackchannelLogoutURI holds the string denoting the backchannel_logout_uri field in the database.
+	FieldBackchannelLogoutURI = "backchannel_logout_uri"
+	// FieldBackchannelLogoutSessionRequired holds the string denoting the backchannel_logout_session_required field in the database.
+	FieldBackchannelLogoutSessionRequired = "backchannel_logout_session_required"
+	// FieldSubjectType holds the string denoting the subject_type field in the database.
+	FieldSubjectType = "subject_type"
+	// FieldSectorIdentifierURI holds the string denoting the sector_identifier_uri field in the database.
+	FieldSectorIdentifierURI = "sector_identifier_uri"
 	// Table holds the table name of the oauthclient in the database.
 	Table = "oauth_clients"
 )
@@ -98,6 +108,11 @@ var Columns = []string{
 	FieldPrivacyURL,
 	FieldTermsURL,
 	FieldSigningAlgorithm,
+	FieldRequestUris,
+	FieldBackchannelLogoutURI,
+	FieldBackchannelLogoutSessionRequired,
+	FieldSubjectType,
+	FieldSectorIdentifierURI,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -153,6 +168,14 @@ var (
 	DefaultSigningAlgorithm string
 	// SigningAlgorithmValidator is a validator for the "signing_algorithm" field. It is called by the builders before save.
 	SigningAlgorithmValidator func(string) error
+	// DefaultRequestUris holds the default value on creation for the "request_uris" field.
+	DefaultRequestUris []string
+	// DefaultBackchannelLogoutSessionRequired holds the default value on creation for the "backchannel_logout_session_required" field.
+	DefaultBackchannelLogoutSessionRequired bool
+	// DefaultSubjectType holds the default value on creation for the "subject_type" field.
+	DefaultSubjectType string
+	// SubjectTypeValidator is a validator for the "subject_type" field. It is called by the builders before save.
+	SubjectTypeValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the OAuthClient queries.
@@ -261,4 +284,24 @@ func ByTermsURL(opts ...sql.OrderTermOption) OrderOption {
 // BySigningAlgorithm orders the results by the signing_algorithm field.
 func BySigningAlgorithm(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSigningAlgorithm, opts...).ToFunc()
+}
+
+// ByBackchannelLogoutURI orders the results by the backchannel_logout_uri field.
+func ByBackchannelLogoutURI(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBackchannelLogoutURI, opts...).ToFunc()
+}
+
+// ByBackchannelLogoutSessionRequired orders the results by the backchannel_logout_session_required field.
+func ByBackchannelLogoutSessionRequired(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBackchannelLogoutSessionRequired, opts...).ToFunc()
+}
+
+// BySubjectType orders the results by the subject_type field.
+func BySubjectType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSubjectType, opts...).ToFunc()
+}
+
+// BySectorIdentifierURI orders the results by the sector_identifier_uri field.
+func BySectorIdentifierURI(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSectorIdentifierURI, opts...).ToFunc()
 }

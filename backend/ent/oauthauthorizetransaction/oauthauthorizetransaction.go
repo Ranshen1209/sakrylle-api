@@ -55,6 +55,8 @@ const (
 	FieldCreatedUserAgent = "created_user_agent"
 	// FieldNonce holds the string denoting the nonce field in the database.
 	FieldNonce = "nonce"
+	// FieldClaims holds the string denoting the claims field in the database.
+	FieldClaims = "claims"
 	// Table holds the table name of the oauthauthorizetransaction in the database.
 	Table = "oauth_authorize_transactions"
 )
@@ -83,6 +85,7 @@ var Columns = []string{
 	FieldCreatedIP,
 	FieldCreatedUserAgent,
 	FieldNonce,
+	FieldClaims,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

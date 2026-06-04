@@ -422,6 +422,86 @@ func (_u *OAuthClientUpdate) SetNillableSigningAlgorithm(v *string) *OAuthClient
 	return _u
 }
 
+// SetRequestUris sets the "request_uris" field.
+func (_u *OAuthClientUpdate) SetRequestUris(v []string) *OAuthClientUpdate {
+	_u.mutation.SetRequestUris(v)
+	return _u
+}
+
+// AppendRequestUris appends value to the "request_uris" field.
+func (_u *OAuthClientUpdate) AppendRequestUris(v []string) *OAuthClientUpdate {
+	_u.mutation.AppendRequestUris(v)
+	return _u
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (_u *OAuthClientUpdate) SetBackchannelLogoutURI(v string) *OAuthClientUpdate {
+	_u.mutation.SetBackchannelLogoutURI(v)
+	return _u
+}
+
+// SetNillableBackchannelLogoutURI sets the "backchannel_logout_uri" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableBackchannelLogoutURI(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetBackchannelLogoutURI(*v)
+	}
+	return _u
+}
+
+// ClearBackchannelLogoutURI clears the value of the "backchannel_logout_uri" field.
+func (_u *OAuthClientUpdate) ClearBackchannelLogoutURI() *OAuthClientUpdate {
+	_u.mutation.ClearBackchannelLogoutURI()
+	return _u
+}
+
+// SetBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field.
+func (_u *OAuthClientUpdate) SetBackchannelLogoutSessionRequired(v bool) *OAuthClientUpdate {
+	_u.mutation.SetBackchannelLogoutSessionRequired(v)
+	return _u
+}
+
+// SetNillableBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableBackchannelLogoutSessionRequired(v *bool) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetBackchannelLogoutSessionRequired(*v)
+	}
+	return _u
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (_u *OAuthClientUpdate) SetSubjectType(v string) *OAuthClientUpdate {
+	_u.mutation.SetSubjectType(v)
+	return _u
+}
+
+// SetNillableSubjectType sets the "subject_type" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableSubjectType(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetSubjectType(*v)
+	}
+	return _u
+}
+
+// SetSectorIdentifierURI sets the "sector_identifier_uri" field.
+func (_u *OAuthClientUpdate) SetSectorIdentifierURI(v string) *OAuthClientUpdate {
+	_u.mutation.SetSectorIdentifierURI(v)
+	return _u
+}
+
+// SetNillableSectorIdentifierURI sets the "sector_identifier_uri" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableSectorIdentifierURI(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetSectorIdentifierURI(*v)
+	}
+	return _u
+}
+
+// ClearSectorIdentifierURI clears the value of the "sector_identifier_uri" field.
+func (_u *OAuthClientUpdate) ClearSectorIdentifierURI() *OAuthClientUpdate {
+	_u.mutation.ClearSectorIdentifierURI()
+	return _u
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_u *OAuthClientUpdate) Mutation() *OAuthClientMutation {
 	return _u.mutation
@@ -488,6 +568,11 @@ func (_u *OAuthClientUpdate) check() error {
 	if v, ok := _u.mutation.SigningAlgorithm(); ok {
 		if err := oauthclient.SigningAlgorithmValidator(v); err != nil {
 			return &ValidationError{Name: "signing_algorithm", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.signing_algorithm": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SubjectType(); ok {
+		if err := oauthclient.SubjectTypeValidator(v); err != nil {
+			return &ValidationError{Name: "subject_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.subject_type": %w`, err)}
 		}
 	}
 	return nil
@@ -639,6 +724,32 @@ func (_u *OAuthClientUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.SigningAlgorithm(); ok {
 		_spec.SetField(oauthclient.FieldSigningAlgorithm, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RequestUris(); ok {
+		_spec.SetField(oauthclient.FieldRequestUris, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRequestUris(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldRequestUris, value)
+		})
+	}
+	if value, ok := _u.mutation.BackchannelLogoutURI(); ok {
+		_spec.SetField(oauthclient.FieldBackchannelLogoutURI, field.TypeString, value)
+	}
+	if _u.mutation.BackchannelLogoutURICleared() {
+		_spec.ClearField(oauthclient.FieldBackchannelLogoutURI, field.TypeString)
+	}
+	if value, ok := _u.mutation.BackchannelLogoutSessionRequired(); ok {
+		_spec.SetField(oauthclient.FieldBackchannelLogoutSessionRequired, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SubjectType(); ok {
+		_spec.SetField(oauthclient.FieldSubjectType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SectorIdentifierURI(); ok {
+		_spec.SetField(oauthclient.FieldSectorIdentifierURI, field.TypeString, value)
+	}
+	if _u.mutation.SectorIdentifierURICleared() {
+		_spec.ClearField(oauthclient.FieldSectorIdentifierURI, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1053,6 +1164,86 @@ func (_u *OAuthClientUpdateOne) SetNillableSigningAlgorithm(v *string) *OAuthCli
 	return _u
 }
 
+// SetRequestUris sets the "request_uris" field.
+func (_u *OAuthClientUpdateOne) SetRequestUris(v []string) *OAuthClientUpdateOne {
+	_u.mutation.SetRequestUris(v)
+	return _u
+}
+
+// AppendRequestUris appends value to the "request_uris" field.
+func (_u *OAuthClientUpdateOne) AppendRequestUris(v []string) *OAuthClientUpdateOne {
+	_u.mutation.AppendRequestUris(v)
+	return _u
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (_u *OAuthClientUpdateOne) SetBackchannelLogoutURI(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetBackchannelLogoutURI(v)
+	return _u
+}
+
+// SetNillableBackchannelLogoutURI sets the "backchannel_logout_uri" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableBackchannelLogoutURI(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetBackchannelLogoutURI(*v)
+	}
+	return _u
+}
+
+// ClearBackchannelLogoutURI clears the value of the "backchannel_logout_uri" field.
+func (_u *OAuthClientUpdateOne) ClearBackchannelLogoutURI() *OAuthClientUpdateOne {
+	_u.mutation.ClearBackchannelLogoutURI()
+	return _u
+}
+
+// SetBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field.
+func (_u *OAuthClientUpdateOne) SetBackchannelLogoutSessionRequired(v bool) *OAuthClientUpdateOne {
+	_u.mutation.SetBackchannelLogoutSessionRequired(v)
+	return _u
+}
+
+// SetNillableBackchannelLogoutSessionRequired sets the "backchannel_logout_session_required" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableBackchannelLogoutSessionRequired(v *bool) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetBackchannelLogoutSessionRequired(*v)
+	}
+	return _u
+}
+
+// SetSubjectType sets the "subject_type" field.
+func (_u *OAuthClientUpdateOne) SetSubjectType(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetSubjectType(v)
+	return _u
+}
+
+// SetNillableSubjectType sets the "subject_type" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableSubjectType(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetSubjectType(*v)
+	}
+	return _u
+}
+
+// SetSectorIdentifierURI sets the "sector_identifier_uri" field.
+func (_u *OAuthClientUpdateOne) SetSectorIdentifierURI(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetSectorIdentifierURI(v)
+	return _u
+}
+
+// SetNillableSectorIdentifierURI sets the "sector_identifier_uri" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableSectorIdentifierURI(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetSectorIdentifierURI(*v)
+	}
+	return _u
+}
+
+// ClearSectorIdentifierURI clears the value of the "sector_identifier_uri" field.
+func (_u *OAuthClientUpdateOne) ClearSectorIdentifierURI() *OAuthClientUpdateOne {
+	_u.mutation.ClearSectorIdentifierURI()
+	return _u
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_u *OAuthClientUpdateOne) Mutation() *OAuthClientMutation {
 	return _u.mutation
@@ -1132,6 +1323,11 @@ func (_u *OAuthClientUpdateOne) check() error {
 	if v, ok := _u.mutation.SigningAlgorithm(); ok {
 		if err := oauthclient.SigningAlgorithmValidator(v); err != nil {
 			return &ValidationError{Name: "signing_algorithm", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.signing_algorithm": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SubjectType(); ok {
+		if err := oauthclient.SubjectTypeValidator(v); err != nil {
+			return &ValidationError{Name: "subject_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.subject_type": %w`, err)}
 		}
 	}
 	return nil
@@ -1300,6 +1496,32 @@ func (_u *OAuthClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuthClient
 	}
 	if value, ok := _u.mutation.SigningAlgorithm(); ok {
 		_spec.SetField(oauthclient.FieldSigningAlgorithm, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.RequestUris(); ok {
+		_spec.SetField(oauthclient.FieldRequestUris, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRequestUris(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauthclient.FieldRequestUris, value)
+		})
+	}
+	if value, ok := _u.mutation.BackchannelLogoutURI(); ok {
+		_spec.SetField(oauthclient.FieldBackchannelLogoutURI, field.TypeString, value)
+	}
+	if _u.mutation.BackchannelLogoutURICleared() {
+		_spec.ClearField(oauthclient.FieldBackchannelLogoutURI, field.TypeString)
+	}
+	if value, ok := _u.mutation.BackchannelLogoutSessionRequired(); ok {
+		_spec.SetField(oauthclient.FieldBackchannelLogoutSessionRequired, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SubjectType(); ok {
+		_spec.SetField(oauthclient.FieldSubjectType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SectorIdentifierURI(); ok {
+		_spec.SetField(oauthclient.FieldSectorIdentifierURI, field.TypeString, value)
+	}
+	if _u.mutation.SectorIdentifierURICleared() {
+		_spec.ClearField(oauthclient.FieldSectorIdentifierURI, field.TypeString)
 	}
 	_node = &OAuthClient{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -315,12 +315,12 @@ func TestDualAlgorithmSigning(t *testing.T) {
 // TestIDTokenClaimsBuilder verifies BuildIDTokenClaims produces spec-compliant claims.
 func TestIDTokenClaimsBuilder(t *testing.T) {
 	tests := []struct {
-		name          string
-		scopes        []string
-		nonce         string
-		userClaims    OIDCUserClaims
-		wantClaims    []string
-		wantNoClaims  []string
+		name         string
+		scopes       []string
+		nonce        string
+		userClaims   OIDCUserClaims
+		wantClaims   []string
+		wantNoClaims []string
 	}{
 		{
 			name:   "openid only → minimal claims",
@@ -386,6 +386,7 @@ func TestIDTokenClaimsBuilder(t *testing.T) {
 				authTime,
 				now,
 				ttl,
+				"",
 			)
 
 			// Assert
@@ -518,7 +519,7 @@ func extractKIDFromToken(t *testing.T, token string) string {
 	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
 	require.NoError(t, err, "header must be valid base64url")
 
-	var header map[string]interface{}
+	var header map[string]any
 	err = json.Unmarshal(headerJSON, &header)
 	require.NoError(t, err, "header must be valid JSON")
 
@@ -536,7 +537,7 @@ func extractAlgFromToken(t *testing.T, token string) string {
 	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
 	require.NoError(t, err)
 
-	var header map[string]interface{}
+	var header map[string]any
 	err = json.Unmarshal(headerJSON, &header)
 	require.NoError(t, err)
 

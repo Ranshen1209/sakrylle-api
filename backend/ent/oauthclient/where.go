@@ -154,6 +154,26 @@ func SigningAlgorithm(v string) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldEQ(FieldSigningAlgorithm, v))
 }
 
+// BackchannelLogoutURI applies equality check predicate on the "backchannel_logout_uri" field. It's identical to BackchannelLogoutURIEQ.
+func BackchannelLogoutURI(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutSessionRequired applies equality check predicate on the "backchannel_logout_session_required" field. It's identical to BackchannelLogoutSessionRequiredEQ.
+func BackchannelLogoutSessionRequired(v bool) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldBackchannelLogoutSessionRequired, v))
+}
+
+// SubjectType applies equality check predicate on the "subject_type" field. It's identical to SubjectTypeEQ.
+func SubjectType(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldSubjectType, v))
+}
+
+// SectorIdentifierURI applies equality check predicate on the "sector_identifier_uri" field. It's identical to SectorIdentifierURIEQ.
+func SectorIdentifierURI(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldSectorIdentifierURI, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldEQ(FieldCreatedAt, v))
@@ -1122,6 +1142,231 @@ func SigningAlgorithmEqualFold(v string) predicate.OAuthClient {
 // SigningAlgorithmContainsFold applies the ContainsFold predicate on the "signing_algorithm" field.
 func SigningAlgorithmContainsFold(v string) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldContainsFold(FieldSigningAlgorithm, v))
+}
+
+// BackchannelLogoutURIEQ applies the EQ predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURINEQ applies the NEQ predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURINEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNEQ(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURIIn applies the In predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldIn(FieldBackchannelLogoutURI, vs...))
+}
+
+// BackchannelLogoutURINotIn applies the NotIn predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURINotIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNotIn(FieldBackchannelLogoutURI, vs...))
+}
+
+// BackchannelLogoutURIGT applies the GT predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIGT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGT(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURIGTE applies the GTE predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIGTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGTE(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURILT applies the LT predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURILT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLT(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURILTE applies the LTE predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURILTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLTE(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURIContains applies the Contains predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIContains(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContains(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURIHasPrefix applies the HasPrefix predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIHasPrefix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasPrefix(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURIHasSuffix applies the HasSuffix predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIHasSuffix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasSuffix(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURIIsNil applies the IsNil predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIIsNil() predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldIsNull(FieldBackchannelLogoutURI))
+}
+
+// BackchannelLogoutURINotNil applies the NotNil predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURINotNil() predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNotNull(FieldBackchannelLogoutURI))
+}
+
+// BackchannelLogoutURIEqualFold applies the EqualFold predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIEqualFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEqualFold(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutURIContainsFold applies the ContainsFold predicate on the "backchannel_logout_uri" field.
+func BackchannelLogoutURIContainsFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContainsFold(FieldBackchannelLogoutURI, v))
+}
+
+// BackchannelLogoutSessionRequiredEQ applies the EQ predicate on the "backchannel_logout_session_required" field.
+func BackchannelLogoutSessionRequiredEQ(v bool) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldBackchannelLogoutSessionRequired, v))
+}
+
+// BackchannelLogoutSessionRequiredNEQ applies the NEQ predicate on the "backchannel_logout_session_required" field.
+func BackchannelLogoutSessionRequiredNEQ(v bool) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNEQ(FieldBackchannelLogoutSessionRequired, v))
+}
+
+// SubjectTypeEQ applies the EQ predicate on the "subject_type" field.
+func SubjectTypeEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldSubjectType, v))
+}
+
+// SubjectTypeNEQ applies the NEQ predicate on the "subject_type" field.
+func SubjectTypeNEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNEQ(FieldSubjectType, v))
+}
+
+// SubjectTypeIn applies the In predicate on the "subject_type" field.
+func SubjectTypeIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldIn(FieldSubjectType, vs...))
+}
+
+// SubjectTypeNotIn applies the NotIn predicate on the "subject_type" field.
+func SubjectTypeNotIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNotIn(FieldSubjectType, vs...))
+}
+
+// SubjectTypeGT applies the GT predicate on the "subject_type" field.
+func SubjectTypeGT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGT(FieldSubjectType, v))
+}
+
+// SubjectTypeGTE applies the GTE predicate on the "subject_type" field.
+func SubjectTypeGTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGTE(FieldSubjectType, v))
+}
+
+// SubjectTypeLT applies the LT predicate on the "subject_type" field.
+func SubjectTypeLT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLT(FieldSubjectType, v))
+}
+
+// SubjectTypeLTE applies the LTE predicate on the "subject_type" field.
+func SubjectTypeLTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLTE(FieldSubjectType, v))
+}
+
+// SubjectTypeContains applies the Contains predicate on the "subject_type" field.
+func SubjectTypeContains(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContains(FieldSubjectType, v))
+}
+
+// SubjectTypeHasPrefix applies the HasPrefix predicate on the "subject_type" field.
+func SubjectTypeHasPrefix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasPrefix(FieldSubjectType, v))
+}
+
+// SubjectTypeHasSuffix applies the HasSuffix predicate on the "subject_type" field.
+func SubjectTypeHasSuffix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasSuffix(FieldSubjectType, v))
+}
+
+// SubjectTypeEqualFold applies the EqualFold predicate on the "subject_type" field.
+func SubjectTypeEqualFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEqualFold(FieldSubjectType, v))
+}
+
+// SubjectTypeContainsFold applies the ContainsFold predicate on the "subject_type" field.
+func SubjectTypeContainsFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContainsFold(FieldSubjectType, v))
+}
+
+// SectorIdentifierURIEQ applies the EQ predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURINEQ applies the NEQ predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURINEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNEQ(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURIIn applies the In predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldIn(FieldSectorIdentifierURI, vs...))
+}
+
+// SectorIdentifierURINotIn applies the NotIn predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURINotIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNotIn(FieldSectorIdentifierURI, vs...))
+}
+
+// SectorIdentifierURIGT applies the GT predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIGT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGT(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURIGTE applies the GTE predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIGTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGTE(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURILT applies the LT predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURILT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLT(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURILTE applies the LTE predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURILTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLTE(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURIContains applies the Contains predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIContains(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContains(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURIHasPrefix applies the HasPrefix predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIHasPrefix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasPrefix(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURIHasSuffix applies the HasSuffix predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIHasSuffix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasSuffix(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURIIsNil applies the IsNil predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIIsNil() predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldIsNull(FieldSectorIdentifierURI))
+}
+
+// SectorIdentifierURINotNil applies the NotNil predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURINotNil() predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNotNull(FieldSectorIdentifierURI))
+}
+
+// SectorIdentifierURIEqualFold applies the EqualFold predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIEqualFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEqualFold(FieldSectorIdentifierURI, v))
+}
+
+// SectorIdentifierURIContainsFold applies the ContainsFold predicate on the "sector_identifier_uri" field.
+func SectorIdentifierURIContainsFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContainsFold(FieldSectorIdentifierURI, v))
 }
 
 // And groups predicates with the AND operator between them.
