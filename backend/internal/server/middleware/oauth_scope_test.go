@@ -460,4 +460,163 @@ func TestRequireOAuthScope_OAuthTokenMissingMetadata_FailsClosed(t *testing.T) {
 	require.Contains(t, rec.Header().Get("WWW-Authenticate"), `error="invalid_token"`)
 }
 
+// ── §7.3 endpoint scope matrix: comprehensive per-endpoint tests ─────────────
+//
+// Each sub-test validates that the scope policy for a given (method, path)
+// accepts the correct scope(s) and rejects unrelated scopes.
+
+func TestRequireOAuthScope_EndpointMatrix_CorrectScopeAllows(t *testing.T) {
+	// Table: (method, path, scopes that MUST satisfy the policy).
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		scopes []string
+	}{
+		{"chat/completions", http.MethodPost, "/v1/chat/completions", []string{service.ScopeChatCompletionsCreate}},
+		{"chat/completions-bare", http.MethodPost, "/chat/completions", []string{service.ScopeChatCompletionsCreate}},
+		{"responses POST", http.MethodPost, "/v1/responses", []string{service.ScopeResponsesCreate}},
+		{"responses GET", http.MethodGet, "/v1/responses/resp_abc123", []string{service.ScopeResponsesCreate}},
+		{"responses DELETE", http.MethodDelete, "/v1/responses/resp_abc123", []string{service.ScopeResponsesCreate}},
+		{"responses PATCH", http.MethodPatch, "/v1/responses/resp_abc123", []string{service.ScopeResponsesCreate}},
+		{"responses-bare POST", http.MethodPost, "/responses", []string{service.ScopeResponsesCreate}},
+		{"codex/responses POST", http.MethodPost, "/v1/codex/responses", []string{service.ScopeResponsesCreate}},
+		{"messages", http.MethodPost, "/v1/messages", []string{service.ScopeMessagesCreate}},
+		{"messages count_tokens", http.MethodPost, "/v1/messages/count_tokens", []string{service.ScopeMessagesCreate}},
+		{"images/generations", http.MethodPost, "/v1/images/generations", []string{service.ScopeImagesCreate}},
+		{"images/edits", http.MethodPost, "/v1/images/edits", []string{service.ScopeImagesCreate}},
+		{"images/generations-bare", http.MethodPost, "/images/generations", []string{service.ScopeImagesCreate}},
+		{"images/edits-bare", http.MethodPost, "/images/edits", []string{service.ScopeImagesCreate}},
+		{"models", http.MethodGet, "/v1/models", []string{service.ScopeModelsRead}},
+		{"usage", http.MethodGet, "/v1/usage", []string{service.ScopeUsageRead}},
+		{"me via openid", http.MethodGet, "/v1/me", []string{service.ScopeOpenID}},
+		{"me via profile:read", http.MethodGet, "/v1/me", []string{service.ScopeProfileRead}},
+		{"me via account:read", http.MethodGet, "/v1/me", []string{service.ScopeAccountRead}},
+		{"me via account:balance:read", http.MethodGet, "/v1/me", []string{service.ScopeAccountBalanceRead}},
+		{"account/balance via balance:read", http.MethodGet, "/v1/account/balance", []string{service.ScopeAccountBalanceRead}},
+		{"account/balance via account:read", http.MethodGet, "/v1/account/balance", []string{service.ScopeAccountRead}},
+		{"antigravity models", http.MethodGet, "/antigravity/models", []string{service.ScopeModelsRead}},
+		{"antigravity v1 models", http.MethodGet, "/antigravity/v1/models", []string{service.ScopeModelsRead}},
+		{"antigravity v1 usage", http.MethodGet, "/antigravity/v1/usage", []string{service.ScopeUsageRead}},
+		{"antigravity v1 messages", http.MethodPost, "/antigravity/v1/messages", []string{service.ScopeMessagesCreate}},
+		{"antigravity v1 messages count_tokens", http.MethodPost, "/antigravity/v1/messages/count_tokens", []string{service.ScopeMessagesCreate}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newScopeHarness(t, true)
+			oauthKey := &service.APIKey{ID: 20, Key: "sk_oauth_matrix_ok", GroupID: ptrInt64(5)}
+			h.plantOAuthMetadata(oauthKey.ID, tc.scopes)
+
+			rec := scopeRunner(tc.method, tc.path, RequireOAuthScope(h.svc), oauthKey)
+
+			require.Equal(t, http.StatusOK, rec.Code,
+				"endpoint %s %s must accept scope %v", tc.method, tc.path, tc.scopes)
+		})
+	}
+}
+
+func TestRequireOAuthScope_EndpointMatrix_WrongScopeRejects(t *testing.T) {
+	// Table: (method, path, scope granted — which must NOT satisfy the policy).
+	// We always use account:read as the "wrong" scope since it's only valid for
+	// /v1/me and /v1/account/balance, not for any of the gateway endpoints.
+	cases := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"chat/completions", http.MethodPost, "/v1/chat/completions"},
+		{"responses POST", http.MethodPost, "/v1/responses"},
+		{"responses GET", http.MethodGet, "/v1/responses/resp_abc"},
+		{"messages", http.MethodPost, "/v1/messages"},
+		{"messages count_tokens", http.MethodPost, "/v1/messages/count_tokens"},
+		{"images/generations", http.MethodPost, "/v1/images/generations"},
+		{"images/edits", http.MethodPost, "/v1/images/edits"},
+		{"models", http.MethodGet, "/v1/models"},
+		{"usage", http.MethodGet, "/v1/usage"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newScopeHarness(t, true)
+			oauthKey := &service.APIKey{ID: 21, Key: "sk_oauth_matrix_bad", GroupID: ptrInt64(5)}
+			// account:read is NOT valid for any of these gateway endpoints.
+			h.plantOAuthMetadata(oauthKey.ID, []string{service.ScopeAccountRead})
+
+			rec := scopeRunner(tc.method, tc.path, RequireOAuthScope(h.svc), oauthKey)
+
+			require.Equal(t, http.StatusForbidden, rec.Code,
+				"endpoint %s %s must reject when token only has account:read", tc.method, tc.path)
+			require.Contains(t, rec.Header().Get("WWW-Authenticate"), `error="insufficient_scope"`)
+		})
+	}
+}
+
+func TestRequireOAuthScope_EndpointMatrix_UnrelatedScopeRejects(t *testing.T) {
+	// Verify that usage:read does NOT grant access to models, and models:read
+	// does NOT grant access to usage — cross-scope isolation.
+	cases := []struct {
+		name       string
+		method     string
+		path       string
+		wrongScope string
+	}{
+		{"models with usage:read", http.MethodGet, "/v1/models", service.ScopeUsageRead},
+		{"usage with models:read", http.MethodGet, "/v1/usage", service.ScopeModelsRead},
+		{"chat with messages:create", http.MethodPost, "/v1/chat/completions", service.ScopeMessagesCreate},
+		{"messages with chat.completions:create", http.MethodPost, "/v1/messages", service.ScopeChatCompletionsCreate},
+		{"images with models:read", http.MethodPost, "/v1/images/generations", service.ScopeModelsRead},
+		{"models with images:create", http.MethodGet, "/v1/models", service.ScopeImagesCreate},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newScopeHarness(t, true)
+			oauthKey := &service.APIKey{ID: 22, Key: "sk_oauth_cross_scope", GroupID: ptrInt64(5)}
+			h.plantOAuthMetadata(oauthKey.ID, []string{tc.wrongScope})
+
+			rec := scopeRunner(tc.method, tc.path, RequireOAuthScope(h.svc), oauthKey)
+
+			require.Equal(t, http.StatusForbidden, rec.Code,
+				"scope %s must NOT satisfy %s %s", tc.wrongScope, tc.method, tc.path)
+		})
+	}
+}
+
+func TestRejectOAuthTokensForUnlistedResource_FlagDisabled_PassesThrough(t *testing.T) {
+	h := newScopeHarness(t, false) // enforcement off
+	oauthKey := &service.APIKey{ID: 23, Key: "sk_oauth_unlisted_flag", GroupID: ptrInt64(5)}
+	h.plantOAuthMetadata(oauthKey.ID, []string{service.ScopeModelsRead})
+
+	rec := scopeRunner(http.MethodGet, "/v1beta/models",
+		RejectOAuthTokensForUnlistedResource(h.svc), oauthKey)
+
+	require.Equal(t, http.StatusOK, rec.Code,
+		"flag disabled must allow OAuth tokens through to unlisted resources")
+}
+
+func TestRequireOAuthScope_TrailingSlash_Matches(t *testing.T) {
+	// The regex patterns accept optional trailing slashes (/v1/models/?).
+	h := newScopeHarness(t, true)
+	oauthKey := &service.APIKey{ID: 24, Key: "sk_oauth_slash", GroupID: ptrInt64(5)}
+	h.plantOAuthMetadata(oauthKey.ID, []string{service.ScopeModelsRead})
+
+	rec := scopeRunner(http.MethodGet, "/v1/models/", RequireOAuthScope(h.svc), oauthKey)
+
+	require.Equal(t, http.StatusOK, rec.Code,
+		"trailing slash must be tolerated by the scope policy regex")
+}
+
+func TestRequireOAuthScope_WithQueryParams_Matches(t *testing.T) {
+	// Query strings must be stripped before matching.
+	h := newScopeHarness(t, true)
+	oauthKey := &service.APIKey{ID: 25, Key: "sk_oauth_query", GroupID: ptrInt64(5)}
+	h.plantOAuthMetadata(oauthKey.ID, []string{service.ScopeModelsRead})
+
+	rec := scopeRunner(http.MethodGet, "/v1/models?limit=10&offset=0", RequireOAuthScope(h.svc), oauthKey)
+
+	require.Equal(t, http.StatusOK, rec.Code,
+		"query parameters must not interfere with scope policy matching")
+}
+
 func ptrInt64(v int64) *int64 { return &v }
