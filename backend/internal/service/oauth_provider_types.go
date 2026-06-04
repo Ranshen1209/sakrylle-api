@@ -59,6 +59,10 @@ type OAuthClient struct {
 	HomepageURL                      *string
 	PrivacyURL                       *string
 	TermsURL                         *string
+	// SigningAlgorithm specifies which JWS algorithm to use for id_token signing.
+	// Valid values: "RS256" (RSA PKCS#1 v1.5 with SHA-256) or "ES256" (ECDSA P-256 with SHA-256).
+	// Defaults to "RS256" for backward compatibility.
+	SigningAlgorithm string
 }
 
 // OAuthCode is a short-lived authorization code (RFC 6749 §4.1).
