@@ -2,23 +2,48 @@ package service
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
-	oidcRSAKeyBits    = 2048
-	oidcCurrentKIDKey = "oidc_signing_current_kid"
-	oidcKeyPrefix     = "oidc_signing_key_rs256_"
+	oidcRSAKeyBits          = 2048
+	oidcCurrentKIDKey       = "oidc_signing_current_kid"
+	oidcKeyPrefix           = "oidc_signing_key_"
+	oidcPreviousKIDsKey     = "oidc_signing_previous_kids"
+	oidcGracePeriodTTLKey   = "oidc_grace_period_ttl_seconds"
+	defaultGracePeriodSec   = 86400 // 24 hours
+)
+
+// SigningAlgorithm represents the JWS algorithm used for id_token signing.
+type SigningAlgorithm string
+
+const (
+	// SigningAlgRS256 is RSA PKCS#1 v1.5 with SHA-256 (RFC 7518 §3.3).
+	SigningAlgRS256 SigningAlgorithm = "RS256"
+	// SigningAlgES256 is ECDSA P-256 with SHA-256 (RFC 7518 §3.4).
+	SigningAlgES256 SigningAlgorithm = "ES256"
+)
+
+// SigningKeyType identifies the asymmetric key type (RSA or EC).
+type SigningKeyType string
+
+const (
+	SigningKeyTypeRSA SigningKeyType = "RSA"
+	SigningKeyTypeEC  SigningKeyType = "EC"
 )
 
 // OIDCKeyStore is the minimal persistence surface for OIDC signing keys.
@@ -28,18 +53,31 @@ const (
 type OIDCKeyStore interface {
 	Get(ctx context.Context, key string) (value string, found bool, err error)
 	Put(ctx context.Context, key, value string) error
+	Delete(ctx context.Context, key string) error
 }
 
-// JWK is a public JSON Web Key (RFC 7517). Only public RSA material is
-// represented — there are deliberately no fields for the private components
-// (d, p, q, dp, dq, qi), so a JWK can never serialize a private key.
+// previousKIDEntry tracks a retired signing key with its expiry timestamp.
+// Stored as JSON array in oidc_signing_previous_kids.
+type previousKIDEntry struct {
+	KID       string    `json:"kid"`
+	RetiredAt time.Time `json:"retired_at"`
+}
+
+// JWK is a public JSON Web Key (RFC 7517). Supports both RSA and EC public
+// key material. There are deliberately no fields for private components
+// (d, p, q, dp, dq, qi for RSA; d for EC), so a JWK can never serialize a private key.
 type JWK struct {
 	Kty string `json:"kty"`
 	Use string `json:"use"`
 	Alg string `json:"alg"`
 	Kid string `json:"kid"`
-	N   string `json:"n"`
-	E   string `json:"e"`
+	// RSA fields
+	N string `json:"n,omitempty"`
+	E string `json:"e,omitempty"`
+	// EC fields
+	Crv string `json:"crv,omitempty"` // EC curve name (P-256)
+	X   string `json:"x,omitempty"`   // EC public key X coordinate (base64url)
+	Y   string `json:"y,omitempty"`   // EC public key Y coordinate (base64url)
 }
 
 // JWKS is a JWK Set as published at /.well-known/jwks.json.
@@ -47,16 +85,21 @@ type JWKS struct {
 	Keys []JWK `json:"keys"`
 }
 
-// OIDCKeyService owns the RS256 id_token signing key. The private key is held
-// only in process memory (after decryption) and at rest only as ciphertext in
-// the key store. The key material is never logged.
+// OIDCKeyService owns the id_token signing keys (RS256 and ES256). The private
+// keys are held only in process memory (after decryption) and at rest only as
+// ciphertext in the key store. The key material is never logged.
 type OIDCKeyService struct {
 	store OIDCKeyStore
 	enc   SecretEncryptor
 
-	mu   sync.RWMutex
-	kid  string
-	priv *rsa.PrivateKey
+	mu sync.RWMutex
+	// RS256 key pair
+	rsaKID     string
+	rsaPriv    *rsa.PrivateKey
+	rsaPrevKIDs []string // retired RSA kids still in grace period
+	// ES256 key pair
+	ecKID  string
+	ecPriv *ecdsa.PrivateKey
 }
 
 // NewOIDCKeyService constructs the service. Call EnsureKey before signing.
@@ -64,10 +107,10 @@ func NewOIDCKeyService(store OIDCKeyStore, enc SecretEncryptor) *OIDCKeyService 
 	return &OIDCKeyService{store: store, enc: enc}
 }
 
-// EnsureKey loads the current signing key, generating and persisting one if
-// absent. Idempotent and safe to call once at startup. Fails closed: any error
-// leaves the service unable to sign rather than falling back to an insecure
-// state.
+// EnsureKey loads the current signing keys (both RS256 and ES256), generating
+// and persisting them if absent. Idempotent and safe to call once at startup.
+// Fails closed: any error leaves the service unable to sign rather than falling
+// back to an insecure state.
 func (s *OIDCKeyService) EnsureKey(ctx context.Context) error {
 	if s == nil {
 		return fmt.Errorf("oidc key service is nil")
@@ -77,44 +120,76 @@ func (s *OIDCKeyService) EnsureKey(ctx context.Context) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.priv != nil {
-		return nil
+
+	// Load or generate RS256 key
+	if s.rsaPriv == nil {
+		rsaKID, found, err := s.store.Get(ctx, oidcCurrentKIDKey+"_rsa")
+		if err != nil {
+			return fmt.Errorf("load current rsa kid: %w", err)
+		}
+		if found && rsaKID != "" {
+			rsaPriv, err := s.loadRSAKey(ctx, rsaKID)
+			if err != nil {
+				return err
+			}
+			s.rsaKID, s.rsaPriv = rsaKID, rsaPriv
+
+			// Load previous RSA KIDs for JWKS multi-key support
+			prevKIDs, err := s.loadPreviousKIDs(ctx)
+			if err != nil {
+				// Log but don't fail - previous keys are best-effort for grace period
+				s.rsaPrevKIDs = nil
+			} else {
+				s.rsaPrevKIDs = prevKIDs
+			}
+		} else {
+			if err := s.generateAndStoreRSA(ctx); err != nil {
+				return err
+			}
+		}
 	}
 
-	kid, found, err := s.store.Get(ctx, oidcCurrentKIDKey)
-	if err != nil {
-		return fmt.Errorf("load current kid: %w", err)
-	}
-	if found && kid != "" {
-		priv, err := s.loadKey(ctx, kid)
+	// Load or generate ES256 key
+	if s.ecPriv == nil {
+		ecKID, found, err := s.store.Get(ctx, oidcCurrentKIDKey+"_ec")
 		if err != nil {
-			return err
+			return fmt.Errorf("load current ec kid: %w", err)
 		}
-		s.kid, s.priv = kid, priv
-		return nil
+		if found && ecKID != "" {
+			ecPriv, err := s.loadECKey(ctx, ecKID)
+			if err != nil {
+				return err
+			}
+			s.ecKID, s.ecPriv = ecKID, ecPriv
+		} else {
+			if err := s.generateAndStoreEC(ctx); err != nil {
+				return err
+			}
+		}
 	}
-	return s.generateAndStore(ctx)
+
+	return nil
 }
 
-func (s *OIDCKeyService) loadKey(ctx context.Context, kid string) (*rsa.PrivateKey, error) {
-	enc, found, err := s.store.Get(ctx, oidcKeyPrefix+kid)
+func (s *OIDCKeyService) loadRSAKey(ctx context.Context, kid string) (*rsa.PrivateKey, error) {
+	enc, found, err := s.store.Get(ctx, oidcKeyPrefix+"rsa_"+kid)
 	if err != nil {
-		return nil, fmt.Errorf("load signing key: %w", err)
+		return nil, fmt.Errorf("load rsa signing key: %w", err)
 	}
 	if !found || enc == "" {
-		return nil, fmt.Errorf("oidc signing key for current kid is missing")
+		return nil, fmt.Errorf("oidc rsa signing key for current kid is missing")
 	}
 	pemStr, err := s.enc.Decrypt(enc)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt signing key: %w", err)
+		return nil, fmt.Errorf("decrypt rsa signing key: %w", err)
 	}
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
-		return nil, fmt.Errorf("oidc signing key PEM decode failed")
+		return nil, fmt.Errorf("oidc rsa signing key PEM decode failed")
 	}
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("parse signing key: %w", err)
+		return nil, fmt.Errorf("parse rsa signing key: %w", err)
 	}
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
@@ -123,7 +198,66 @@ func (s *OIDCKeyService) loadKey(ctx context.Context, kid string) (*rsa.PrivateK
 	return rsaKey, nil
 }
 
-func (s *OIDCKeyService) generateAndStore(ctx context.Context) error {
+// loadRSAPublicKeyOnly loads only the public key component for a given RSA kid.
+// Used by PublicJWKS to include previous keys in the key set.
+func (s *OIDCKeyService) loadRSAPublicKeyOnly(ctx context.Context, kid string) (*rsa.PublicKey, error) {
+	priv, err := s.loadRSAKey(ctx, kid)
+	if err != nil {
+		return nil, err
+	}
+	return &priv.PublicKey, nil
+}
+
+// loadPreviousKIDs retrieves the list of retired RSA KIDs still within grace period.
+func (s *OIDCKeyService) loadPreviousKIDs(ctx context.Context) ([]string, error) {
+	jsonStr, found, err := s.store.Get(ctx, oidcPreviousKIDsKey)
+	if err != nil {
+		return nil, fmt.Errorf("load previous kids: %w", err)
+	}
+	if !found || jsonStr == "" {
+		return nil, nil
+	}
+
+	var entries []previousKIDEntry
+	if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
+		return nil, fmt.Errorf("parse previous kids JSON: %w", err)
+	}
+
+	kids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		kids = append(kids, entry.KID)
+	}
+	return kids, nil
+}
+
+func (s *OIDCKeyService) loadECKey(ctx context.Context, kid string) (*ecdsa.PrivateKey, error) {
+	enc, found, err := s.store.Get(ctx, oidcKeyPrefix+"ec_"+kid)
+	if err != nil {
+		return nil, fmt.Errorf("load ec signing key: %w", err)
+	}
+	if !found || enc == "" {
+		return nil, fmt.Errorf("oidc ec signing key for current kid is missing")
+	}
+	pemStr, err := s.enc.Decrypt(enc)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt ec signing key: %w", err)
+	}
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("oidc ec signing key PEM decode failed")
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse ec signing key: %w", err)
+	}
+	ecKey, ok := key.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("oidc signing key is not an EC key")
+	}
+	return ecKey, nil
+}
+
+func (s *OIDCKeyService) generateAndStoreRSA(ctx context.Context) error {
 	priv, err := rsa.GenerateKey(rand.Reader, oidcRSAKeyBits)
 	if err != nil {
 		return fmt.Errorf("generate rsa key: %w", err)
@@ -138,49 +272,311 @@ func (s *OIDCKeyService) generateAndStore(ctx context.Context) error {
 		return fmt.Errorf("encrypt rsa key: %w", err)
 	}
 	kid := rsaKID(&priv.PublicKey)
-	if err := s.store.Put(ctx, oidcKeyPrefix+kid, encrypted); err != nil {
-		return fmt.Errorf("store signing key: %w", err)
+	if err := s.store.Put(ctx, oidcKeyPrefix+"rsa_"+kid, encrypted); err != nil {
+		return fmt.Errorf("store rsa signing key: %w", err)
 	}
-	if err := s.store.Put(ctx, oidcCurrentKIDKey, kid); err != nil {
-		return fmt.Errorf("store current kid: %w", err)
+	if err := s.store.Put(ctx, oidcCurrentKIDKey+"_rsa", kid); err != nil {
+		return fmt.Errorf("store current rsa kid: %w", err)
 	}
-	s.kid, s.priv = kid, priv
+	s.rsaKID, s.rsaPriv = kid, priv
+	s.rsaPrevKIDs = nil
 	return nil
 }
 
-// CurrentKID returns the active key id (empty before EnsureKey).
+func (s *OIDCKeyService) generateAndStoreEC(ctx context.Context) error {
+	// Generate ECDSA P-256 key pair per RFC 7518 §3.4
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("generate ec key: %w", err)
+	}
+	// x509.MarshalPKCS8PrivateKey supports *ecdsa.PrivateKey natively
+	der, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		return fmt.Errorf("marshal ec key: %w", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	encrypted, err := s.enc.Encrypt(string(pemBytes))
+	if err != nil {
+		return fmt.Errorf("encrypt ec key: %w", err)
+	}
+	kid := ecKID(&priv.PublicKey)
+	if err := s.store.Put(ctx, oidcKeyPrefix+"ec_"+kid, encrypted); err != nil {
+		return fmt.Errorf("store ec signing key: %w", err)
+	}
+	if err := s.store.Put(ctx, oidcCurrentKIDKey+"_ec", kid); err != nil {
+		return fmt.Errorf("store current ec kid: %w", err)
+	}
+	s.ecKID, s.ecPriv = kid, priv
+	return nil
+}
+
+// CurrentKID returns the active RS256 key id (empty before EnsureKey).
 func (s *OIDCKeyService) CurrentKID() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.kid
+	return s.rsaKID
 }
 
-// Sign produces a compact RS256 JWT for the given claims with the kid header
-// set so relying parties can select the verifying key from JWKS.
-func (s *OIDCKeyService) Sign(claims jwt.MapClaims) (string, error) {
+// CurrentECKID returns the active ES256 key id (empty before EnsureKey).
+func (s *OIDCKeyService) CurrentECKID() string {
 	s.mu.RLock()
-	priv, kid := s.priv, s.kid
-	s.mu.RUnlock()
-	if priv == nil {
-		return "", fmt.Errorf("oidc signing key not loaded; call EnsureKey first")
+	defer s.mu.RUnlock()
+	return s.ecKID
+}
+
+// Sign produces a compact JWT for the given claims with the kid header set
+// so relying parties can select the verifying key from JWKS. The algorithm
+// parameter determines whether RS256 or ES256 is used.
+func (s *OIDCKeyService) Sign(claims jwt.MapClaims, algorithm SigningAlgorithm) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	switch algorithm {
+	case SigningAlgRS256:
+		if s.rsaPriv == nil {
+			return "", fmt.Errorf("oidc rsa signing key not loaded; call EnsureKey first")
+		}
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+		tok.Header["kid"] = s.rsaKID
+		return tok.SignedString(s.rsaPriv)
+
+	case SigningAlgES256:
+		if s.ecPriv == nil {
+			return "", fmt.Errorf("oidc ec signing key not loaded; call EnsureKey first")
+		}
+		tok := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+		tok.Header["kid"] = s.ecKID
+		return tok.SignedString(s.ecPriv)
+
+	default:
+		return "", fmt.Errorf("unsupported signing algorithm: %s", algorithm)
 	}
-	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	tok.Header["kid"] = kid
-	return tok.SignedString(priv)
+}
+
+// SignRS256 is a convenience wrapper that signs with RS256 algorithm.
+// Used for backward compatibility with existing code that expects
+// func(claims jwt.MapClaims) (string, error) signature.
+func (s *OIDCKeyService) SignRS256(claims jwt.MapClaims) (string, error) {
+	return s.Sign(claims, SigningAlgRS256)
 }
 
 // PublicJWKS returns the public key set for /.well-known/jwks.json.
-func (s *OIDCKeyService) PublicJWKS() (JWKS, error) {
+// Returns both RS256 and ES256 keys for dual-algorithm support.
+// During RS256 key rotation grace period, returns both current and previous RSA keys
+// so RPs can verify tokens signed with either key.
+func (s *OIDCKeyService) PublicJWKS(ctx context.Context) (JWKS, error) {
 	s.mu.RLock()
-	priv, kid := s.priv, s.kid
+	rsaPriv, rsaKID := s.rsaPriv, s.rsaKID
+	ecPriv, ecKID := s.ecPriv, s.ecKID
+	rsaPrevKIDs := make([]string, len(s.rsaPrevKIDs))
+	copy(rsaPrevKIDs, s.rsaPrevKIDs)
 	s.mu.RUnlock()
-	if priv == nil {
-		return JWKS{}, fmt.Errorf("oidc signing key not loaded")
+
+	keys := []JWK{}
+
+	// Add current RSA key
+	if rsaPriv != nil {
+		keys = append(keys, publicRSAJWK(&rsaPriv.PublicKey, rsaKID))
 	}
-	return JWKS{Keys: []JWK{publicJWK(&priv.PublicKey, kid)}}, nil
+
+	// Add previous RSA keys still in grace period
+	for _, prevKID := range rsaPrevKIDs {
+		pubKey, err := s.loadRSAPublicKeyOnly(ctx, prevKID)
+		if err != nil {
+			// Skip keys that can't be loaded (e.g., already cleaned up)
+			continue
+		}
+		keys = append(keys, publicRSAJWK(pubKey, prevKID))
+	}
+
+	// Add current EC key
+	if ecPriv != nil {
+		keys = append(keys, publicECJWK(&ecPriv.PublicKey, ecKID))
+	}
+
+	if len(keys) == 0 {
+		return JWKS{}, fmt.Errorf("oidc signing keys not loaded")
+	}
+
+	return JWKS{Keys: keys}, nil
 }
 
-func publicJWK(pub *rsa.PublicKey, kid string) JWK {
+// RotateKey generates a new RS256 signing key, moves the current key to the previous
+// keys list with an expiry timestamp, and updates the in-memory state.
+// The old key remains in the store during the grace period so RPs can still
+// verify tokens signed before rotation.
+func (s *OIDCKeyService) RotateKey(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.rsaPriv == nil {
+		return fmt.Errorf("oidc rsa signing key not loaded; call EnsureKey first")
+	}
+
+	oldKID := s.rsaKID
+
+	// Generate new RSA key
+	newPriv, err := rsa.GenerateKey(rand.Reader, oidcRSAKeyBits)
+	if err != nil {
+		return fmt.Errorf("generate new rsa key: %w", err)
+	}
+
+	newKID := rsaKID(&newPriv.PublicKey)
+
+	// Marshal and encrypt new key
+	der, err := x509.MarshalPKCS8PrivateKey(newPriv)
+	if err != nil {
+		return fmt.Errorf("marshal new rsa key: %w", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	encrypted, err := s.enc.Encrypt(string(pemBytes))
+	if err != nil {
+		return fmt.Errorf("encrypt new rsa key: %w", err)
+	}
+
+	// Store new key
+	if err := s.store.Put(ctx, oidcKeyPrefix+"rsa_"+newKID, encrypted); err != nil {
+		return fmt.Errorf("store new rsa signing key: %w", err)
+	}
+
+	// Load current previous kids list
+	jsonStr, found, err := s.store.Get(ctx, oidcPreviousKIDsKey)
+	if err != nil {
+		return fmt.Errorf("load previous kids for rotation: %w", err)
+	}
+
+	var entries []previousKIDEntry
+	if found && jsonStr != "" {
+		if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
+			return fmt.Errorf("parse previous kids JSON: %w", err)
+		}
+	}
+
+	// Append old current key to previous keys list with retirement timestamp
+	entries = append(entries, previousKIDEntry{
+		KID:       oldKID,
+		RetiredAt: time.Now().UTC(),
+	})
+
+	// Save updated previous kids list
+	updatedJSON, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("marshal updated previous kids: %w", err)
+	}
+	if err := s.store.Put(ctx, oidcPreviousKIDsKey, string(updatedJSON)); err != nil {
+		return fmt.Errorf("store updated previous kids: %w", err)
+	}
+
+	// Update current kid pointer
+	if err := s.store.Put(ctx, oidcCurrentKIDKey+"_rsa", newKID); err != nil {
+		return fmt.Errorf("update current rsa kid pointer: %w", err)
+	}
+
+	// Update in-memory state
+	s.rsaKID = newKID
+	s.rsaPriv = newPriv
+	s.rsaPrevKIDs = append(s.rsaPrevKIDs, oldKID)
+
+	return nil
+}
+
+// GetPreviousKIDs returns the list of retired RSA KIDs still in grace period.
+func (s *OIDCKeyService) GetPreviousKIDs(ctx context.Context) ([]string, error) {
+	return s.loadPreviousKIDs(ctx)
+}
+
+// CleanupExpiredKeys removes RSA signing keys that have exceeded the grace period
+// from both the store and the previous kids list. Returns the count of keys deleted.
+func (s *OIDCKeyService) CleanupExpiredKeys(ctx context.Context) (int, error) {
+	// Load grace period TTL from settings or use default
+	gracePeriodSec := defaultGracePeriodSec
+	ttlStr, found, err := s.store.Get(ctx, oidcGracePeriodTTLKey)
+	if err != nil {
+		return 0, fmt.Errorf("load grace period ttl: %w", err)
+	}
+	if found && ttlStr != "" {
+		var ttl int
+		if _, err := fmt.Sscanf(ttlStr, "%d", &ttl); err == nil && ttl > 0 {
+			gracePeriodSec = ttl
+		}
+	}
+
+	gracePeriod := time.Duration(gracePeriodSec) * time.Second
+	now := time.Now().UTC()
+
+	// Load current previous kids list
+	jsonStr, found, err := s.store.Get(ctx, oidcPreviousKIDsKey)
+	if err != nil {
+		return 0, fmt.Errorf("load previous kids: %w", err)
+	}
+	if !found || jsonStr == "" {
+		return 0, nil // Nothing to clean up
+	}
+
+	var entries []previousKIDEntry
+	if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
+		return 0, fmt.Errorf("parse previous kids JSON: %w", err)
+	}
+
+	// Separate expired and valid entries
+	var validEntries []previousKIDEntry
+	var expiredKIDs []string
+
+	for _, entry := range entries {
+		expiryTime := entry.RetiredAt.Add(gracePeriod)
+		if now.After(expiryTime) {
+			expiredKIDs = append(expiredKIDs, entry.KID)
+		} else {
+			validEntries = append(validEntries, entry)
+		}
+	}
+
+	// Delete expired keys from store
+	deletedCount := 0
+	for _, kid := range expiredKIDs {
+		if err := s.store.Delete(ctx, oidcKeyPrefix+"rsa_"+kid); err != nil {
+			// Log but continue cleanup - best effort
+			continue
+		}
+		deletedCount++
+	}
+
+	// Update previous kids list with only valid entries
+	if len(validEntries) == 0 {
+		// No entries left - delete the list entirely
+		if err := s.store.Delete(ctx, oidcPreviousKIDsKey); err != nil {
+			return deletedCount, fmt.Errorf("delete empty previous kids list: %w", err)
+		}
+	} else {
+		// Save filtered list
+		updatedJSON, err := json.Marshal(validEntries)
+		if err != nil {
+			return deletedCount, fmt.Errorf("marshal filtered previous kids: %w", err)
+		}
+		if err := s.store.Put(ctx, oidcPreviousKIDsKey, string(updatedJSON)); err != nil {
+			return deletedCount, fmt.Errorf("store filtered previous kids: %w", err)
+		}
+	}
+
+	// Update in-memory state to reflect cleanup
+	s.mu.Lock()
+	validKIDSet := make(map[string]bool)
+	for _, entry := range validEntries {
+		validKIDSet[entry.KID] = true
+	}
+	newPrevKIDs := make([]string, 0, len(s.rsaPrevKIDs))
+	for _, kid := range s.rsaPrevKIDs {
+		if validKIDSet[kid] {
+			newPrevKIDs = append(newPrevKIDs, kid)
+		}
+	}
+	s.rsaPrevKIDs = newPrevKIDs
+	s.mu.Unlock()
+
+	return deletedCount, nil
+}
+
+func publicRSAJWK(pub *rsa.PublicKey, kid string) JWK {
 	return JWK{
 		Kty: "RSA",
 		Use: "sig",
@@ -191,12 +587,34 @@ func publicJWK(pub *rsa.PublicKey, kid string) JWK {
 	}
 }
 
+func publicECJWK(pub *ecdsa.PublicKey, kid string) JWK {
+	return JWK{
+		Kty: "EC",
+		Use: "sig",
+		Alg: "ES256",
+		Kid: kid,
+		Crv: "P-256",
+		X:   base64.RawURLEncoding.EncodeToString(pub.X.Bytes()),
+		Y:   base64.RawURLEncoding.EncodeToString(pub.Y.Bytes()),
+	}
+}
+
 // rsaKID derives a stable RFC 7638 JWK thumbprint (SHA-256 over the canonical
 // {e,kty,n} JSON object), base64url-encoded.
 func rsaKID(pub *rsa.PublicKey) string {
 	n := base64.RawURLEncoding.EncodeToString(pub.N.Bytes())
 	e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes())
 	canonical := fmt.Sprintf(`{"e":"%s","kty":"RSA","n":"%s"}`, e, n)
+	sum := sha256.Sum256([]byte(canonical))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// ecKID derives a stable RFC 7638 JWK thumbprint for EC keys (SHA-256 over
+// the canonical {crv,kty,x,y} JSON object), base64url-encoded.
+func ecKID(pub *ecdsa.PublicKey) string {
+	x := base64.RawURLEncoding.EncodeToString(pub.X.Bytes())
+	y := base64.RawURLEncoding.EncodeToString(pub.Y.Bytes())
+	canonical := fmt.Sprintf(`{"crv":"P-256","kty":"EC","x":"%s","y":"%s"}`, x, y)
 	sum := sha256.Sum256([]byte(canonical))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }

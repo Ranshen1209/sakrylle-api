@@ -568,6 +568,7 @@ var ProviderSet = wire.NewSet(
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
 	NewGrokOAuthService,
+	ProvideOIDCKeyService,
 	ProvideOAuthProviderService,
 	NewDefaultGroupAccessPolicy,
 	NewGeminiOAuthService,
@@ -692,6 +693,23 @@ func ProvideChannelMonitorService(
 	return NewChannelMonitorService(repo, encryptor)
 }
 
+// ProvideOIDCKeyService creates the OIDC signing key service backed by the
+// security_secrets table. Calls EnsureKey at startup to load or generate the
+// RS256 key pair.
+func ProvideOIDCKeyService(
+	entClient *dbent.Client,
+	encryptor SecretEncryptor,
+) *OIDCKeyService {
+	store := NewSecuritySecretsOIDCKeyStore(entClient, encryptor)
+	svc := NewOIDCKeyService(store, encryptor)
+	if err := svc.EnsureKey(context.Background()); err != nil {
+		// Log but don't block startup — OIDC id_token issuance will fail gracefully
+		// if the key is unavailable, and OAuth flows without openid scope are unaffected.
+		println("[Service] Warning: OIDC key service initialization failed:", err.Error())
+	}
+	return svc
+}
+
 // ProvideOAuthProviderService wires OAuthProviderService and attaches the
 // FIX H4 atomic-mint repo via the WithTokenMintRepo option setter. Wire
 // can't express method chains directly, so this wrapper makes the chain
@@ -712,8 +730,11 @@ func ProvideOAuthProviderService(
 	settingRepo SettingRepository,
 	authCache APIKeyAuthCacheInvalidator,
 	mintRepo OAuthTokenMintRepository,
+	oidcKeys *OIDCKeyService,
+	settingService *SettingService,
+	userService *UserService,
 ) *OAuthProviderService {
-	return NewOAuthProviderService(
+	svc := NewOAuthProviderService(
 		clientRepo,
 		codeRepo,
 		refreshRepo,
@@ -726,6 +747,32 @@ func ProvideOAuthProviderService(
 		settingRepo,
 		authCache,
 	).WithTokenMintRepo(mintRepo)
+
+	// Wire OIDC id_token issuance. The issuer resolver reads oauth_issuer or
+	// frontend_url from settings; userClaims fetches stable identity fields.
+	// When OIDC is wired, clients can request scope=openid to receive id_tokens.
+	if oidcKeys != nil && settingService != nil && userService != nil {
+		svc.WithOIDC(
+			oidcKeys.SignRS256,
+			func(ctx context.Context) string {
+				issuer, _ := settingService.GetOAuthIssuer(ctx)
+				return issuer
+			},
+			func(ctx context.Context, userID int64) (OIDCUserClaims, error) {
+				u, err := userService.GetByID(ctx, userID)
+				if err != nil {
+					return OIDCUserClaims{UserID: userID}, err
+				}
+				return OIDCUserClaims{
+					UserID:   userID,
+					Email:    u.Email,
+					Username: u.Username,
+				}, nil
+			},
+		)
+	}
+
+	return svc
 }
 
 // ProvideOAuthCleanupService creates and starts OAuthCleanupService (Issue 18).

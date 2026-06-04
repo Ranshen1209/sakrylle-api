@@ -119,6 +119,8 @@ func ProvideHandlers(
 	oauthDeviceHandler *OAuthDeviceHandler,
 	accountInfoHandler *AccountInfoHandler,
 	oauthProviderService *service.OAuthProviderService,
+	oidcKeyService *service.OIDCKeyService,
+	authService *service.AuthService,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -131,6 +133,17 @@ func ProvideHandlers(
 	// /oauth/token grant_type=device_code branch dispatches correctly. Same
 	// post-construction pattern as SetOAuthService above.
 	oauthProviderHandler.SetDeviceHandler(oauthDeviceHandler)
+	// Wire OIDC signing key service for id_token issuance and JWKS endpoint.
+	// When wired, /.well-known/jwks.json returns the public key set and
+	// id_tokens are signed when scope=openid is granted.
+	if oidcKeyService != nil {
+		oauthProviderHandler.SetOIDCKeyService(oidcKeyService)
+	}
+	// Wire AuthService for prompt=none silent authentication (OIDC Core §3.1.2.1).
+	// When wired, prompt=none validates JWT sessions and auto-issues codes.
+	if authService != nil {
+		oauthProviderHandler.SetAuthService(authService)
+	}
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,

@@ -103,16 +103,19 @@ func (h *AccountInfoHandler) Me(c *gin.Context) {
 	}
 
 	// OAuth path — at least one of the §7.3 GET /v1/me scopes is required.
+	// Also allow openid-only grants (id_token-only flows may call /v1/me
+	// for userinfo even without profile/account scopes).
 	required := []string{
 		service.ScopeProfileRead,
 		service.ScopeAccountRead,
 		service.ScopeAccountBalanceRead,
+		service.ScopeOpenID,
 	}
 	if !service.HasAnyScope(meta.Scopes, required...) {
 		middleware.WriteOAuthResourceError(c, middleware.OAuthResourceError{
 			Status:         http.StatusForbidden,
 			Code:           middleware.OAuthErrInsufficientScope,
-			Description:    "required scope: profile:read, account:read, or account:balance:read",
+			Description:    "required scope: openid, profile:read, account:read, or account:balance:read",
 			RequiredScopes: required,
 		})
 		return

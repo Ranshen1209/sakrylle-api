@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -180,6 +181,63 @@ func BuildAuthorizationURL(state, codeChallenge, scope string) string {
 		codeChallenge,
 		state,
 	)
+}
+
+func isLoopbackRedirect(registered, candidate string) bool {
+	registeredURL, err := parseLoopbackRedirectURL(registered)
+	if err != nil {
+		return false
+	}
+	candidateURL, err := parseLoopbackRedirectURL(candidate)
+	if err != nil {
+		return false
+	}
+	if registeredURL.Fragment != "" || candidateURL.Fragment != "" {
+		return false
+	}
+	if registeredURL.Port() != "" {
+		return registeredURL.String() == candidateURL.String()
+	}
+	return sameLoopbackHost(registeredURL.Hostname(), candidateURL.Hostname()) &&
+		registeredURL.EscapedPath() == candidateURL.EscapedPath() &&
+		registeredURL.RawQuery == candidateURL.RawQuery
+}
+
+func parseLoopbackRedirectURL(raw string) (*url.URL, error) {
+	if strings.HasPrefix(raw, "http://::1/") || raw == "http://::1" {
+		raw = strings.Replace(raw, "http://::1", "http://[::1]", 1)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme != "http" || u.Hostname() == "" {
+		return nil, fmt.Errorf("not an http loopback redirect")
+	}
+	if u.Port() != "" {
+		if _, err := net.LookupPort("tcp", u.Port()); err != nil {
+			return nil, err
+		}
+	}
+	if !isAllowedLoopbackHost(u.Hostname()) {
+		return nil, fmt.Errorf("not an allowed loopback host")
+	}
+	return u, nil
+}
+
+func sameLoopbackHost(a, b string) bool {
+	if strings.EqualFold(a, "localhost") || strings.EqualFold(b, "localhost") {
+		return strings.EqualFold(a, b)
+	}
+	return net.ParseIP(a).Equal(net.ParseIP(b))
+}
+
+func isAllowedLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.Equal(net.ParseIP("127.0.0.1")) || ip.Equal(net.IPv6loopback))
 }
 
 // TokenResponse represents the token response from OAuth provider

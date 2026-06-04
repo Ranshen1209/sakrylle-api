@@ -21,6 +21,7 @@ func (s *memOIDCStore) Get(_ context.Context, k string) (string, bool, error) {
 	return v, ok, nil
 }
 func (s *memOIDCStore) Put(_ context.Context, k, v string) error { s.m[k] = v; return nil }
+func (s *memOIDCStore) Delete(_ context.Context, k string) error { delete(s.m, k); return nil }
 
 type passEnc struct{}
 
