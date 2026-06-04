@@ -61,11 +61,12 @@ func (s *SecuritySecretsOIDCKeyStore) Get(ctx context.Context, key string) (stri
 // before calling Put).
 func (s *SecuritySecretsOIDCKeyStore) Put(ctx context.Context, key, value string) error {
 	// Upsert: update if exists, create if not
+	// OnConflictColumns specifies the conflict target (the "key" unique constraint)
 	err := s.client.SecuritySecret.
 		Create().
 		SetKey(key).
 		SetValue(value).
-		OnConflict().
+		OnConflictColumns(securitysecret.FieldKey).
 		UpdateValue().
 		Exec(ctx)
 
