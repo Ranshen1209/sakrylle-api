@@ -717,7 +717,7 @@ func ProvideOAuthProviderService(
 	// When OIDC is wired, clients can request scope=openid to receive id_tokens.
 	if oidcKeys != nil && settingService != nil && userService != nil {
 		svc.WithOIDC(
-			oidcKeys.SignRS256,
+			oidcKeys.Sign,
 			func(ctx context.Context) string {
 				issuer, _ := settingService.GetOAuthIssuer(ctx)
 				return issuer

@@ -716,13 +716,17 @@ func (h *OAuthProviderHandler) OpenIDConfiguration(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// JWKS serves GET /.well-known/jwks.json — the public RS256 verification keys.
+// JWKS serves GET /.well-known/jwks.json — the public id_token verification
+// keys (RS256 RSA + ES256 EC).
 //
 // Only public key material is published (the JWK type cannot carry private
 // components). Cache-Control max-age is 3600s: longer than the discovery TTL
 // to allow relying parties to cache the key set across multiple requests.
-// Key rotation is not yet implemented; when implemented, the JWKS will include
-// both the old and new keys (dual-kid) during the grace period.
+// Key rotation is implemented for both algorithms (OIDCKeyService.RotateKey /
+// RotateECKey / CleanupExpiredKeys): during the grace period the JWKS includes
+// both the previous and current key (dual-kid) for the rotated algorithm so RPs
+// can verify tokens signed with either key. Rotation is operator-triggered (no
+// automatic background scheduler is wired yet).
 func (h *OAuthProviderHandler) JWKS(c *gin.Context) {
 	if h.oidcKeys == nil {
 		c.Header("Cache-Control", "no-store")

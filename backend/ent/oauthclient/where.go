@@ -149,6 +149,11 @@ func TermsURL(v string) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldEQ(FieldTermsURL, v))
 }
 
+// SigningAlgorithm applies equality check predicate on the "signing_algorithm" field. It's identical to SigningAlgorithmEQ.
+func SigningAlgorithm(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldSigningAlgorithm, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldEQ(FieldCreatedAt, v))
@@ -1052,6 +1057,71 @@ func TermsURLEqualFold(v string) predicate.OAuthClient {
 // TermsURLContainsFold applies the ContainsFold predicate on the "terms_url" field.
 func TermsURLContainsFold(v string) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldContainsFold(FieldTermsURL, v))
+}
+
+// SigningAlgorithmEQ applies the EQ predicate on the "signing_algorithm" field.
+func SigningAlgorithmEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmNEQ applies the NEQ predicate on the "signing_algorithm" field.
+func SigningAlgorithmNEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNEQ(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmIn applies the In predicate on the "signing_algorithm" field.
+func SigningAlgorithmIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldIn(FieldSigningAlgorithm, vs...))
+}
+
+// SigningAlgorithmNotIn applies the NotIn predicate on the "signing_algorithm" field.
+func SigningAlgorithmNotIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNotIn(FieldSigningAlgorithm, vs...))
+}
+
+// SigningAlgorithmGT applies the GT predicate on the "signing_algorithm" field.
+func SigningAlgorithmGT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGT(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmGTE applies the GTE predicate on the "signing_algorithm" field.
+func SigningAlgorithmGTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGTE(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmLT applies the LT predicate on the "signing_algorithm" field.
+func SigningAlgorithmLT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLT(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmLTE applies the LTE predicate on the "signing_algorithm" field.
+func SigningAlgorithmLTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLTE(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmContains applies the Contains predicate on the "signing_algorithm" field.
+func SigningAlgorithmContains(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContains(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmHasPrefix applies the HasPrefix predicate on the "signing_algorithm" field.
+func SigningAlgorithmHasPrefix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasPrefix(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmHasSuffix applies the HasSuffix predicate on the "signing_algorithm" field.
+func SigningAlgorithmHasSuffix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasSuffix(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmEqualFold applies the EqualFold predicate on the "signing_algorithm" field.
+func SigningAlgorithmEqualFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEqualFold(FieldSigningAlgorithm, v))
+}
+
+// SigningAlgorithmContainsFold applies the ContainsFold predicate on the "signing_algorithm" field.
+func SigningAlgorithmContainsFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContainsFold(FieldSigningAlgorithm, v))
 }
 
 // And groups predicates with the AND operator between them.

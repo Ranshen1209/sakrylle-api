@@ -165,8 +165,9 @@ type OAuthProviderService struct {
 	lastUsedThrottle sync.Map // map[int64]time.Time
 
 	// OIDC id_token issuance. All three are nil unless WithOIDC is called.
-	// When nil, no id_token is issued (the OAuth flows are unaffected).
-	oidcSign   func(claims jwt.MapClaims) (string, error)
+	// When nil, no id_token is issued (the OAuth flows are unaffected). oidcSign
+	// is algorithm-aware: maybeSignIDToken selects RS256 or ES256 per client.
+	oidcSign   func(claims jwt.MapClaims, alg SigningAlgorithm) (string, error)
 	oidcIssuer func(ctx context.Context) string
 	oidcUser   func(ctx context.Context, userID int64) (OIDCUserClaims, error)
 }
@@ -225,14 +226,15 @@ func (s *OAuthProviderService) WithTokenMintRepo(repo OAuthTokenMintRepository) 
 
 // WithOIDC wires OIDC id_token issuance into the service.
 //
-//   - sign signs a claim set with the current RS256 key (e.g. OIDCKeyService.Sign).
+//   - sign signs a claim set with the requested algorithm (e.g. OIDCKeyService.Sign).
+//     maybeSignIDToken picks RS256 or ES256 per the client's signing_algorithm.
 //   - issuer resolves the fixed provider issuer (https://sub.sakrylle.com).
 //   - userClaims fetches identity fields for profile/email claims by user id.
 //
 // When this is not called, no id_token is ever issued and the OAuth flows are
 // completely unaffected.
 func (s *OAuthProviderService) WithOIDC(
-	sign func(claims jwt.MapClaims) (string, error),
+	sign func(claims jwt.MapClaims, alg SigningAlgorithm) (string, error),
 	issuer func(ctx context.Context) string,
 	userClaims func(ctx context.Context, userID int64) (OIDCUserClaims, error),
 ) *OAuthProviderService {
@@ -244,6 +246,26 @@ func (s *OAuthProviderService) WithOIDC(
 	return s
 }
 
+// resolveSigningAlgorithm maps a client's stored signing_algorithm to a
+// supported SigningAlgorithm, defaulting to RS256. The DB CHECK constraint
+// (migration 151) already restricts the column to RS256/ES256, but the service
+// fails safe to RS256 for empty or unrecognised values (e.g. a legacy row
+// predating the column, or a future value not yet supported at runtime) and
+// logs the fallback so an operator can spot a misconfiguration.
+func resolveSigningAlgorithm(raw string) SigningAlgorithm {
+	switch SigningAlgorithm(raw) {
+	case SigningAlgRS256:
+		return SigningAlgRS256
+	case SigningAlgES256:
+		return SigningAlgES256
+	case "":
+		return SigningAlgRS256
+	default:
+		slog.Warn("oidc: unrecognised client signing_algorithm; defaulting to RS256", "signing_algorithm", raw)
+		return SigningAlgRS256
+	}
+}
+
 // maybeSignIDToken returns a signed id_token when (and only when) the granted
 // scopes include `openid` and the OIDC signer is wired.
 //
@@ -251,7 +273,7 @@ func (s *OAuthProviderService) WithOIDC(
 // unresolved or signing fails, it returns an error so the token request fails
 // loudly rather than emitting a malformed identity assertion. When OIDC is not
 // wired at all (feature off), it returns ("", nil) and the OAuth flow proceeds.
-func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID string, userID int64, scopes []string, nonce string, authTime time.Time) (string, error) {
+func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID string, signingAlg string, userID int64, scopes []string, nonce string, authTime time.Time) (string, error) {
 	if s.oidcSign == nil || s.oidcIssuer == nil || !HasScope(scopes, ScopeOpenID) {
 		return "", nil
 	}
@@ -281,7 +303,7 @@ func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, clientID st
 	if err != nil {
 		return "", fmt.Errorf("oidc: build id_token claims: %w", err)
 	}
-	return s.oidcSign(claims)
+	return s.oidcSign(claims, resolveSigningAlgorithm(signingAlg))
 }
 
 // IsEnabled reports whether the OAuth provider is enabled in DB settings.
@@ -1086,7 +1108,7 @@ func (s *OAuthProviderService) RefreshAccessToken(
 	// carry a nonce claim (nonce binds the original authentication request,
 	// not this rotation) and has no fresh auth_time (no re-authentication
 	// happened here). So we deliberately pass empty nonce + zero authTime.
-	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, row.UserID, scopes, "", time.Time{})
+	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, client.SigningAlgorithm, row.UserID, scopes, "", time.Time{})
 	if idErr != nil {
 		return nil, idErr
 	}
@@ -1882,7 +1904,7 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		}
 	}
 
-	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, code.UserID, scopes, code.Nonce, code.CreatedAt)
+	idTok, idErr := s.maybeSignIDToken(ctx, client.ClientID, client.SigningAlgorithm, code.UserID, scopes, code.Nonce, code.CreatedAt)
 	if idErr != nil {
 		return nil, idErr
 	}

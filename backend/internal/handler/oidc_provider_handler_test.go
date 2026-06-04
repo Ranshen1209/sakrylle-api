@@ -45,6 +45,9 @@ func newTestOIDCKeys(t *testing.T) *service.OIDCKeyService {
 func TestOpenIDConfiguration(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewOAuthProviderHandler(nil, nil)
+	// OpenIDConfiguration returns 404 unless OIDC signing is wired (it must not
+	// advertise capabilities the server can't honor), so wire a test key service.
+	h.SetOIDCKeyService(newTestOIDCKeys(t))
 	r := gin.New()
 	r.GET("/.well-known/openid-configuration", h.OpenIDConfiguration)
 
@@ -102,6 +105,7 @@ func TestJWKSEndpoint(t *testing.T) {
 		t.Fatalf("status %d body %s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
+	// Neither RSA private components nor the EC private scalar may ever appear.
 	for _, priv := range []string{`"d"`, `"p"`, `"q"`, `"dp"`, `"dq"`, `"qi"`} {
 		if strings.Contains(body, priv) {
 			t.Errorf("JWKS leaked private field %s", priv)
@@ -111,8 +115,25 @@ func TestJWKSEndpoint(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &set); err != nil {
 		t.Fatal(err)
 	}
-	if len(set.Keys) != 1 || set.Keys[0].Kid == "" || set.Keys[0].Kty != "RSA" || set.Keys[0].Alg != "RS256" {
-		t.Errorf("unexpected jwks: %+v", set)
+	// The key set advertises both signing algorithms: one RS256 RSA key and one
+	// ES256 EC key (dual-algorithm support). Every key must carry a kid.
+	var rsa, ec *service.JWK
+	for i := range set.Keys {
+		if set.Keys[i].Kid == "" {
+			t.Errorf("jwks key missing kid: %+v", set.Keys[i])
+		}
+		switch set.Keys[i].Kty {
+		case "RSA":
+			rsa = &set.Keys[i]
+		case "EC":
+			ec = &set.Keys[i]
+		}
+	}
+	if rsa == nil || rsa.Alg != "RS256" {
+		t.Errorf("expected an RS256 RSA key; got %+v", set)
+	}
+	if ec == nil || ec.Alg != "ES256" || ec.Crv != "P-256" {
+		t.Errorf("expected an ES256 P-256 EC key; got %+v", set)
 	}
 }
 

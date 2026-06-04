@@ -899,10 +899,10 @@ func TestOIDCKeyService_InvalidGracePeriodTTL(t *testing.T) {
 func TestOIDCKeyService_StorageFailureDuringRotation(t *testing.T) {
 	ctx := context.Background()
 
-	// Store that fails on Put
+	// Store backed by an in-memory map; EnsureKey must succeed first so we have
+	// a current key to rotate. failOnPut is flipped on only for the rotation.
 	store := &failingStore{
 		memKeyStore: newMemKeyStore(),
-		failOnPut:   true,
 	}
 
 	svc := NewOIDCKeyService(store, b64Encryptor{})
@@ -910,11 +910,30 @@ func TestOIDCKeyService_StorageFailureDuringRotation(t *testing.T) {
 		t.Fatalf("EnsureKey: %v", err)
 	}
 
-	// Rotation should fail
+	// Capture pre-rotation state so we can assert rotation left it intact.
+	kidBefore := svc.CurrentKID()
+	prevBefore, err := svc.GetPreviousKIDs(ctx)
+	if err != nil {
+		t.Fatalf("GetPreviousKIDs before rotation: %v", err)
+	}
+
+	// Rotation should fail cleanly when the store rejects the new key Put.
 	store.failOnPut = true
-	err := svc.RotateKey(ctx)
-	if err == nil {
+	if err := svc.RotateKey(ctx); err == nil {
 		t.Error("expected rotation to fail with storage error")
+	}
+
+	// Fail-clean invariant: a failed rotation must not advance the current kid
+	// or leak a half-written previous-kids entry into in-memory state.
+	if got := svc.CurrentKID(); got != kidBefore {
+		t.Errorf("current kid changed after failed rotation: got %q, want %q", got, kidBefore)
+	}
+	prevAfter, err := svc.GetPreviousKIDs(ctx)
+	if err != nil {
+		t.Fatalf("GetPreviousKIDs after rotation: %v", err)
+	}
+	if len(prevAfter) != len(prevBefore) {
+		t.Errorf("previous kids changed after failed rotation: got %v, want %v", prevAfter, prevBefore)
 	}
 }
 
