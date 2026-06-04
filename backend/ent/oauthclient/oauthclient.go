@@ -63,6 +63,8 @@ const (
 	FieldPrivacyURL = "privacy_url"
 	// FieldTermsURL holds the string denoting the terms_url field in the database.
 	FieldTermsURL = "terms_url"
+	// FieldSigningAlgorithm holds the string denoting the signing_algorithm field in the database.
+	FieldSigningAlgorithm = "signing_algorithm"
 	// Table holds the table name of the oauthclient in the database.
 	Table = "oauth_clients"
 )
@@ -95,6 +97,7 @@ var Columns = []string{
 	FieldHomepageURL,
 	FieldPrivacyURL,
 	FieldTermsURL,
+	FieldSigningAlgorithm,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -146,6 +149,10 @@ var (
 	DefaultDeviceFlowEnabled bool
 	// DefaultAllowRefreshWithoutOfflineAccess holds the default value on creation for the "allow_refresh_without_offline_access" field.
 	DefaultAllowRefreshWithoutOfflineAccess bool
+	// DefaultSigningAlgorithm holds the default value on creation for the "signing_algorithm" field.
+	DefaultSigningAlgorithm string
+	// SigningAlgorithmValidator is a validator for the "signing_algorithm" field. It is called by the builders before save.
+	SigningAlgorithmValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the OAuthClient queries.
@@ -249,4 +256,9 @@ func ByPrivacyURL(opts ...sql.OrderTermOption) OrderOption {
 // ByTermsURL orders the results by the terms_url field.
 func ByTermsURL(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTermsURL, opts...).ToFunc()
+}
+
+// BySigningAlgorithm orders the results by the signing_algorithm field.
+func BySigningAlgorithm(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSigningAlgorithm, opts...).ToFunc()
 }

@@ -118,6 +118,15 @@ func (OAuthClient) Fields() []ent.Field {
 		field.Text("terms_url").
 			Optional().
 			Nillable(),
+
+		// ── OIDC id_token signing (migration 151) ─────────────────────────
+		// signing_algorithm selects the JWS alg for this client's id_tokens.
+		// The DB CHECK constraint restricts values to RS256/ES256; the service
+		// layer (resolveSigningAlgorithm) additionally fails safe to RS256.
+		field.String("signing_algorithm").
+			MaxLen(16).
+			Default("RS256").
+			Comment("JWS algorithm for id_token signing: RS256 or ES256; defaults to RS256"),
 	}
 }
 

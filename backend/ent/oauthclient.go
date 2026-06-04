@@ -67,8 +67,10 @@ type OAuthClient struct {
 	// PrivacyURL holds the value of the "privacy_url" field.
 	PrivacyURL *string `json:"privacy_url,omitempty"`
 	// TermsURL holds the value of the "terms_url" field.
-	TermsURL     *string `json:"terms_url,omitempty"`
-	selectValues sql.SelectValues
+	TermsURL *string `json:"terms_url,omitempty"`
+	// JWS algorithm for id_token signing: RS256 or ES256; defaults to RS256
+	SigningAlgorithm string `json:"signing_algorithm,omitempty"`
+	selectValues     sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -82,7 +84,7 @@ func (*OAuthClient) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case oauthclient.FieldID, oauthclient.FieldDefaultGroupID, oauthclient.FieldAccessTokenTTLSeconds, oauthclient.FieldRefreshTokenTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case oauthclient.FieldClientID, oauthclient.FieldName, oauthclient.FieldClientSecretHash, oauthclient.FieldClientType, oauthclient.FieldAppType, oauthclient.FieldIconURL, oauthclient.FieldHomepageURL, oauthclient.FieldPrivacyURL, oauthclient.FieldTermsURL:
+		case oauthclient.FieldClientID, oauthclient.FieldName, oauthclient.FieldClientSecretHash, oauthclient.FieldClientType, oauthclient.FieldAppType, oauthclient.FieldIconURL, oauthclient.FieldHomepageURL, oauthclient.FieldPrivacyURL, oauthclient.FieldTermsURL, oauthclient.FieldSigningAlgorithm:
 			values[i] = new(sql.NullString)
 		case oauthclient.FieldCreatedAt, oauthclient.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -275,6 +277,12 @@ func (_m *OAuthClient) assignValues(columns []string, values []any) error {
 				_m.TermsURL = new(string)
 				*_m.TermsURL = value.String
 			}
+		case oauthclient.FieldSigningAlgorithm:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field signing_algorithm", values[i])
+			} else if value.Valid {
+				_m.SigningAlgorithm = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -397,6 +405,9 @@ func (_m *OAuthClient) String() string {
 		builder.WriteString("terms_url=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("signing_algorithm=")
+	builder.WriteString(_m.SigningAlgorithm)
 	builder.WriteByte(')')
 	return builder.String()
 }

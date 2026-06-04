@@ -1293,6 +1293,12 @@ func init() {
 	oauthclientDescAllowRefreshWithoutOfflineAccess := oauthclientFields[18].Descriptor()
 	// oauthclient.DefaultAllowRefreshWithoutOfflineAccess holds the default value on creation for the allow_refresh_without_offline_access field.
 	oauthclient.DefaultAllowRefreshWithoutOfflineAccess = oauthclientDescAllowRefreshWithoutOfflineAccess.Default.(bool)
+	// oauthclientDescSigningAlgorithm is the schema descriptor for signing_algorithm field.
+	oauthclientDescSigningAlgorithm := oauthclientFields[23].Descriptor()
+	// oauthclient.DefaultSigningAlgorithm holds the default value on creation for the signing_algorithm field.
+	oauthclient.DefaultSigningAlgorithm = oauthclientDescSigningAlgorithm.Default.(string)
+	// oauthclient.SigningAlgorithmValidator is a validator for the "signing_algorithm" field. It is called by the builders before save.
+	oauthclient.SigningAlgorithmValidator = oauthclientDescSigningAlgorithm.Validators[0].(func(string) error)
 	oauthcodeMixin := schema.OAuthCode{}.Mixin()
 	oauthcodeMixinFields0 := oauthcodeMixin[0].Fields()
 	_ = oauthcodeMixinFields0

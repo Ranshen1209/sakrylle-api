@@ -20,12 +20,16 @@ import (
 )
 
 const (
-	oidcRSAKeyBits          = 2048
-	oidcCurrentKIDKey       = "oidc_signing_current_kid"
-	oidcKeyPrefix           = "oidc_signing_key_"
-	oidcPreviousKIDsKey     = "oidc_signing_previous_kids"
-	oidcGracePeriodTTLKey   = "oidc_grace_period_ttl_seconds"
-	defaultGracePeriodSec   = 86400 // 24 hours
+	oidcRSAKeyBits        = 2048
+	oidcCurrentKIDKey     = "oidc_signing_current_kid"
+	oidcKeyPrefix         = "oidc_signing_key_"
+	oidcPreviousKIDsKey   = "oidc_signing_previous_kids"
+	// oidcPreviousKIDsKeyEC stores the retired EC kids list. RSA keeps the
+	// historical un-suffixed key (oidcPreviousKIDsKey) for backward compat with
+	// data written before EC rotation existed; EC uses its own suffixed key.
+	oidcPreviousKIDsKeyEC = "oidc_signing_previous_kids_ec"
+	oidcGracePeriodTTLKey = "oidc_grace_period_ttl_seconds"
+	defaultGracePeriodSec = 86400 // 24 hours
 )
 
 // SigningAlgorithm represents the JWS algorithm used for id_token signing.
@@ -98,8 +102,9 @@ type OIDCKeyService struct {
 	rsaPriv    *rsa.PrivateKey
 	rsaPrevKIDs []string // retired RSA kids still in grace period
 	// ES256 key pair
-	ecKID  string
-	ecPriv *ecdsa.PrivateKey
+	ecKID      string
+	ecPriv     *ecdsa.PrivateKey
+	ecPrevKIDs []string // retired EC kids still in grace period
 }
 
 // NewOIDCKeyService constructs the service. Call EnsureKey before signing.
@@ -161,6 +166,16 @@ func (s *OIDCKeyService) EnsureKey(ctx context.Context) error {
 				return err
 			}
 			s.ecKID, s.ecPriv = ecKID, ecPriv
+
+			// Load previous EC KIDs for JWKS multi-key support during grace period.
+			prevKIDs, err := s.loadPreviousKIDsFor(ctx, oidcPreviousKIDsKeyEC)
+			if err != nil {
+				// Best-effort, mirror the RSA branch: previous keys only matter
+				// for the grace period, never for current signing.
+				s.ecPrevKIDs = nil
+			} else {
+				s.ecPrevKIDs = prevKIDs
+			}
 		} else {
 			if err := s.generateAndStoreEC(ctx); err != nil {
 				return err
@@ -210,7 +225,13 @@ func (s *OIDCKeyService) loadRSAPublicKeyOnly(ctx context.Context, kid string) (
 
 // loadPreviousKIDs retrieves the list of retired RSA KIDs still within grace period.
 func (s *OIDCKeyService) loadPreviousKIDs(ctx context.Context) ([]string, error) {
-	jsonStr, found, err := s.store.Get(ctx, oidcPreviousKIDsKey)
+	return s.loadPreviousKIDsFor(ctx, oidcPreviousKIDsKey)
+}
+
+// loadPreviousKIDsFor retrieves the retired KIDs still within grace period from
+// the given store key. RSA and EC each keep their own previous-kids list.
+func (s *OIDCKeyService) loadPreviousKIDsFor(ctx context.Context, storeKey string) ([]string, error) {
+	jsonStr, found, err := s.store.Get(ctx, storeKey)
 	if err != nil {
 		return nil, fmt.Errorf("load previous kids: %w", err)
 	}
@@ -228,6 +249,17 @@ func (s *OIDCKeyService) loadPreviousKIDs(ctx context.Context) ([]string, error)
 		kids = append(kids, entry.KID)
 	}
 	return kids, nil
+}
+
+// loadECPublicKeyOnly loads only the public key component for a given EC kid.
+// Used by PublicJWKS to include previous EC keys in the key set during the
+// rotation grace period.
+func (s *OIDCKeyService) loadECPublicKeyOnly(ctx context.Context, kid string) (*ecdsa.PublicKey, error) {
+	priv, err := s.loadECKey(ctx, kid)
+	if err != nil {
+		return nil, err
+	}
+	return &priv.PublicKey, nil
 }
 
 func (s *OIDCKeyService) loadECKey(ctx context.Context, kid string) (*ecdsa.PrivateKey, error) {
@@ -353,23 +385,18 @@ func (s *OIDCKeyService) Sign(claims jwt.MapClaims, algorithm SigningAlgorithm) 
 	}
 }
 
-// SignRS256 is a convenience wrapper that signs with RS256 algorithm.
-// Used for backward compatibility with existing code that expects
-// func(claims jwt.MapClaims) (string, error) signature.
-func (s *OIDCKeyService) SignRS256(claims jwt.MapClaims) (string, error) {
-	return s.Sign(claims, SigningAlgRS256)
-}
-
 // PublicJWKS returns the public key set for /.well-known/jwks.json.
 // Returns both RS256 and ES256 keys for dual-algorithm support.
-// During RS256 key rotation grace period, returns both current and previous RSA keys
-// so RPs can verify tokens signed with either key.
+// During a key rotation grace period, returns both current and previous keys
+// (for both RSA and EC) so RPs can verify tokens signed with either key.
 func (s *OIDCKeyService) PublicJWKS(ctx context.Context) (JWKS, error) {
 	s.mu.RLock()
 	rsaPriv, rsaKID := s.rsaPriv, s.rsaKID
 	ecPriv, ecKID := s.ecPriv, s.ecKID
 	rsaPrevKIDs := make([]string, len(s.rsaPrevKIDs))
 	copy(rsaPrevKIDs, s.rsaPrevKIDs)
+	ecPrevKIDs := make([]string, len(s.ecPrevKIDs))
+	copy(ecPrevKIDs, s.ecPrevKIDs)
 	s.mu.RUnlock()
 
 	keys := []JWK{}
@@ -392,6 +419,15 @@ func (s *OIDCKeyService) PublicJWKS(ctx context.Context) (JWKS, error) {
 	// Add current EC key
 	if ecPriv != nil {
 		keys = append(keys, publicECJWK(&ecPriv.PublicKey, ecKID))
+	}
+
+	// Add previous EC keys still in grace period
+	for _, prevKID := range ecPrevKIDs {
+		pubKey, err := s.loadECPublicKeyOnly(ctx, prevKID)
+		if err != nil {
+			continue
+		}
+		keys = append(keys, publicECJWK(pubKey, prevKID))
 	}
 
 	if len(keys) == 0 {
@@ -439,32 +475,9 @@ func (s *OIDCKeyService) RotateKey(ctx context.Context) error {
 		return fmt.Errorf("store new rsa signing key: %w", err)
 	}
 
-	// Load current previous kids list
-	jsonStr, found, err := s.store.Get(ctx, oidcPreviousKIDsKey)
-	if err != nil {
-		return fmt.Errorf("load previous kids for rotation: %w", err)
-	}
-
-	var entries []previousKIDEntry
-	if found && jsonStr != "" {
-		if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
-			return fmt.Errorf("parse previous kids JSON: %w", err)
-		}
-	}
-
-	// Append old current key to previous keys list with retirement timestamp
-	entries = append(entries, previousKIDEntry{
-		KID:       oldKID,
-		RetiredAt: time.Now().UTC(),
-	})
-
-	// Save updated previous kids list
-	updatedJSON, err := json.Marshal(entries)
-	if err != nil {
-		return fmt.Errorf("marshal updated previous kids: %w", err)
-	}
-	if err := s.store.Put(ctx, oidcPreviousKIDsKey, string(updatedJSON)); err != nil {
-		return fmt.Errorf("store updated previous kids: %w", err)
+	// Retire the old key into the RSA previous-kids list (now() timestamp).
+	if err := s.appendPreviousKID(ctx, oidcPreviousKIDsKey, oldKID); err != nil {
+		return err
 	}
 
 	// Update current kid pointer
@@ -482,11 +495,91 @@ func (s *OIDCKeyService) RotateKey(ctx context.Context) error {
 
 // GetPreviousKIDs returns the list of retired RSA KIDs still in grace period.
 func (s *OIDCKeyService) GetPreviousKIDs(ctx context.Context) ([]string, error) {
-	return s.loadPreviousKIDs(ctx)
+	return s.loadPreviousKIDsFor(ctx, oidcPreviousKIDsKey)
 }
 
-// CleanupExpiredKeys removes RSA signing keys that have exceeded the grace period
-// from both the store and the previous kids list. Returns the count of keys deleted.
+// GetECPreviousKIDs returns the list of retired EC KIDs still in grace period.
+func (s *OIDCKeyService) GetECPreviousKIDs(ctx context.Context) ([]string, error) {
+	return s.loadPreviousKIDsFor(ctx, oidcPreviousKIDsKeyEC)
+}
+
+// appendPreviousKID loads the retired-kids list at prevKIDsStoreKey, appends
+// oldKID with a now() retirement timestamp, and persists it. Used by both the
+// RSA and EC rotation paths. Caller must hold s.mu.
+func (s *OIDCKeyService) appendPreviousKID(ctx context.Context, prevKIDsStoreKey, oldKID string) error {
+	jsonStr, found, err := s.store.Get(ctx, prevKIDsStoreKey)
+	if err != nil {
+		return fmt.Errorf("load previous kids for rotation: %w", err)
+	}
+	var entries []previousKIDEntry
+	if found && jsonStr != "" {
+		if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
+			return fmt.Errorf("parse previous kids JSON: %w", err)
+		}
+	}
+	entries = append(entries, previousKIDEntry{KID: oldKID, RetiredAt: time.Now().UTC()})
+	updatedJSON, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("marshal updated previous kids: %w", err)
+	}
+	if err := s.store.Put(ctx, prevKIDsStoreKey, string(updatedJSON)); err != nil {
+		return fmt.Errorf("store updated previous kids: %w", err)
+	}
+	return nil
+}
+
+// RotateECKey generates a new ES256 signing key, moves the current EC key to the
+// previous-keys list with an expiry timestamp, and updates in-memory state. The
+// old key remains in the store during the grace period (and in JWKS) so RPs can
+// still verify ES256 id_tokens signed before rotation. Mirrors RotateKey (RSA).
+func (s *OIDCKeyService) RotateECKey(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.ecPriv == nil {
+		return fmt.Errorf("oidc ec signing key not loaded; call EnsureKey first")
+	}
+
+	oldKID := s.ecKID
+
+	newPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("generate new ec key: %w", err)
+	}
+	newKID := ecKID(&newPriv.PublicKey)
+
+	der, err := x509.MarshalPKCS8PrivateKey(newPriv)
+	if err != nil {
+		return fmt.Errorf("marshal new ec key: %w", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	encrypted, err := s.enc.Encrypt(string(pemBytes))
+	if err != nil {
+		return fmt.Errorf("encrypt new ec key: %w", err)
+	}
+
+	// Store new key first, then retire the old one, then flip the pointer — same
+	// ordering as RSA so a mid-rotation store failure can't strand the pointer.
+	if err := s.store.Put(ctx, oidcKeyPrefix+"ec_"+newKID, encrypted); err != nil {
+		return fmt.Errorf("store new ec signing key: %w", err)
+	}
+	if err := s.appendPreviousKID(ctx, oidcPreviousKIDsKeyEC, oldKID); err != nil {
+		return err
+	}
+	if err := s.store.Put(ctx, oidcCurrentKIDKey+"_ec", newKID); err != nil {
+		return fmt.Errorf("update current ec kid pointer: %w", err)
+	}
+
+	s.ecKID = newKID
+	s.ecPriv = newPriv
+	s.ecPrevKIDs = append(s.ecPrevKIDs, oldKID)
+
+	return nil
+}
+
+// CleanupExpiredKeys removes signing keys (both RSA and EC) that have exceeded
+// the grace period from the store and their previous-kids lists, and prunes the
+// matching in-memory previous-kid slices. Returns the total count of keys deleted.
 func (s *OIDCKeyService) CleanupExpiredKeys(ctx context.Context) (int, error) {
 	// Load grace period TTL from settings or use default
 	gracePeriodSec := defaultGracePeriodSec
@@ -495,8 +588,15 @@ func (s *OIDCKeyService) CleanupExpiredKeys(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("load grace period ttl: %w", err)
 	}
 	if found && ttlStr != "" {
+		// A successfully parsed value — including 0 or a negative — overrides the
+		// default. 0 means "expire retired keys immediately"; negatives are clamped
+		// to 0 (same effect). Only a non-numeric value falls through to the default.
+		// See TestOIDCKeyCleanup and TestOIDCKeyService_InvalidGracePeriodTTL.
 		var ttl int
-		if _, err := fmt.Sscanf(ttlStr, "%d", &ttl); err == nil && ttl > 0 {
+		if _, err := fmt.Sscanf(ttlStr, "%d", &ttl); err == nil {
+			if ttl < 0 {
+				ttl = 0
+			}
 			gracePeriodSec = ttl
 		}
 	}
@@ -504,8 +604,29 @@ func (s *OIDCKeyService) CleanupExpiredKeys(ctx context.Context) (int, error) {
 	gracePeriod := time.Duration(gracePeriodSec) * time.Second
 	now := time.Now().UTC()
 
-	// Load current previous kids list
-	jsonStr, found, err := s.store.Get(ctx, oidcPreviousKIDsKey)
+	rsaDeleted, err := s.cleanupExpiredKeysFor(ctx, oidcPreviousKIDsKey, "rsa_", gracePeriod, now, &s.rsaPrevKIDs)
+	if err != nil {
+		return rsaDeleted, err
+	}
+	ecDeleted, err := s.cleanupExpiredKeysFor(ctx, oidcPreviousKIDsKeyEC, "ec_", gracePeriod, now, &s.ecPrevKIDs)
+	if err != nil {
+		return rsaDeleted + ecDeleted, err
+	}
+	return rsaDeleted + ecDeleted, nil
+}
+
+// cleanupExpiredKeysFor purges expired retired keys for one key type. keyKind is
+// the store-key infix ("rsa_" or "ec_"); prevKIDsStoreKey is that type's
+// previous-kids list; memPrevKIDs points at the matching in-memory slice, which
+// is pruned to the still-valid kids. Returns the number of keys deleted.
+func (s *OIDCKeyService) cleanupExpiredKeysFor(
+	ctx context.Context,
+	prevKIDsStoreKey, keyKind string,
+	gracePeriod time.Duration,
+	now time.Time,
+	memPrevKIDs *[]string,
+) (int, error) {
+	jsonStr, found, err := s.store.Get(ctx, prevKIDsStoreKey)
 	if err != nil {
 		return 0, fmt.Errorf("load previous kids: %w", err)
 	}
@@ -518,59 +639,52 @@ func (s *OIDCKeyService) CleanupExpiredKeys(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("parse previous kids JSON: %w", err)
 	}
 
-	// Separate expired and valid entries
 	var validEntries []previousKIDEntry
 	var expiredKIDs []string
-
 	for _, entry := range entries {
-		expiryTime := entry.RetiredAt.Add(gracePeriod)
-		if now.After(expiryTime) {
+		if now.After(entry.RetiredAt.Add(gracePeriod)) {
 			expiredKIDs = append(expiredKIDs, entry.KID)
 		} else {
 			validEntries = append(validEntries, entry)
 		}
 	}
 
-	// Delete expired keys from store
 	deletedCount := 0
 	for _, kid := range expiredKIDs {
-		if err := s.store.Delete(ctx, oidcKeyPrefix+"rsa_"+kid); err != nil {
-			// Log but continue cleanup - best effort
+		if err := s.store.Delete(ctx, oidcKeyPrefix+keyKind+kid); err != nil {
+			// Best effort: skip keys that fail to delete, continue cleanup.
 			continue
 		}
 		deletedCount++
 	}
 
-	// Update previous kids list with only valid entries
 	if len(validEntries) == 0 {
-		// No entries left - delete the list entirely
-		if err := s.store.Delete(ctx, oidcPreviousKIDsKey); err != nil {
+		if err := s.store.Delete(ctx, prevKIDsStoreKey); err != nil {
 			return deletedCount, fmt.Errorf("delete empty previous kids list: %w", err)
 		}
 	} else {
-		// Save filtered list
 		updatedJSON, err := json.Marshal(validEntries)
 		if err != nil {
 			return deletedCount, fmt.Errorf("marshal filtered previous kids: %w", err)
 		}
-		if err := s.store.Put(ctx, oidcPreviousKIDsKey, string(updatedJSON)); err != nil {
+		if err := s.store.Put(ctx, prevKIDsStoreKey, string(updatedJSON)); err != nil {
 			return deletedCount, fmt.Errorf("store filtered previous kids: %w", err)
 		}
 	}
 
-	// Update in-memory state to reflect cleanup
+	// Prune the in-memory previous-kid slice to the still-valid set.
 	s.mu.Lock()
-	validKIDSet := make(map[string]bool)
+	validKIDSet := make(map[string]bool, len(validEntries))
 	for _, entry := range validEntries {
 		validKIDSet[entry.KID] = true
 	}
-	newPrevKIDs := make([]string, 0, len(s.rsaPrevKIDs))
-	for _, kid := range s.rsaPrevKIDs {
+	newPrevKIDs := make([]string, 0, len(*memPrevKIDs))
+	for _, kid := range *memPrevKIDs {
 		if validKIDSet[kid] {
 			newPrevKIDs = append(newPrevKIDs, kid)
 		}
 	}
-	s.rsaPrevKIDs = newPrevKIDs
+	*memPrevKIDs = newPrevKIDs
 	s.mu.Unlock()
 
 	return deletedCount, nil
@@ -594,9 +708,25 @@ func publicECJWK(pub *ecdsa.PublicKey, kid string) JWK {
 		Alg: "ES256",
 		Kid: kid,
 		Crv: "P-256",
-		X:   base64.RawURLEncoding.EncodeToString(pub.X.Bytes()),
-		Y:   base64.RawURLEncoding.EncodeToString(pub.Y.Bytes()),
+		X:   base64.RawURLEncoding.EncodeToString(ecCoordBytes(pub.X)),
+		Y:   base64.RawURLEncoding.EncodeToString(ecCoordBytes(pub.Y)),
 	}
+}
+
+// ecCoordBytes renders a P-256 affine coordinate as exactly 32 big-endian bytes,
+// left-padded with zeros. RFC 7518 §6.2.1.2 requires the x/y octet strings to be
+// the full field-element size; big.Int.Bytes() strips leading zero bytes, which
+// would intermittently (~1/256 per coordinate) yield a short, non-spec encoding
+// that strict RP JWK parsers reject. See TestOIDCKeyService_ES256_CoordinatePadding.
+func ecCoordBytes(c *big.Int) []byte {
+	const p256CoordLen = 32
+	b := c.Bytes()
+	if len(b) >= p256CoordLen {
+		return b
+	}
+	padded := make([]byte, p256CoordLen)
+	copy(padded[p256CoordLen-len(b):], b)
+	return padded
 }
 
 // rsaKID derives a stable RFC 7638 JWK thumbprint (SHA-256 over the canonical
@@ -612,8 +742,8 @@ func rsaKID(pub *rsa.PublicKey) string {
 // ecKID derives a stable RFC 7638 JWK thumbprint for EC keys (SHA-256 over
 // the canonical {crv,kty,x,y} JSON object), base64url-encoded.
 func ecKID(pub *ecdsa.PublicKey) string {
-	x := base64.RawURLEncoding.EncodeToString(pub.X.Bytes())
-	y := base64.RawURLEncoding.EncodeToString(pub.Y.Bytes())
+	x := base64.RawURLEncoding.EncodeToString(ecCoordBytes(pub.X))
+	y := base64.RawURLEncoding.EncodeToString(ecCoordBytes(pub.Y))
 	canonical := fmt.Sprintf(`{"crv":"P-256","kty":"EC","x":"%s","y":"%s"}`, x, y)
 	sum := sha256.Sum256([]byte(canonical))
 	return base64.RawURLEncoding.EncodeToString(sum[:])

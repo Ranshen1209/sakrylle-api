@@ -1110,6 +1110,7 @@ func entOAuthClientToService(row *dbent.OAuthClient) *service.OAuthClient {
 		HomepageURL:                      row.HomepageURL,
 		PrivacyURL:                       row.PrivacyURL,
 		TermsURL:                         row.TermsURL,
+		SigningAlgorithm:                 row.SigningAlgorithm,
 	}
 	if row.ClientSecretHash != nil {
 		out.ClientSecretHash = *row.ClientSecretHash
