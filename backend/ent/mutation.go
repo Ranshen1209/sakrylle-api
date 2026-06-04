@@ -23383,6 +23383,7 @@ type OAuthClientMutation struct {
 	homepage_url                         *string
 	privacy_url                          *string
 	terms_url                            *string
+	signing_algorithm                    *string
 	clearedFields                        map[string]struct{}
 	done                                 bool
 	oldValue                             func(context.Context) (*OAuthClient, error)
@@ -24630,6 +24631,42 @@ func (m *OAuthClientMutation) ResetTermsURL() {
 	delete(m.clearedFields, oauthclient.FieldTermsURL)
 }
 
+// SetSigningAlgorithm sets the "signing_algorithm" field.
+func (m *OAuthClientMutation) SetSigningAlgorithm(s string) {
+	m.signing_algorithm = &s
+}
+
+// SigningAlgorithm returns the value of the "signing_algorithm" field in the mutation.
+func (m *OAuthClientMutation) SigningAlgorithm() (r string, exists bool) {
+	v := m.signing_algorithm
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSigningAlgorithm returns the old "signing_algorithm" field's value of the OAuthClient entity.
+// If the OAuthClient object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthClientMutation) OldSigningAlgorithm(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSigningAlgorithm is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSigningAlgorithm requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSigningAlgorithm: %w", err)
+	}
+	return oldValue.SigningAlgorithm, nil
+}
+
+// ResetSigningAlgorithm resets all changes to the "signing_algorithm" field.
+func (m *OAuthClientMutation) ResetSigningAlgorithm() {
+	m.signing_algorithm = nil
+}
+
 // Where appends a list predicates to the OAuthClientMutation builder.
 func (m *OAuthClientMutation) Where(ps ...predicate.OAuthClient) {
 	m.predicates = append(m.predicates, ps...)
@@ -24664,7 +24701,7 @@ func (m *OAuthClientMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuthClientMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, oauthclient.FieldCreatedAt)
 	}
@@ -24740,6 +24777,9 @@ func (m *OAuthClientMutation) Fields() []string {
 	if m.terms_url != nil {
 		fields = append(fields, oauthclient.FieldTermsURL)
 	}
+	if m.signing_algorithm != nil {
+		fields = append(fields, oauthclient.FieldSigningAlgorithm)
+	}
 	return fields
 }
 
@@ -24798,6 +24838,8 @@ func (m *OAuthClientMutation) Field(name string) (ent.Value, bool) {
 		return m.PrivacyURL()
 	case oauthclient.FieldTermsURL:
 		return m.TermsURL()
+	case oauthclient.FieldSigningAlgorithm:
+		return m.SigningAlgorithm()
 	}
 	return nil, false
 }
@@ -24857,6 +24899,8 @@ func (m *OAuthClientMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldPrivacyURL(ctx)
 	case oauthclient.FieldTermsURL:
 		return m.OldTermsURL(ctx)
+	case oauthclient.FieldSigningAlgorithm:
+		return m.OldSigningAlgorithm(ctx)
 	}
 	return nil, fmt.Errorf("unknown OAuthClient field %s", name)
 }
@@ -25040,6 +25084,13 @@ func (m *OAuthClientMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTermsURL(v)
+		return nil
+	case oauthclient.FieldSigningAlgorithm:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSigningAlgorithm(v)
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthClient field %s", name)
@@ -25248,6 +25299,9 @@ func (m *OAuthClientMutation) ResetField(name string) error {
 		return nil
 	case oauthclient.FieldTermsURL:
 		m.ResetTermsURL()
+		return nil
+	case oauthclient.FieldSigningAlgorithm:
+		m.ResetSigningAlgorithm()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthClient field %s", name)

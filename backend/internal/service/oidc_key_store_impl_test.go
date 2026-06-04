@@ -206,9 +206,10 @@ func TestSecuritySecretsOIDCKeyStore_Integration_WithOIDCKeyService(t *testing.T
 		t.Errorf("expected at least 2 security_secrets rows (kid + key), got %d", count)
 	}
 
-	// Verify current_kid is stored
+	// Verify current_kid is stored. The service namespaces the RSA pointer as
+	// oidc_signing_current_kid_rsa (see oidcCurrentKIDKey + "_rsa").
 	kidSecret, err := client.SecuritySecret.Query().
-		Where(securitysecret.KeyEQ("oidc_signing_current_kid")).
+		Where(securitysecret.KeyEQ("oidc_signing_current_kid_rsa")).
 		Only(ctx)
 	if err != nil {
 		t.Fatalf("query current_kid failed: %v", err)
@@ -217,9 +218,10 @@ func TestSecuritySecretsOIDCKeyStore_Integration_WithOIDCKeyService(t *testing.T
 		t.Errorf("stored kid = %q, want %q", kidSecret.Value, kid)
 	}
 
-	// Verify signing key is stored encrypted
+	// Verify signing key is stored encrypted. Key entries are namespaced as
+	// oidc_signing_key_rsa_<kid> (see oidcKeyPrefix + "rsa_" + kid).
 	keySecret, err := client.SecuritySecret.Query().
-		Where(securitysecret.KeyEQ("oidc_signing_key_rs256_" + kid)).
+		Where(securitysecret.KeyEQ("oidc_signing_key_rsa_" + kid)).
 		Only(ctx)
 	if err != nil {
 		t.Fatalf("query signing key failed: %v", err)
@@ -253,11 +255,14 @@ func TestSecuritySecretsOIDCKeyStore_DecryptFailure_Handling(t *testing.T) {
 	goodStore := NewSecuritySecretsOIDCKeyStore(client, goodEnc)
 
 	kid := "test_kid_decrypt_fail"
-	err := goodStore.Put(ctx, "oidc_signing_current_kid", kid)
+	// Use the RSA-namespaced key names the service actually reads, so EnsureKey
+	// finds a current-kid pointer and is forced down the decrypt path rather than
+	// missing the pointer and silently generating a fresh key.
+	err := goodStore.Put(ctx, "oidc_signing_current_kid_rsa", kid)
 	if err != nil {
 		t.Fatalf("setup Put current_kid failed: %v", err)
 	}
-	err = goodStore.Put(ctx, "oidc_signing_key_rs256_"+kid, "encrypted:dummy_key")
+	err = goodStore.Put(ctx, "oidc_signing_key_rsa_"+kid, "encrypted:dummy_key")
 	if err != nil {
 		t.Fatalf("setup Put key failed: %v", err)
 	}

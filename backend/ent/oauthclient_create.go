@@ -308,6 +308,20 @@ func (_c *OAuthClientCreate) SetNillableTermsURL(v *string) *OAuthClientCreate {
 	return _c
 }
 
+// SetSigningAlgorithm sets the "signing_algorithm" field.
+func (_c *OAuthClientCreate) SetSigningAlgorithm(v string) *OAuthClientCreate {
+	_c.mutation.SetSigningAlgorithm(v)
+	return _c
+}
+
+// SetNillableSigningAlgorithm sets the "signing_algorithm" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableSigningAlgorithm(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetSigningAlgorithm(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_c *OAuthClientCreate) Mutation() *OAuthClientMutation {
 	return _c.mutation
@@ -399,6 +413,10 @@ func (_c *OAuthClientCreate) defaults() {
 		v := oauthclient.DefaultAllowRefreshWithoutOfflineAccess
 		_c.mutation.SetAllowRefreshWithoutOfflineAccess(v)
 	}
+	if _, ok := _c.mutation.SigningAlgorithm(); !ok {
+		v := oauthclient.DefaultSigningAlgorithm
+		_c.mutation.SetSigningAlgorithm(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -476,6 +494,14 @@ func (_c *OAuthClientCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowRefreshWithoutOfflineAccess(); !ok {
 		return &ValidationError{Name: "allow_refresh_without_offline_access", err: errors.New(`ent: missing required field "OAuthClient.allow_refresh_without_offline_access"`)}
+	}
+	if _, ok := _c.mutation.SigningAlgorithm(); !ok {
+		return &ValidationError{Name: "signing_algorithm", err: errors.New(`ent: missing required field "OAuthClient.signing_algorithm"`)}
+	}
+	if v, ok := _c.mutation.SigningAlgorithm(); ok {
+		if err := oauthclient.SigningAlgorithmValidator(v); err != nil {
+			return &ValidationError{Name: "signing_algorithm", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.signing_algorithm": %w`, err)}
+		}
 	}
 	return nil
 }
@@ -603,6 +629,10 @@ func (_c *OAuthClientCreate) createSpec() (*OAuthClient, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.TermsURL(); ok {
 		_spec.SetField(oauthclient.FieldTermsURL, field.TypeString, value)
 		_node.TermsURL = &value
+	}
+	if value, ok := _c.mutation.SigningAlgorithm(); ok {
+		_spec.SetField(oauthclient.FieldSigningAlgorithm, field.TypeString, value)
+		_node.SigningAlgorithm = value
 	}
 	return _node, _spec
 }
@@ -1001,6 +1031,18 @@ func (u *OAuthClientUpsert) UpdateTermsURL() *OAuthClientUpsert {
 // ClearTermsURL clears the value of the "terms_url" field.
 func (u *OAuthClientUpsert) ClearTermsURL() *OAuthClientUpsert {
 	u.SetNull(oauthclient.FieldTermsURL)
+	return u
+}
+
+// SetSigningAlgorithm sets the "signing_algorithm" field.
+func (u *OAuthClientUpsert) SetSigningAlgorithm(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldSigningAlgorithm, v)
+	return u
+}
+
+// UpdateSigningAlgorithm sets the "signing_algorithm" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateSigningAlgorithm() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldSigningAlgorithm)
 	return u
 }
 
@@ -1452,6 +1494,20 @@ func (u *OAuthClientUpsertOne) UpdateTermsURL() *OAuthClientUpsertOne {
 func (u *OAuthClientUpsertOne) ClearTermsURL() *OAuthClientUpsertOne {
 	return u.Update(func(s *OAuthClientUpsert) {
 		s.ClearTermsURL()
+	})
+}
+
+// SetSigningAlgorithm sets the "signing_algorithm" field.
+func (u *OAuthClientUpsertOne) SetSigningAlgorithm(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetSigningAlgorithm(v)
+	})
+}
+
+// UpdateSigningAlgorithm sets the "signing_algorithm" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateSigningAlgorithm() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateSigningAlgorithm()
 	})
 }
 
@@ -2069,6 +2125,20 @@ func (u *OAuthClientUpsertBulk) UpdateTermsURL() *OAuthClientUpsertBulk {
 func (u *OAuthClientUpsertBulk) ClearTermsURL() *OAuthClientUpsertBulk {
 	return u.Update(func(s *OAuthClientUpsert) {
 		s.ClearTermsURL()
+	})
+}
+
+// SetSigningAlgorithm sets the "signing_algorithm" field.
+func (u *OAuthClientUpsertBulk) SetSigningAlgorithm(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetSigningAlgorithm(v)
+	})
+}
+
+// UpdateSigningAlgorithm sets the "signing_algorithm" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateSigningAlgorithm() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateSigningAlgorithm()
 	})
 }
 

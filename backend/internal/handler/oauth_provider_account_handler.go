@@ -203,6 +203,12 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 		}
 		if service.HasScope(meta.Scopes, service.ScopeEmail) {
 			resp["email"] = user.Email
+			// email_verified mirrors BuildIDTokenClaims: there is no per-user
+			// verification flag in the data model, and OIDC Core §5.1 treats an
+			// absent email_verified as unverified, so we state it honestly as
+			// false rather than letting an RP guess — and so /v1/me and the
+			// id_token agree on the same claim.
+			resp["email_verified"] = false
 		}
 	}
 

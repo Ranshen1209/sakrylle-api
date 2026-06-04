@@ -145,6 +145,119 @@ func TestOIDCKeyCleanup(t *testing.T) {
 	assert.Equal(t, secondKID, rsaKeys[0].Kid)
 }
 
+// TestOIDCECKeyRotation verifies ES256 key rotation with grace-period support,
+// mirroring TestOIDCKeyRotation for RSA. During rotation JWKS must include both
+// the current and previous EC keys so RPs can verify either ES256 id_token.
+func TestOIDCECKeyRotation(t *testing.T) {
+	store := newMemoryOIDCStore()
+	enc := &passEncryptor{}
+	svc := NewOIDCKeyService(store, enc)
+	ctx := context.Background()
+
+	require.NoError(t, svc.EnsureKey(ctx))
+	firstKID := svc.CurrentECKID()
+	require.NotEmpty(t, firstKID, "first EC KID must be set")
+
+	// Sign with the first EC key.
+	claims1 := jwt.MapClaims{"iss": "https://sub.sakrylle.com", "sub": "1", "aud": "c", "exp": time.Now().Add(5 * time.Minute).Unix(), "iat": time.Now().Unix()}
+	token1, err := svc.Sign(claims1, SigningAlgES256)
+	require.NoError(t, err)
+	assert.Equal(t, firstKID, extractKIDFromToken(t, token1))
+
+	// Rotate EC key.
+	require.NoError(t, svc.RotateECKey(ctx))
+	secondKID := svc.CurrentECKID()
+	require.NotEmpty(t, secondKID)
+	assert.NotEqual(t, firstKID, secondKID, "rotated EC KID must differ")
+
+	token2, err := svc.Sign(claims1, SigningAlgES256)
+	require.NoError(t, err)
+	assert.Equal(t, secondKID, extractKIDFromToken(t, token2), "new tokens use the new EC key")
+
+	// JWKS must include both EC keys during the grace period (+ the RSA key).
+	jwks, err := svc.PublicJWKS(ctx)
+	require.NoError(t, err)
+	ecKIDs := make([]string, 0)
+	for _, k := range filterECKeys(jwks.Keys) {
+		ecKIDs = append(ecKIDs, k.Kid)
+	}
+	assert.Contains(t, ecKIDs, firstKID, "JWKS must include previous EC key during grace period")
+	assert.Contains(t, ecKIDs, secondKID, "JWKS must include current EC key")
+
+	prevKIDs, err := svc.GetECPreviousKIDs(ctx)
+	require.NoError(t, err)
+	assert.Contains(t, prevKIDs, firstKID, "previous EC KIDs list must include the retired key")
+}
+
+// TestOIDCECKeyCleanup verifies expired EC keys are removed after the grace
+// period, mirroring TestOIDCKeyCleanup for RSA.
+func TestOIDCECKeyCleanup(t *testing.T) {
+	store := newMemoryOIDCStore()
+	enc := &passEncryptor{}
+	svc := NewOIDCKeyService(store, enc)
+	ctx := context.Background()
+
+	require.NoError(t, svc.EnsureKey(ctx))
+	firstKID := svc.CurrentECKID()
+
+	require.NoError(t, svc.RotateECKey(ctx))
+	secondKID := svc.CurrentECKID()
+
+	// Immediate expiry.
+	require.NoError(t, store.Put(ctx, oidcGracePeriodTTLKey, "0"))
+
+	deleted, err := svc.CleanupExpiredKeys(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, deleted, "should delete exactly the 1 expired EC key")
+
+	_, found, err := store.Get(ctx, oidcKeyPrefix+"ec_"+firstKID)
+	require.NoError(t, err)
+	assert.False(t, found, "expired EC key must be removed from store")
+
+	_, found, err = store.Get(ctx, oidcKeyPrefix+"ec_"+secondKID)
+	require.NoError(t, err)
+	assert.True(t, found, "current EC key must remain")
+
+	jwks, err := svc.PublicJWKS(ctx)
+	require.NoError(t, err)
+	ecKeys := filterECKeys(jwks.Keys)
+	assert.Len(t, ecKeys, 1, "JWKS should only have the current EC key after cleanup")
+	assert.Equal(t, secondKID, ecKeys[0].Kid)
+}
+
+// TestOIDCCleanupBothKeyTypes verifies a single CleanupExpiredKeys call purges
+// expired RSA and EC keys together and reports the combined count.
+func TestOIDCCleanupBothKeyTypes(t *testing.T) {
+	store := newMemoryOIDCStore()
+	enc := &passEncryptor{}
+	svc := NewOIDCKeyService(store, enc)
+	ctx := context.Background()
+
+	require.NoError(t, svc.EnsureKey(ctx))
+	require.NoError(t, svc.RotateKey(ctx))   // retire 1 RSA key
+	require.NoError(t, svc.RotateECKey(ctx)) // retire 1 EC key
+
+	require.NoError(t, store.Put(ctx, oidcGracePeriodTTLKey, "0"))
+
+	deleted, err := svc.CleanupExpiredKeys(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 2, deleted, "should delete 1 expired RSA + 1 expired EC key")
+
+	// Both previous-kids lists must now be empty.
+	rsaPrev, err := svc.GetPreviousKIDs(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, rsaPrev)
+	ecPrev, err := svc.GetECPreviousKIDs(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, ecPrev)
+
+	// JWKS retains exactly the two current keys.
+	jwks, err := svc.PublicJWKS(ctx)
+	require.NoError(t, err)
+	assert.Len(t, filterRSAKeys(jwks.Keys), 1)
+	assert.Len(t, filterECKeys(jwks.Keys), 1)
+}
+
 // TestDualAlgorithmSigning verifies RS256 and ES256 signing work in parallel.
 func TestDualAlgorithmSigning(t *testing.T) {
 	// Arrange
@@ -290,7 +403,9 @@ func TestIDTokenClaimsBuilder(t *testing.T) {
 
 			// Verify claim values
 			assert.Equal(t, issuer, claims["iss"])
-			assert.Equal(t, clientID, claims["aud"])
+			// aud is emitted as a single-element array per OIDC Core §2 (BuildIDTokenClaims
+			// deliberately wraps client_id so strict RP libraries that iterate aud don't throw).
+			assert.Equal(t, []string{clientID}, claims["aud"])
 
 			// sub must be string representation of user_id
 			subStr, ok := claims["sub"].(string)

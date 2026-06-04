@@ -408,6 +408,20 @@ func (_u *OAuthClientUpdate) ClearTermsURL() *OAuthClientUpdate {
 	return _u
 }
 
+// SetSigningAlgorithm sets the "signing_algorithm" field.
+func (_u *OAuthClientUpdate) SetSigningAlgorithm(v string) *OAuthClientUpdate {
+	_u.mutation.SetSigningAlgorithm(v)
+	return _u
+}
+
+// SetNillableSigningAlgorithm sets the "signing_algorithm" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableSigningAlgorithm(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetSigningAlgorithm(*v)
+	}
+	return _u
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_u *OAuthClientUpdate) Mutation() *OAuthClientMutation {
 	return _u.mutation
@@ -469,6 +483,11 @@ func (_u *OAuthClientUpdate) check() error {
 	if v, ok := _u.mutation.AppType(); ok {
 		if err := oauthclient.AppTypeValidator(v); err != nil {
 			return &ValidationError{Name: "app_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.app_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SigningAlgorithm(); ok {
+		if err := oauthclient.SigningAlgorithmValidator(v); err != nil {
+			return &ValidationError{Name: "signing_algorithm", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.signing_algorithm": %w`, err)}
 		}
 	}
 	return nil
@@ -617,6 +636,9 @@ func (_u *OAuthClientUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.TermsURLCleared() {
 		_spec.ClearField(oauthclient.FieldTermsURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.SigningAlgorithm(); ok {
+		_spec.SetField(oauthclient.FieldSigningAlgorithm, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1017,6 +1039,20 @@ func (_u *OAuthClientUpdateOne) ClearTermsURL() *OAuthClientUpdateOne {
 	return _u
 }
 
+// SetSigningAlgorithm sets the "signing_algorithm" field.
+func (_u *OAuthClientUpdateOne) SetSigningAlgorithm(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetSigningAlgorithm(v)
+	return _u
+}
+
+// SetNillableSigningAlgorithm sets the "signing_algorithm" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableSigningAlgorithm(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetSigningAlgorithm(*v)
+	}
+	return _u
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_u *OAuthClientUpdateOne) Mutation() *OAuthClientMutation {
 	return _u.mutation
@@ -1091,6 +1127,11 @@ func (_u *OAuthClientUpdateOne) check() error {
 	if v, ok := _u.mutation.AppType(); ok {
 		if err := oauthclient.AppTypeValidator(v); err != nil {
 			return &ValidationError{Name: "app_type", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.app_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.SigningAlgorithm(); ok {
+		if err := oauthclient.SigningAlgorithmValidator(v); err != nil {
+			return &ValidationError{Name: "signing_algorithm", err: fmt.Errorf(`ent: validator failed for field "OAuthClient.signing_algorithm": %w`, err)}
 		}
 	}
 	return nil
@@ -1256,6 +1297,9 @@ func (_u *OAuthClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuthClient
 	}
 	if _u.mutation.TermsURLCleared() {
 		_spec.ClearField(oauthclient.FieldTermsURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.SigningAlgorithm(); ok {
+		_spec.SetField(oauthclient.FieldSigningAlgorithm, field.TypeString, value)
 	}
 	_node = &OAuthClient{config: _u.config}
 	_spec.Assign = _node.assignValues
