@@ -100,7 +100,7 @@ func TestOIDCKeyRotation(t *testing.T) {
 func TestOIDCKeyCleanup(t *testing.T) {
 	// Arrange
 	store := newMemoryOIDCStore()
-	enc := &passEncryptor
+	enc := &passEncryptor{}
 	svc := NewOIDCKeyService(store, enc)
 
 	ctx := context.Background()
@@ -261,7 +261,7 @@ func TestIDTokenClaimsBuilder(t *testing.T) {
 			clientID := "test-client"
 			authTime := time.Now().Add(-2 * time.Minute)
 			now := time.Now()
-			ttl := 300 // 5 minutes
+			ttl := 5 * time.Minute
 
 			// Act
 			claims, err := BuildIDTokenClaims(

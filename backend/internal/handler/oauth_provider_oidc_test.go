@@ -234,22 +234,18 @@ func TestIDTokenIssuance(t *testing.T) {
 				nonce = randomString(32)
 			}
 
-			issued, err := provider.IssueAuthorizationCode(ctx, &service.IssueCodeRequest{
-				UserID:      1,
-				ClientID:    client.ClientID,
-				RedirectURI: "https://app.example.com/callback",
-				Scopes:      tt.scopes,
-				Nonce:       nonce,
+			issued, err := provider.IssueAuthorizationCode(ctx, client, 1, &service.AuthorizeRequest{
+				ClientID:     client.ClientID,
+				RedirectURI:  "https://app.example.com/callback",
+				ResponseType: "code",
+				Scopes:       tt.scopes,
+				State:        "test-state",
+				Nonce:        nonce,
 			})
 			require.NoError(t, err)
 
 			// Exchange code for tokens
-			tokens, err := provider.ExchangeAuthorizationCode(ctx, &service.TokenRequest{
-				GrantType:   "authorization_code",
-				Code:        issued.Code,
-				ClientID:    client.ClientID,
-				RedirectURI: "https://app.example.com/callback",
-			})
+			tokens, err := provider.ExchangeAuthorizationCode(ctx, client.ClientID, "", issued.Code, "https://app.example.com/callback", "")
 			require.NoError(t, err)
 
 			if tt.wantIDToken {
@@ -319,23 +315,23 @@ func TestNonceEcho(t *testing.T) {
 
 	nonce := randomString(32)
 
+	// Lookup test client
+	client, err := provider.LookupClient(ctx, "test-client")
+	require.NoError(t, err)
+
 	// Issue code with nonce
-	issued, err := provider.IssueAuthorizationCode(ctx, &service.IssueCodeRequest{
-		UserID:      1,
-		ClientID:    "test-client",
-		RedirectURI: "https://app.example.com/callback",
-		Scopes:      []string{"openid"},
-		Nonce:       nonce,
+	issued, err := provider.IssueAuthorizationCode(ctx, client, 1, &service.AuthorizeRequest{
+		ClientID:     "test-client",
+		RedirectURI:  "https://app.example.com/callback",
+		ResponseType: "code",
+		Scopes:       []string{"openid"},
+		State:        "test-state",
+		Nonce:        nonce,
 	})
 	require.NoError(t, err)
 
 	// Exchange code
-	tokens, err := provider.ExchangeAuthorizationCode(ctx, &service.TokenRequest{
-		GrantType:   "authorization_code",
-		Code:        issued.Code,
-		ClientID:    "test-client",
-		RedirectURI: "https://app.example.com/callback",
-	})
+	tokens, err := provider.ExchangeAuthorizationCode(ctx, "test-client", "", issued.Code, "https://app.example.com/callback", "")
 	require.NoError(t, err)
 	require.NotEmpty(t, tokens.IDToken)
 
@@ -407,7 +403,7 @@ func TestUserInfoWithOpenID(t *testing.T) {
 			c.Set("user_id", int64(1))
 			c.Set("scopes", tt.scopes)
 
-			h.GetMe(c)
+			h.GetCurrentUser(c)
 
 			assert.Equal(t, http.StatusOK, w.Code)
 
@@ -625,7 +621,7 @@ func setupTestAuthService(t *testing.T) *service.AuthService {
 	panic("implement test auth service")
 }
 
-func setupTestMeHandler(t *testing.T) *handler.UserHandler {
+func setupTestMeHandler(t *testing.T) *handler.AuthHandler {
 	panic("implement test me handler")
 }
 

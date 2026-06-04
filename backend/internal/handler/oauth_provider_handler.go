@@ -829,8 +829,34 @@ func (h *OAuthProviderHandler) Logout(c *gin.Context) {
 		return
 	}
 
-	// TODO: Clear server-side session if we maintain one
-	// For now, this is client-side logout only (RP discards tokens)
+	// Server-side session cleanup: revoke the grant referenced by id_token_hint
+	// This invalidates all access/refresh tokens issued under that authorization grant.
+	// Per OIDC Core §5, logout with id_token_hint should end the RP's session at the IdP.
+	if idTokenHint != "" {
+		parts := strings.Split(idTokenHint, ".")
+		if len(parts) == 3 {
+			payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+			if err == nil {
+				var claims map[string]interface{}
+				if json.Unmarshal(payload, &claims) == nil {
+					// Extract both grant_id and sub (user_id) from id_token claims
+					grantID, _ := claims["grant_id"].(string)
+					subStr, _ := claims["sub"].(string)
+					if grantID != "" && subStr != "" {
+						if userID, err := strconv.ParseInt(subStr, 10, 64); err == nil {
+							revokeErr := h.provider.RevokeGrant(c.Request.Context(), userID, grantID)
+							if revokeErr != nil {
+								slog.Warn("oidc logout: failed to revoke grant", "grant_id", grantID, "user_id", userID, "error", revokeErr)
+								// Continue with logout - client-side revocation still succeeds
+							} else {
+								slog.Info("oidc logout: revoked grant", "grant_id", grantID, "user_id", userID, "client_id", clientID)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	// Build redirect URL
 	redirectURL, err := url.Parse(postLogoutRedirectURI)
@@ -880,7 +906,11 @@ func (h *OAuthProviderHandler) renderLogoutSuccessPage(c *gin.Context) {
 
 // renderLogoutErrorPage renders an inline HTML error page (not a redirect).
 func (h *OAuthProviderHandler) renderLogoutErrorPage(c *gin.Context, errorCode, errorDesc string) {
-	html := fmt.Sprintf(`<!DOCTYPE html>
+	// Use string concatenation to avoid fmt.Sprintf % escaping issues
+	escapedCode := html.EscapeString(errorCode)
+	escapedDesc := html.EscapeString(errorDesc)
+
+	htmlContent := `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -902,12 +932,12 @@ func (h *OAuthProviderHandler) renderLogoutErrorPage(c *gin.Context, errorCode, 
     <div class="card">
         <div class="icon">✗</div>
         <h1>登出失败</h1>
-        <div class="error-code">%s</div>
-        <div class="error-desc">%s</div>
+        <div class="error-code">` + escapedCode + `</div>
+        <div class="error-desc">` + escapedDesc + `</div>
     </div>
 </body>
-</html>`, html.EscapeString(errorCode), html.EscapeString(errorDesc))
-	c.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(html))
+</html>`
+	c.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(htmlContent))
 }
 
 // handlePromptNone handles OIDC prompt=none (silent authentication).
@@ -987,12 +1017,29 @@ func (h *OAuthProviderHandler) handlePromptNone(c *gin.Context, req *service.Aut
 		return
 	}
 
-	// User is authenticated. For prompt=none, we skip consent and auto-approve.
-	// Build the authorize transaction params for this authenticated user.
+	// User is authenticated. Per OIDC Core §3.1.2.1, prompt=none requires checking
+	// for prior consent. If the user hasn't previously authorized this client for
+	// these scopes, return consent_required.
 	scopes := service.NormalizeScopes(req.Scopes)
 	if len(scopes) == 0 {
 		scopes = service.NormalizeScopes(client.DefaultScopes)
 	}
+
+	// Check for prior consent/grant for this user+client+scopes combination
+	// Note: In production, implement CheckUserConsent in OAuthProviderService.
+	// For now, we implement a simplified first-party trust policy:
+	// - First-party clients (those without client_secret_hash) are auto-trusted
+	// - Third-party clients require explicit consent (which would be stored in oauth_grants)
+	if client.ClientSecretHash != "" {
+		// Third-party client - should check oauth_grants table for prior consent
+		// TODO: Implement proper consent tracking in oauth_grants table
+		// For now, return consent_required for third-party clients with prompt=none
+		slog.Info("oidc prompt=none: consent required for third-party client",
+			"user_id", userID, "client_id", req.ClientID, "scopes", scopes)
+		redirectError("consent_required", "user has not consented to these scopes")
+		return
+	}
+	// First-party client (public client) - trusted, proceed with auto-approval
 
 	// Resolve group for this user
 	resolvedGroup, err := h.provider.ResolveOAuthGroup(c.Request.Context(), userID, client, nil)
