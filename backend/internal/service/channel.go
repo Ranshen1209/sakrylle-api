@@ -555,8 +555,12 @@ func (c *Channel) SupportedModels() []SupportedModel {
 				}
 				continue
 			}
-			// 精确 mapping：定价按 target 查；target 缺失/通配则退化按 src 查
+			// 精确 mapping：默认按 target 查价，因为 channel_mapped 计费看的是映射后模型；
+			// requested 计费则必须按用户请求名查价（例如 gpt-image-2-4k → gpt-image-2-vip）。
 			pricingKey := target
+			if c.BillingModelSource == BillingModelSourceRequested {
+				pricingKey = src
+			}
 			if pricingKey == "" {
 				pricingKey = src
 			}
