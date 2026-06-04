@@ -525,10 +525,19 @@ func TestRedirectURIWhitelist(t *testing.T) {
 	allowed := []string{
 		"https://image.sakrylle.com/oauth/callback",
 		"http://localhost:5173/oauth/callback",
+		"http://127.0.0.1/oauth/callback",
+		"http://[::1]/oauth/callback",
 	}
 	cases := map[string]bool{
 		"https://image.sakrylle.com/oauth/callback":  true,
 		"http://localhost:5173/oauth/callback":       true,
+		"http://127.0.0.1:49152/oauth/callback":      true,
+		"http://[::1]:49152/oauth/callback":          true,
+		"http://127.0.0.1/oauth/callback":            false,
+		"http://127.0.0.1:49152/oauth/callback/":     false,
+		"http://127.0.0.1:49152/oauth/callback?x=1":  false,
+		"http://localhost.evil.test/oauth/callback":  false,
+		"http://127.0.0.1.evil.test/oauth/callback":  false,
 		"https://image.sakrylle.com/oauth/callback?": false,
 		"https://evil.example.com/oauth/callback":    false,
 		"":          false,
@@ -1472,12 +1481,12 @@ func TestAllowedClientOrigins_SkipsNonHTTPSchemes(t *testing.T) {
 	// browser Origin header, so they must NOT surface in the CORS allowlist.
 	repo := &stubOriginRepo{uris: []string{
 		"https://image.sakrylle.com/oauth/callback",
-		"myapp://oauth/callback",     // native client
-		"com.example.app:/callback",  // private-use scheme, RFC 8252 §7.1
-		"   ",                        // whitespace
-		"",                           // empty
-		"not a url",                  // unparseable host-less
-		"https:///path-only",         // missing host
+		"myapp://oauth/callback",    // native client
+		"com.example.app:/callback", // private-use scheme, RFC 8252 §7.1
+		"   ",                       // whitespace
+		"",                          // empty
+		"not a url",                 // unparseable host-less
+		"https:///path-only",        // missing host
 	}}
 	got, err := newOriginTestService(repo).AllowedClientOrigins(context.Background())
 	if err != nil {

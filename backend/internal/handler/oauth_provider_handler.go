@@ -2,7 +2,11 @@ package handler
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -33,6 +37,9 @@ type OAuthProviderHandler struct {
 	// JWKS endpoint reports unavailable and no id_token is issued (the OAuth
 	// flows are unaffected).
 	oidcKeys *service.OIDCKeyService
+	// authService validates JWT tokens for prompt=none silent authentication.
+	// Nil-safe: when unset prompt=none returns interaction_required.
+	authService *service.AuthService
 }
 
 // SetOIDCKeyService wires the OIDC signing key service post-construction
@@ -40,6 +47,14 @@ type OAuthProviderHandler struct {
 func (h *OAuthProviderHandler) SetOIDCKeyService(k *service.OIDCKeyService) {
 	if h != nil {
 		h.oidcKeys = k
+	}
+}
+
+// SetAuthService wires the AuthService post-construction for prompt=none
+// silent authentication. When unset, prompt=none returns interaction_required.
+func (h *OAuthProviderHandler) SetAuthService(a *service.AuthService) {
+	if h != nil {
+		h.authService = a
 	}
 }
 
@@ -103,17 +118,11 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 		Nonce:               formVal("nonce"),
 	}
 
-	// Issue 23: prompt=none requires a pre-existing session; we never have one
-	// on the /oauth/authorize GET (auth lives in localStorage, not a cookie).
-	// Redirect with interaction_required if redirect_uri looks valid, otherwise
-	// render inline so we don't bounce the user to an unverified URL.
+	// Handle prompt=none (OIDC Core §3.1.2.1): silent authentication.
+	// If the user has a valid session, skip consent UI and issue code directly.
+	// Otherwise return error=login_required or error=interaction_required.
 	if formVal("prompt") == "none" {
-		if redirectURI := formVal("redirect_uri"); redirectURI != "" {
-			state := formVal("state")
-			c.Redirect(http.StatusFound, buildOAuthErrorURL(redirectURI, "interaction_required", "user interaction is required", state))
-		} else {
-			renderOAuthInlineError(c, http.StatusBadRequest, "interaction_required: user interaction is required")
-		}
+		h.handlePromptNone(c, req)
 		return
 	}
 
@@ -643,21 +652,21 @@ func (h *OAuthProviderHandler) RevokeGrant(c *gin.Context) {
 func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 	issuer := h.discoveryIssuer(c)
 	resp := gin.H{
-		"issuer":                                issuer,
-		"authorization_endpoint":                issuer + "/oauth/authorize",
-		"token_endpoint":                        issuer + "/oauth/token",
-		"revocation_endpoint":                   issuer + "/oauth/revoke",
-		"device_authorization_endpoint":         issuer + "/oauth/device/code",
-		"userinfo_endpoint":                     issuer + "/v1/me",
-		"response_types_supported":              []string{"code"},
-		"response_modes_supported":              []string{"query"},
-		"ui_locales_supported":                  []string{"zh-CN", "en"},
-		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
-		"code_challenge_methods_supported":      []string{"S256"},
-		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
+		"issuer":                                     issuer,
+		"authorization_endpoint":                     issuer + "/oauth/authorize",
+		"token_endpoint":                             issuer + "/oauth/token",
+		"revocation_endpoint":                        issuer + "/oauth/revoke",
+		"device_authorization_endpoint":              issuer + "/oauth/device/code",
+		"userinfo_endpoint":                          issuer + "/v1/me",
+		"response_types_supported":                   []string{"code"},
+		"response_modes_supported":                   []string{"query"},
+		"ui_locales_supported":                       []string{"zh-CN", "en"},
+		"grant_types_supported":                      []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
+		"code_challenge_methods_supported":           []string{"S256"},
+		"token_endpoint_auth_methods_supported":      []string{"none", "client_secret_basic", "client_secret_post"},
 		"revocation_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
-		"scopes_supported":      canonicalScopesForDiscovery,
-		"service_documentation": "https://doc.sakrylle.com/developers/oauth/",
+		"scopes_supported":                           canonicalScopesForDiscovery,
+		"service_documentation":                      "https://doc.sakrylle.com/developers/oauth/",
 	}
 	c.Header("Content-Type", "application/json")
 	c.Header("Cache-Control", "public, max-age=60")
@@ -669,10 +678,17 @@ func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 // RFC 8414 OAuth metadata so `iss` in id_tokens, the device verification_uri,
 // and both discovery documents can never disagree.
 //
-// id_token_signing_alg_values_supported advertises only RS256 (ES256 is a
-// planned drop-in second key, not yet published). subject_types_supported is
-// "public": sub is the stable user id, not a pairwise pseudonym.
+// id_token_signing_alg_values_supported advertises both RS256 and ES256.
+// subject_types_supported is "public": sub is the stable user id, not a
+// pairwise pseudonym.
 func (h *OAuthProviderHandler) OpenIDConfiguration(c *gin.Context) {
+	// Return 404 when OIDC signing is not wired — prevents advertising
+	// capabilities the server cannot honor (JWKS would 503, id_token empty).
+	if h.oidcKeys == nil {
+		c.Header("Cache-Control", "no-store")
+		c.JSON(http.StatusNotFound, gin.H{"error": "OIDC not enabled"})
+		return
+	}
 	issuer := h.discoveryIssuer(c)
 	resp := gin.H{
 		"issuer":                                issuer,
@@ -684,13 +700,14 @@ func (h *OAuthProviderHandler) OpenIDConfiguration(c *gin.Context) {
 		"response_modes_supported":              []string{"query"},
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
 		"subject_types_supported":               []string{"public"},
-		"id_token_signing_alg_values_supported": []string{"RS256"},
+		"id_token_signing_alg_values_supported": []string{"RS256", "ES256"},
 		"scopes_supported":                      canonicalScopesForDiscovery,
 		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
 		"code_challenge_methods_supported":      []string{"S256"},
 		"claims_supported": []string{
 			"iss", "sub", "aud", "exp", "iat", "nonce",
-			"name", "preferred_username", "email",
+			"name", "preferred_username", "email", "email_verified",
+			"auth_time",
 		},
 		"service_documentation": "https://doc.sakrylle.com/developers/oauth/",
 	}
@@ -703,15 +720,16 @@ func (h *OAuthProviderHandler) OpenIDConfiguration(c *gin.Context) {
 //
 // Only public key material is published (the JWK type cannot carry private
 // components). Cache-Control max-age is 3600s: longer than the discovery TTL
-// because key rotation uses a publish-then-sign window, and relying parties
-// should cache the key set across requests.
+// to allow relying parties to cache the key set across multiple requests.
+// Key rotation is not yet implemented; when implemented, the JWKS will include
+// both the old and new keys (dual-kid) during the grace period.
 func (h *OAuthProviderHandler) JWKS(c *gin.Context) {
 	if h.oidcKeys == nil {
 		c.Header("Cache-Control", "no-store")
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "oidc signing key unavailable"})
 		return
 	}
-	jwks, err := h.oidcKeys.PublicJWKS()
+	jwks, err := h.oidcKeys.PublicJWKS(c.Request.Context())
 	if err != nil {
 		// Never include key material or the raw error detail in the response.
 		slog.Error("oidc jwks unavailable", "error", err)
@@ -722,6 +740,318 @@ func (h *OAuthProviderHandler) JWKS(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
 	c.Header("Cache-Control", "public, max-age=3600")
 	c.JSON(http.StatusOK, jwks)
+}
+
+// ── RP-Initiated Logout (OIDC Session Management) ──────────────────────────
+
+// Logout handles GET /oauth/logout (OIDC Session Management §5).
+//
+// Query parameters:
+//   - id_token_hint (optional): id_token previously issued to the RP. If
+//     provided, we extract the client_id from the payload (without signature
+//     verification) to validate the post_logout_redirect_uri.
+//   - post_logout_redirect_uri (optional): where to redirect after logout.
+//     MUST be in the client's logout_redirect_uris whitelist or we render an
+//     inline error page (not a redirect, to avoid being an open redirector).
+//   - state (optional): opaque value echoed back to the RP.
+//
+// Behavior:
+//   - If post_logout_redirect_uri is valid → clear server-side session (if any)
+//     → 302 to the RP with ?state=<state>.
+//   - If post_logout_redirect_uri is invalid or missing → render success page.
+//   - Never redirects to an untrusted URI (defense against open redirector).
+//
+// Cache-Control: no-store + Pragma: no-cache (sensitive flow, never cache).
+func (h *OAuthProviderHandler) Logout(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+
+	idTokenHint := strings.TrimSpace(c.Query("id_token_hint"))
+	postLogoutRedirectURI := strings.TrimSpace(c.Query("post_logout_redirect_uri"))
+	state := c.Query("state") // preserve exactly as sent
+
+	var clientID string
+
+	// If id_token_hint provided, extract client_id from payload (no signature verification)
+	if idTokenHint != "" {
+		parts := strings.Split(idTokenHint, ".")
+		if len(parts) == 3 {
+			// Decode payload (second part)
+			payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+			if err == nil {
+				var claims map[string]interface{}
+				if json.Unmarshal(payload, &claims) == nil {
+					if aud, ok := claims["aud"]; ok {
+						// aud can be string or []string per OIDC Core §2
+						switch v := aud.(type) {
+						case string:
+							clientID = v
+						case []interface{}:
+							if len(v) > 0 {
+								if s, ok := v[0].(string); ok {
+									clientID = s
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if clientID == "" {
+			slog.Warn("oidc logout: failed to extract client_id from id_token_hint")
+		}
+	}
+
+	// If no post_logout_redirect_uri, render success page
+	if postLogoutRedirectURI == "" {
+		h.renderLogoutSuccessPage(c)
+		return
+	}
+
+	// Validate redirect URI against client whitelist
+	if clientID == "" {
+		// No client_id → cannot validate → render error
+		h.renderLogoutErrorPage(c, "invalid_request", "Cannot validate post_logout_redirect_uri without id_token_hint")
+		return
+	}
+
+	valid, err := h.provider.ValidateLogoutRedirectURI(c.Request.Context(), clientID, postLogoutRedirectURI)
+	if err != nil {
+		slog.Error("oidc logout: whitelist check failed", "client_id", clientID, "error", err)
+		h.renderLogoutErrorPage(c, "server_error", "Failed to validate redirect URI")
+		return
+	}
+
+	if !valid {
+		slog.Warn("oidc logout: post_logout_redirect_uri not in whitelist",
+			"client_id", clientID, "uri", postLogoutRedirectURI)
+		h.renderLogoutErrorPage(c, "invalid_request", "post_logout_redirect_uri not registered for this client")
+		return
+	}
+
+	// TODO: Clear server-side session if we maintain one
+	// For now, this is client-side logout only (RP discards tokens)
+
+	// Build redirect URL
+	redirectURL, err := url.Parse(postLogoutRedirectURI)
+	if err != nil {
+		h.renderLogoutErrorPage(c, "invalid_request", "Malformed post_logout_redirect_uri")
+		return
+	}
+
+	if state != "" {
+		q := redirectURL.Query()
+		q.Set("state", state)
+		redirectURL.RawQuery = q.Encode()
+	}
+
+	c.Redirect(http.StatusFound, redirectURL.String())
+}
+
+// renderLogoutSuccessPage renders an inline HTML success page.
+func (h *OAuthProviderHandler) renderLogoutSuccessPage(c *gin.Context) {
+	html := `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登出成功 - Sakrylle API</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+               background: linear-gradient(135deg, #9181bd 0%, #7a6ba8 100%);
+               margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                padding: 48px; max-width: 400px; text-align: center; }
+        .icon { font-size: 64px; margin-bottom: 24px; }
+        h1 { color: #2d3748; font-size: 24px; margin: 0 0 16px; }
+        p { color: #718096; font-size: 16px; line-height: 1.6; margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">✓</div>
+        <h1>登出成功</h1>
+        <p>您已安全登出 Sakrylle API。<br>可以关闭此页面。</p>
+    </div>
+</body>
+</html>`
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
+}
+
+// renderLogoutErrorPage renders an inline HTML error page (not a redirect).
+func (h *OAuthProviderHandler) renderLogoutErrorPage(c *gin.Context, errorCode, errorDesc string) {
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登出失败 - Sakrylle API</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+               background: linear-gradient(135deg, #9181bd 0%, #7a6ba8 100%);
+               margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                padding: 48px; max-width: 400px; text-align: center; }
+        .icon { font-size: 64px; margin-bottom: 24px; color: #e53e3e; }
+        h1 { color: #2d3748; font-size: 24px; margin: 0 0 16px; }
+        .error-code { color: #e53e3e; font-family: monospace; font-size: 14px; margin: 16px 0 8px; }
+        .error-desc { color: #718096; font-size: 14px; line-height: 1.6; margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">✗</div>
+        <h1>登出失败</h1>
+        <div class="error-code">%s</div>
+        <div class="error-desc">%s</div>
+    </div>
+</body>
+</html>`, html.EscapeString(errorCode), html.EscapeString(errorDesc))
+	c.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(html))
+}
+
+// handlePromptNone handles OIDC prompt=none (silent authentication).
+//
+// Per OIDC Core §3.1.2.1, when prompt=none is specified:
+//  - If the user has a valid session → skip consent UI, issue code directly
+//  - If not authenticated → error=login_required
+//  - If consent needed → error=consent_required
+//  - Other issues → error=interaction_required
+//
+// This implementation checks for a valid JWT in the Authorization header or
+// cookie. If valid, we auto-approve the authorization. Otherwise, redirect
+// with the appropriate error.
+func (h *OAuthProviderHandler) handlePromptNone(c *gin.Context, req *service.AuthorizeRequest) {
+	redirectURI := req.RedirectURI
+	state := req.State
+
+	// Helper to redirect with OAuth error
+	redirectError := func(errorCode, errorDesc string) {
+		if redirectURI != "" {
+			c.Redirect(http.StatusFound, buildOAuthErrorURL(redirectURI, errorCode, errorDesc, state))
+		} else {
+			renderOAuthInlineError(c, http.StatusBadRequest, fmt.Sprintf("%s: %s", errorCode, errorDesc))
+		}
+	}
+
+	// Validate the request first (client_id, redirect_uri, etc.)
+	client, err := h.provider.ValidateAuthorizeRequest(c.Request.Context(), req)
+	if err != nil {
+		// Bad client_id / redirect_uri → inline error (don't redirect to unverified URL)
+		if errors.Is(err, service.ErrOAuthClientNotFound) ||
+			errors.Is(err, service.ErrOAuthClientDisabled) ||
+			errors.Is(err, service.ErrOAuthInvalidRedirectURI) {
+			renderOAuthInlineError(c, http.StatusBadRequest, infraerrors.Message(err))
+			return
+		}
+		// Other validation errors can be redirected
+		redirectError("invalid_request", infraerrors.Message(err))
+		return
+	}
+
+	// Check if authService is wired
+	if h.authService == nil {
+		slog.Warn("oidc prompt=none: authService not wired", "client_id", req.ClientID)
+		redirectError("interaction_required", "silent authentication not available")
+		return
+	}
+
+	// Extract user_id from JWT (check Authorization header or cookie)
+	var userID int64
+	var tokenString string
+
+	// Try Authorization header first
+	authHeader := c.GetHeader("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+	}
+
+	// If no header, try cookie
+	if tokenString == "" {
+		if tokenCookie, err := c.Cookie("token"); err == nil && tokenCookie != "" {
+			tokenString = tokenCookie
+		}
+	}
+
+	// Validate token and extract claims
+	if tokenString != "" {
+		if claims, err := h.authService.ValidateToken(tokenString); err == nil && claims != nil && claims.UserID > 0 {
+			userID = claims.UserID
+		}
+	}
+
+	// No valid session → login_required
+	if userID == 0 {
+		slog.Info("oidc prompt=none: no valid session", "client_id", req.ClientID)
+		redirectError("login_required", "user is not authenticated")
+		return
+	}
+
+	// User is authenticated. For prompt=none, we skip consent and auto-approve.
+	// Build the authorize transaction params for this authenticated user.
+	scopes := service.NormalizeScopes(req.Scopes)
+	if len(scopes) == 0 {
+		scopes = service.NormalizeScopes(client.DefaultScopes)
+	}
+
+	// Resolve group for this user
+	resolvedGroup, err := h.provider.ResolveOAuthGroup(c.Request.Context(), userID, client, nil)
+	if err != nil {
+		slog.Warn("oidc prompt=none: group resolution failed",
+			"user_id", userID, "client_id", req.ClientID, "err", err)
+		redirectError("interaction_required", "group selection required")
+		return
+	}
+
+	// Generate authorization code directly
+	codePlain, err := service.GenerateOpaqueToken(32)
+	if err != nil {
+		slog.Error("oidc prompt=none: failed to generate code",
+			"user_id", userID, "client_id", req.ClientID, "err", err)
+		redirectError("server_error", "failed to generate authorization code")
+		return
+	}
+
+	now := time.Now()
+	code := &service.OAuthCode{
+		CodeHash:            service.HashOAuthToken(codePlain),
+		ClientID:            client.ClientID,
+		UserID:              userID,
+		RedirectURI:         req.RedirectURI,
+		Scopes:              scopes,
+		CodeChallenge:       req.CodeChallenge,
+		CodeChallengeMethod: req.CodeChallengeMethod,
+		ExpiresAt:           now.Add(10 * time.Minute), // authCodeTTL
+		GroupID:             &resolvedGroup,
+		Nonce:               req.Nonce,
+		CreatedAt:           now,
+	}
+
+	// Persist the code via the service's code repository
+	if err := h.provider.CreateAuthorizationCode(c.Request.Context(), code); err != nil {
+		slog.Error("oidc prompt=none: failed to persist code",
+			"user_id", userID, "client_id", req.ClientID, "err", err)
+		redirectError("server_error", "failed to issue authorization code")
+		return
+	}
+
+	// Success: redirect to RP with code
+	redirectURL, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		redirectError("invalid_request", "malformed redirect_uri")
+		return
+	}
+
+	q := redirectURL.Query()
+	q.Set("code", codePlain)
+	if state != "" {
+		q.Set("state", state)
+	}
+	redirectURL.RawQuery = q.Encode()
+
+	slog.Info("oidc prompt=none: code issued",
+		"user_id", userID, "client_id", req.ClientID, "scopes", scopes)
+	c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 // discoveryIssuer resolves the discovery `issuer` URL.
@@ -999,4 +1329,3 @@ func defaultGrantStatus(s string) string {
 	}
 	return s
 }
-
