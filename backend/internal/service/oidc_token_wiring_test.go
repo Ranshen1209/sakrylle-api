@@ -21,7 +21,7 @@ func newTestSignerSvc(t *testing.T) *OIDCKeyService {
 func TestMaybeSignIDToken_GatingAndSigning(t *testing.T) {
 	ks := newTestSignerSvc(t)
 	svc := (&OAuthProviderService{}).WithOIDC(
-		ks.Sign,
+		ks.SignRS256,
 		func(context.Context) string { return testIssuer },
 		func(_ context.Context, id int64) (OIDCUserClaims, error) {
 			return OIDCUserClaims{UserID: id, Username: "bob", Email: "b@x.io"}, nil
@@ -87,7 +87,7 @@ func TestMaybeSignIDToken_NotWiredIsNoOp(t *testing.T) {
 
 func TestMaybeSignIDToken_EmptyIssuerFailsClosed(t *testing.T) {
 	ks := newTestSignerSvc(t)
-	svc := (&OAuthProviderService{}).WithOIDC(ks.Sign, func(context.Context) string { return "" }, nil)
+	svc := (&OAuthProviderService{}).WithOIDC(ks.SignRS256, func(context.Context) string { return "" }, nil)
 	if _, err := svc.maybeSignIDToken(context.Background(), "c", 1, []string{"openid"}, "", time.Time{}); err == nil {
 		t.Error("empty issuer with openid granted must fail closed")
 	}
@@ -100,7 +100,7 @@ func TestMaybeSignIDToken_EmptyIssuerFailsClosed(t *testing.T) {
 func TestMaybeSignIDToken_UserLookupErrorStripsProfileEmail(t *testing.T) {
 	ks := newTestSignerSvc(t)
 	svc := (&OAuthProviderService{}).WithOIDC(
-		ks.Sign,
+		ks.SignRS256,
 		func(context.Context) string { return testIssuer },
 		func(_ context.Context, _ int64) (OIDCUserClaims, error) {
 			return OIDCUserClaims{}, errors.New("db down")

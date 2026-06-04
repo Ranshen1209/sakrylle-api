@@ -59,6 +59,12 @@ func RegisterOAuthRoutes(
 	r.GET("/.well-known/openid-configuration", h.OAuthProvider.OpenIDConfiguration)
 	r.GET("/.well-known/jwks.json", h.OAuthProvider.JWKS)
 
+	// RP-Initiated Logout (OIDC Session Management §5)
+	// GET/POST /oauth/logout accepts id_token_hint + post_logout_redirect_uri.
+	// No rate limit (logout is user-initiated, low volume).
+	r.GET("/oauth/logout", h.OAuthProvider.Logout)
+	r.POST("/oauth/logout", h.OAuthProvider.Logout)
+
 	// GET renders the consent page; POST accepts form-encoded body for the
 	// same flow (some clients POST the authorization request directly).
 	authorizeLimit := rateLimiter.LimitWithOptions("oauth-authorize", 30, time.Minute, middleware.RateLimitOptions{

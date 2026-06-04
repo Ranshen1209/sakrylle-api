@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"sort"
 	"strconv"
@@ -486,6 +487,19 @@ func (s *OAuthProviderService) IssueAuthorizationCode(
 	return &IssuedAuthorizationCode{Code: codePlain, State: req.State}, nil
 }
 
+// CreateAuthorizationCode persists a pre-built authorization code.
+//
+// Used by prompt=none silent authentication to issue codes without the full
+// BeginAuthorize/ApproveAuthorization transaction flow. The caller is
+// responsible for validating all fields (client_id, user_id, redirect_uri,
+// scopes, PKCE, expiry) before calling this method.
+func (s *OAuthProviderService) CreateAuthorizationCode(ctx context.Context, code *OAuthCode) error {
+	if s.codeRepo == nil {
+		return fmt.Errorf("code repository not configured")
+	}
+	return s.codeRepo.CreateCode(ctx, code)
+}
+
 // ResolveOAuthGroup implements §9 group resolution strictly:
 //
 //  1. If requestedGroupID is non-nil, validate user can access + client allows + group enabled.
@@ -777,21 +791,21 @@ func (s *OAuthProviderService) ApproveAuthorization(
 	}
 	grantID := uuid.NewString()
 	code := &OAuthCode{
-		CodeHash:            hashOAuthToken(codePlain),
-		ClientID:            client.ClientID,
-		UserID:              userIDFromJWT,
-		RedirectURI:         tx.RedirectURI,
-		Scopes:             tx.Scopes,
-		CodeChallenge:       tx.CodeChallenge,
-		CodeChallengeMethod: tx.CodeChallengeMethod,
-		ExpiresAt:           now.Add(authCodeTTL),
-		GroupID:             &resolvedGroup,
-		GrantID:             &grantID,
+		CodeHash:              hashOAuthToken(codePlain),
+		ClientID:              client.ClientID,
+		UserID:                userIDFromJWT,
+		RedirectURI:           tx.RedirectURI,
+		Scopes:                tx.Scopes,
+		CodeChallenge:         tx.CodeChallenge,
+		CodeChallengeMethod:   tx.CodeChallengeMethod,
+		ExpiresAt:             now.Add(authCodeTTL),
+		GroupID:               &resolvedGroup,
+		GrantID:               &grantID,
 		AllowedGroupsSnapshot: selectedGroupsOrDefault(selectedGroups, tx.AllowedGroupsSnapshot),
-		DeviceID:            tx.DeviceID,
-		DeviceName:          tx.DeviceName,
-		Nonce:               tx.Nonce,
-		CreatedAt:           now,
+		DeviceID:              tx.DeviceID,
+		DeviceName:            tx.DeviceName,
+		Nonce:                 tx.Nonce,
+		CreatedAt:             now,
 	}
 	if atomic, ok := s.authzTxRepo.(OAuthAuthorizeAtomicRepository); ok {
 		// FIX A4: pass userIDFromJWT so the atomic consume re-checks the
@@ -1930,8 +1944,72 @@ func redirectURIAllowed(allowed []string, candidate string) bool {
 		if uri == target {
 			return true
 		}
+		if isLoopbackRedirect(uri, target) {
+			return true
+		}
 	}
 	return false
+}
+
+// isLoopbackRedirect returns true if candidate is a valid RFC 8252 loopback
+// redirect for the given registered URI. The port relaxation applies only to
+// registered HTTP loopback URIs without an explicit port; path, query, and host
+// must still match exactly after URL parsing/normalization.
+func isLoopbackRedirect(registered, candidate string) bool {
+	registeredURL, err := parseLoopbackRedirectURL(registered)
+	if err != nil {
+		return false
+	}
+	candidateURL, err := parseLoopbackRedirectURL(candidate)
+	if err != nil {
+		return false
+	}
+	if registeredURL.Fragment != "" || candidateURL.Fragment != "" {
+		return false
+	}
+	if registeredURL.Port() != "" {
+		return registeredURL.String() == candidateURL.String()
+	}
+	if candidateURL.Port() == "" {
+		return false
+	}
+	return sameLoopbackHost(registeredURL.Hostname(), candidateURL.Hostname()) &&
+		registeredURL.EscapedPath() == candidateURL.EscapedPath() &&
+		registeredURL.RawQuery == candidateURL.RawQuery
+}
+
+func parseLoopbackRedirectURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme != "http" || u.Hostname() == "" || u.User != nil {
+		return nil, ErrOAuthInvalidRedirectURI
+	}
+	if u.Port() != "" {
+		if _, err := net.LookupPort("tcp", u.Port()); err != nil {
+			return nil, err
+		}
+	}
+	if !isAllowedOAuthLoopbackHost(u.Hostname()) {
+		return nil, ErrOAuthInvalidRedirectURI
+	}
+	return u, nil
+}
+
+func sameLoopbackHost(a, b string) bool {
+	if strings.EqualFold(a, "localhost") || strings.EqualFold(b, "localhost") {
+		return strings.EqualFold(a, b)
+	}
+	return net.ParseIP(a).Equal(net.ParseIP(b))
+}
+
+func isAllowedOAuthLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.Equal(net.ParseIP("127.0.0.1")) || ip.Equal(net.IPv6loopback))
 }
 
 func scopesAllowed(allowed, requested []string) bool {
@@ -1988,6 +2066,18 @@ func ParseScopes(raw string) []string {
 	return out
 }
 
+// HashOAuthToken computes SHA256 hash of an OAuth token for storage.
+// Exported for use by handlers that need to generate authorization codes.
+func HashOAuthToken(token string) string {
+	return hashOAuthToken(token)
+}
+
+// GenerateOpaqueToken generates a cryptographically secure random token.
+// Exported for use by handlers that need to generate authorization codes.
+func GenerateOpaqueToken(nbytes int) (string, error) {
+	return generateOpaqueToken(nbytes)
+}
+
 func hashOAuthToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
@@ -2022,6 +2112,33 @@ func verifyPKCES256(challenge, verifier string) bool {
 // IsOAuthAccessToken returns true if the bearer string is one this provider issued.
 func IsOAuthAccessToken(token string) bool {
 	return strings.HasPrefix(token, oauthAccessTokenPrefix)
+}
+
+// ValidateLogoutRedirectURI checks if the redirect URI is in the client's
+// logout_redirect_uris whitelist. Returns true if valid, false otherwise.
+func (s *OAuthProviderService) ValidateLogoutRedirectURI(ctx context.Context, clientID, redirectURI string) (bool, error) {
+	client, err := s.clientRepo.GetClientByID(ctx, clientID)
+	if err != nil {
+		return false, fmt.Errorf("get client: %w", err)
+	}
+
+	if client == nil {
+		return false, nil
+	}
+
+	// Empty whitelist means no redirect URIs allowed
+	if client.LogoutRedirectURIs == nil || len(client.LogoutRedirectURIs) == 0 {
+		return false, nil
+	}
+
+	// Exact match only (no wildcards, no prefix matching)
+	for _, uri := range client.LogoutRedirectURIs {
+		if uri == redirectURI {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func filterAllowedByClient(client *OAuthClient, ids []int64) []int64 {

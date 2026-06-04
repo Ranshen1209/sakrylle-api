@@ -90,7 +90,7 @@
       <template v-else-if="isImage">
         <PlazaPriceRow
           :label="t('plaza.pricing.image')"
-          :value="model.pricing.image_output_price ?? model.pricing.per_request_price"
+          :value="model.pricing.per_request_price ?? model.pricing.image_output_price"
           :rate="effectiveRate"
           :scale="1"
           :unit="t('plaza.pricing.unitPerRequest')"
