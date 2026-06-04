@@ -31,7 +31,8 @@ func skipIfExternalServiceUnavailable(t *testing.T, err error) {
 			strings.Contains(errStr, "no such host") ||
 			strings.Contains(errStr, "network is unreachable") ||
 			strings.Contains(errStr, "timeout") ||
-			strings.Contains(errStr, "deadline exceeded") {
+			strings.Contains(errStr, "deadline exceeded") ||
+			strings.Contains(errStr, "EOF") {
 			t.Skipf("skipping test: external service unavailable: %v", err)
 		}
 		t.Fatalf("failed to get fingerprint: %v", err)

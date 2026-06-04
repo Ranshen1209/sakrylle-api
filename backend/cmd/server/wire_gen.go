@@ -263,6 +263,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	groupAccessPolicy := service.NewDefaultGroupAccessPolicy(userRepository, groupRepository, userSubscriptionRepository)
 	oAuthTokenMintRepository := repository.NewOAuthTokenMintRepo(client)
 	oidcKeyService := service.ProvideOIDCKeyService(client, secretEncryptor)
+	oidcKeyRotationScheduler := service.ProvideOIDCKeyRotationScheduler(oidcKeyService, settingRepository)
 	oAuthProviderService := service.ProvideOAuthProviderService(oAuthClientRepository, oAuthCodeRepository, oAuthRefreshTokenRepository, oAuthAccessTokenRepository, oAuthDeviceCodeRepository, oAuthAuthorizeTransactionRepository, oAuthAPIKeyRepository, groupRepository, groupAccessPolicy, settingRepository, apiKeyAuthCacheInvalidator, oAuthTokenMintRepository, oidcKeyService, settingService, userService)
 	oAuthProviderHandler := handler.NewOAuthProviderHandler(oAuthProviderService, settingService)
 	oAuthDeviceHandler := handler.NewOAuthDeviceHandler(oAuthProviderService)
@@ -270,7 +271,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	accountInfoHandler := handler.NewAccountInfoHandler(userService, groupService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, oAuthProviderHandler, oAuthDeviceHandler, accountInfoHandler, oAuthProviderService, oidcKeyService, authService, idempotencyCoordinator, idempotencyCleanupService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, oAuthProviderHandler, oAuthDeviceHandler, accountInfoHandler, oAuthProviderService, oidcKeyService, authService, apiKeyService, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
@@ -290,7 +291,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	oAuthCleanupService := service.ProvideOAuthCleanupService(db)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, oAuthCleanupService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, oAuthCleanupService, oidcKeyRotationScheduler)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -348,6 +349,7 @@ func provideCleanup(
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	oauthCleanup *service.OAuthCleanupService,
+	oidcKeyRotation *service.OIDCKeyRotationScheduler,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -508,6 +510,12 @@ func provideCleanup(
 			{"OAuthCleanupService", func() error {
 				if oauthCleanup != nil {
 					oauthCleanup.Stop()
+				}
+				return nil
+			}},
+			{"OIDCKeyRotationScheduler", func() error {
+				if oidcKeyRotation != nil {
+					oidcKeyRotation.Stop()
 				}
 				return nil
 			}},

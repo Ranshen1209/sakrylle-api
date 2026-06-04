@@ -236,6 +236,12 @@ func (_c *OAuthAuthorizeTransactionCreate) SetNillableNonce(v *string) *OAuthAut
 	return _c
 }
 
+// SetClaims sets the "claims" field.
+func (_c *OAuthAuthorizeTransactionCreate) SetClaims(v map[string]interface{}) *OAuthAuthorizeTransactionCreate {
+	_c.mutation.SetClaims(v)
+	return _c
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_c *OAuthAuthorizeTransactionCreate) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _c.mutation
@@ -501,6 +507,10 @@ func (_c *OAuthAuthorizeTransactionCreate) createSpec() (*OAuthAuthorizeTransact
 	if value, ok := _c.mutation.Nonce(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldNonce, field.TypeString, value)
 		_node.Nonce = value
+	}
+	if value, ok := _c.mutation.Claims(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldClaims, field.TypeJSON, value)
+		_node.Claims = value
 	}
 	return _node, _spec
 }
@@ -845,6 +855,24 @@ func (u *OAuthAuthorizeTransactionUpsert) UpdateNonce() *OAuthAuthorizeTransacti
 // ClearNonce clears the value of the "nonce" field.
 func (u *OAuthAuthorizeTransactionUpsert) ClearNonce() *OAuthAuthorizeTransactionUpsert {
 	u.SetNull(oauthauthorizetransaction.FieldNonce)
+	return u
+}
+
+// SetClaims sets the "claims" field.
+func (u *OAuthAuthorizeTransactionUpsert) SetClaims(v map[string]interface{}) *OAuthAuthorizeTransactionUpsert {
+	u.Set(oauthauthorizetransaction.FieldClaims, v)
+	return u
+}
+
+// UpdateClaims sets the "claims" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsert) UpdateClaims() *OAuthAuthorizeTransactionUpsert {
+	u.SetExcluded(oauthauthorizetransaction.FieldClaims)
+	return u
+}
+
+// ClearClaims clears the value of the "claims" field.
+func (u *OAuthAuthorizeTransactionUpsert) ClearClaims() *OAuthAuthorizeTransactionUpsert {
+	u.SetNull(oauthauthorizetransaction.FieldClaims)
 	return u
 }
 
@@ -1233,6 +1261,27 @@ func (u *OAuthAuthorizeTransactionUpsertOne) UpdateNonce() *OAuthAuthorizeTransa
 func (u *OAuthAuthorizeTransactionUpsertOne) ClearNonce() *OAuthAuthorizeTransactionUpsertOne {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.ClearNonce()
+	})
+}
+
+// SetClaims sets the "claims" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) SetClaims(v map[string]interface{}) *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.SetClaims(v)
+	})
+}
+
+// UpdateClaims sets the "claims" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsertOne) UpdateClaims() *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.UpdateClaims()
+	})
+}
+
+// ClearClaims clears the value of the "claims" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) ClearClaims() *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.ClearClaims()
 	})
 }
 
@@ -1787,6 +1836,27 @@ func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateNonce() *OAuthAuthorizeTrans
 func (u *OAuthAuthorizeTransactionUpsertBulk) ClearNonce() *OAuthAuthorizeTransactionUpsertBulk {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.ClearNonce()
+	})
+}
+
+// SetClaims sets the "claims" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) SetClaims(v map[string]interface{}) *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.SetClaims(v)
+	})
+}
+
+// UpdateClaims sets the "claims" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateClaims() *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.UpdateClaims()
+	})
+}
+
+// ClearClaims clears the value of the "claims" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) ClearClaims() *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.ClearClaims()
 	})
 }
 

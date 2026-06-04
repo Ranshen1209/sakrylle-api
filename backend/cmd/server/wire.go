@@ -101,6 +101,7 @@ func provideCleanup(
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	oauthCleanup *service.OAuthCleanupService,
+	oidcKeyRotation *service.OIDCKeyRotationScheduler,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -262,6 +263,12 @@ func provideCleanup(
 			{"OAuthCleanupService", func() error {
 				if oauthCleanup != nil {
 					oauthCleanup.Stop()
+				}
+				return nil
+			}},
+			{"OIDCKeyRotationScheduler", func() error {
+				if oidcKeyRotation != nil {
+					oidcKeyRotation.Stop()
 				}
 				return nil
 			}},

@@ -119,6 +119,7 @@ func ProvideHandlers(
 	oauthProviderService *service.OAuthProviderService,
 	oidcKeyService *service.OIDCKeyService,
 	authService *service.AuthService,
+	apiKeyService *service.APIKeyService,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -141,6 +142,12 @@ func ProvideHandlers(
 	// When wired, prompt=none validates JWT sessions and auto-issues codes.
 	if authService != nil {
 		oauthProviderHandler.SetAuthService(authService)
+	}
+	// Wire APIKeyService for the /userinfo endpoint (OIDC Core §5.3).
+	// The /userinfo handler validates Bearer tokens directly, bypassing
+	// the /v1 gateway billing/group middleware chain.
+	if apiKeyService != nil {
+		oauthProviderHandler.SetAPIKeyService(apiKeyService)
 	}
 	return &Handlers{
 		Auth:             authHandler,

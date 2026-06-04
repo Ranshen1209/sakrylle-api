@@ -288,7 +288,7 @@ type scopePolicyEntry struct {
 // design doc — every API-key-authenticated route that should accept sk_oauth_
 // tokens MUST appear here. Unlisted routes reject sk_oauth_ tokens by default.
 var oauthScopePolicies = []scopePolicyEntry{
-	{method: "GET", pattern: regexp.MustCompile(`^/v1/me/?$`), required: []string{ScopeProfileRead, ScopeAccountRead, ScopeAccountBalanceRead}},
+	{method: "GET", pattern: regexp.MustCompile(`^/v1/me/?$`), required: []string{ScopeOpenID, ScopeProfileRead, ScopeAccountRead, ScopeAccountBalanceRead}},
 
 	{method: "GET", pattern: regexp.MustCompile(`^/v1/account/balance/?$`), required: []string{ScopeAccountBalanceRead, ScopeAccountRead}},
 	{method: "GET", pattern: regexp.MustCompile(`^/v1/models/?$`), required: []string{ScopeModelsRead}},

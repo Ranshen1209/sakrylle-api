@@ -96,8 +96,14 @@ func (h *AccountInfoHandler) Me(c *gin.Context) {
 	}
 	meta, _ := middleware.GetOAuthAccessTokenFromContext(c)
 
+	// OAuth token detection: if the key starts with sk_oauth_ it is always an
+	// OAuth token, even when metadata hasn't been loaded (legacy v1 token, or
+	// accessRepo not wired). Fall through to the OAuth path with nil-safe
+	// field cropping. Manual API keys never have the sk_oauth_ prefix.
+	isOAuth := service.IsOAuthAccessToken(apiKey.Key)
+
 	// Manual API key path — never scope-cropped.
-	if meta == nil {
+	if meta == nil && !isOAuth {
 		c.JSON(http.StatusOK, h.assembleManualKeyMe(apiKey))
 		return
 	}
@@ -105,20 +111,24 @@ func (h *AccountInfoHandler) Me(c *gin.Context) {
 	// OAuth path — at least one of the §7.3 GET /v1/me scopes is required.
 	// Also allow openid-only grants (id_token-only flows may call /v1/me
 	// for userinfo even without profile/account scopes).
-	required := []string{
-		service.ScopeProfileRead,
-		service.ScopeAccountRead,
-		service.ScopeAccountBalanceRead,
-		service.ScopeOpenID,
-	}
-	if !service.HasAnyScope(meta.Scopes, required...) {
-		middleware.WriteOAuthResourceError(c, middleware.OAuthResourceError{
-			Status:         http.StatusForbidden,
-			Code:           middleware.OAuthErrInsufficientScope,
-			Description:    "required scope: openid, profile:read, account:read, or account:balance:read",
-			RequiredScopes: required,
-		})
-		return
+	// When meta is nil (legacy v1 token), skip the scope check — v1 tokens
+	// predate the scope matrix and have no stored scopes.
+	if meta != nil {
+		required := []string{
+			service.ScopeProfileRead,
+			service.ScopeAccountRead,
+			service.ScopeAccountBalanceRead,
+			service.ScopeOpenID,
+		}
+		if !service.HasAnyScope(meta.Scopes, required...) {
+			middleware.WriteOAuthResourceError(c, middleware.OAuthResourceError{
+				Status:         http.StatusForbidden,
+				Code:           middleware.OAuthErrInsufficientScope,
+				Description:    "required scope: openid, profile:read, account:read, or account:balance:read",
+				RequiredScopes: required,
+			})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, h.assembleOAuthMe(c, apiKey, meta))
 }
@@ -164,30 +174,57 @@ func (h *AccountInfoHandler) assembleManualKeyMe(apiKey *service.APIKey) gin.H {
 // billing records, admin fields, or full email without email:read.
 func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.APIKey, meta *service.OAuthAccessToken) gin.H {
 	user := apiKey.User
-	hasProfile := service.HasScope(meta.Scopes, service.ScopeProfileRead)
-	hasEmail := service.HasScope(meta.Scopes, service.ScopeEmailRead)
-	hasBalance := service.HasScope(meta.Scopes, service.ScopeAccountBalanceRead)
-	hasAccount := service.HasScope(meta.Scopes, service.ScopeAccountRead)
+
+	// Nil-safe scope extraction: legacy v1 tokens have no stored scopes.
+	scopes := []string{}
+	hasProfile := false
+	hasEmail := false
+	hasBalance := false
+	hasAccount := false
+	hasOpenID := false
+	hasOIDCProfile := false
+	hasOIDCEmail := false
+	if meta != nil {
+		scopes = meta.Scopes
+		hasOpenID = service.HasScope(scopes, service.ScopeOpenID)
+		hasOIDCProfile = service.HasScope(scopes, service.ScopeProfile)
+		hasOIDCEmail = service.HasScope(scopes, service.ScopeEmail)
+		hasProfile = service.HasScope(scopes, service.ScopeProfileRead)
+		hasEmail = service.HasScope(scopes, service.ScopeEmailRead)
+		hasBalance = service.HasScope(scopes, service.ScopeAccountBalanceRead)
+		hasAccount = service.HasScope(scopes, service.ScopeAccountRead)
+	}
 
 	resp := gin.H{
 		"auth_type": "oauth",
-		"granted_scopes": func() []string {
-			out := service.NormalizeScopes(meta.Scopes)
+	}
+
+	// Build the oauth metadata block (nil-safe for legacy v1 tokens).
+	oauthBlock := gin.H{}
+	if meta != nil {
+		oauthBlock["client_id"] = meta.ClientID
+		oauthBlock["app_type"] = meta.AppType
+		oauthBlock["grant_id"] = meta.GrantID
+		oauthBlock["device_id"] = nullableStringPtr(meta.DeviceID)
+		oauthBlock["device_name"] = nullableStringPtr(meta.DeviceName)
+		oauthBlock["expires_at"] = meta.ExpiresAt
+
+		resp["granted_scopes"] = func() []string {
+			out := service.NormalizeScopes(scopes)
 			if out == nil {
 				return []string{}
 			}
 			return out
-		}(),
-		"effective_capabilities": effectiveCapabilities(meta.Scopes, apiKey.Group),
-		"oauth": gin.H{
-			"client_id":   meta.ClientID,
-			"app_type":    meta.AppType,
-			"grant_id":    meta.GrantID,
-			"device_id":   nullableStringPtr(meta.DeviceID),
-			"device_name": nullableStringPtr(meta.DeviceName),
-			"expires_at":  meta.ExpiresAt,
-		},
+		}()
+		resp["effective_capabilities"] = effectiveCapabilities(scopes, apiKey.Group)
+	} else {
+		oauthBlock["client_id"] = nil
+		oauthBlock["app_type"] = nil
+		oauthBlock["grant_id"] = nil
+		resp["granted_scopes"] = []string{}
+		resp["effective_capabilities"] = effectiveCapabilities(nil, apiKey.Group)
 	}
+	resp["oauth"] = oauthBlock
 
 	// OIDC UserInfo claims: when the standard `openid` scope was granted, expose
 	// `sub` (stable user id as string) plus `name`/`preferred_username` (profile)
@@ -195,19 +232,24 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 	// from the commercial profile:read/email:read blocks below. Real-time
 	// business state (balance/group/capabilities) is never emitted here as an
 	// OIDC claim — it stays in the existing scoped blocks / gateway only.
-	if service.HasScope(meta.Scopes, service.ScopeOpenID) {
-		resp["sub"] = strconv.FormatInt(user.ID, 10)
-		if service.HasScope(meta.Scopes, service.ScopeProfile) {
+	if hasOpenID {
+		// Resolve the sub claim: public = user ID string, pairwise = per-client pseudonym.
+		sub := strconv.FormatInt(user.ID, 10)
+		if meta != nil && h.oauthService != nil {
+			if client, lookupErr := h.oauthService.LookupClient(c.Request.Context(), meta.ClientID); lookupErr == nil && client != nil && client.SubjectType == "pairwise" {
+				issuer := resolveIssuerFromRequest(c)
+				if pw := service.ResolvePairwiseSub(issuer, user.ID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs); pw != "" {
+					sub = pw
+				}
+			}
+		}
+		resp["sub"] = sub
+		if hasOIDCProfile {
 			resp["name"] = user.Username
 			resp["preferred_username"] = user.Username
 		}
-		if service.HasScope(meta.Scopes, service.ScopeEmail) {
+		if hasOIDCEmail {
 			resp["email"] = user.Email
-			// email_verified mirrors BuildIDTokenClaims: there is no per-user
-			// verification flag in the data model, and OIDC Core §5.1 treats an
-			// absent email_verified as unverified, so we state it honestly as
-			// false rather than letting an RP guess — and so /v1/me and the
-			// id_token agree on the same claim.
 			resp["email_verified"] = false
 		}
 	}
@@ -239,10 +281,10 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 			resp["current_group"] = groupSummary(apiKey.Group, user, false)
 		}
 		var oauthClient *service.OAuthClient
-		if meta.ClientID != "" && h.oauthService != nil {
+		if meta != nil && meta.ClientID != "" && h.oauthService != nil {
 			oauthClient, _ = h.oauthService.LookupClient(c.Request.Context(), meta.ClientID)
 		}
-		resp["allowed_groups"] = h.allowedGroupsForUser(c, user.ID, apiKey.Group, oauthClient, meta.Scopes)
+		resp["allowed_groups"] = h.allowedGroupsForUser(c, user.ID, apiKey.Group, oauthClient, scopes)
 	}
 
 	return resp
@@ -336,4 +378,24 @@ func nullableStringPtr(s *string) any {
 		return nil
 	}
 	return *s
+}
+
+// resolveIssuerFromRequest derives the issuer URL from the request context.
+// Used as a fallback when settings are not available (e.g., in the /v1/me
+// handler which doesn't have a SettingService dependency).
+// Always strips trailing slash because RFC 8414 forbids it on the issuer.
+func resolveIssuerFromRequest(c *gin.Context) string {
+	scheme := "https"
+	if c != nil && c.Request != nil {
+		if c.Request.TLS == nil && c.Request.Header.Get("X-Forwarded-Proto") != "https" {
+			scheme = "http"
+		}
+		if proto := c.Request.Header.Get("X-Forwarded-Proto"); proto == "http" || proto == "https" {
+			scheme = proto
+		}
+		if host := c.Request.Host; host != "" {
+			return strings.TrimRight(scheme+"://"+host, "/")
+		}
+	}
+	return ""
 }

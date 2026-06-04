@@ -1652,7 +1652,9 @@ func TestRevokeAuthorizedClient_HappyPath_ReturnsRevokedCount(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.GreaterOrEqual(t, int(resp["revoked"].(float64)), 1,
+	revoked, ok := resp["revoked"].(float64)
+	require.True(t, ok)
+	require.GreaterOrEqual(t, int(revoked), 1,
 		"happy path: at least one grant should be revoked")
 }
 

@@ -109,9 +109,9 @@ func main() {
 
 		// Summary audit event — one JSON line for easy log aggregation.
 		summary := map[string]any{
-			"event":     "oauth_reconcile_apply_summary",
+			"event":         "oauth_reconcile_apply_summary",
 			"rows_inserted": affected,
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
+			"timestamp":     time.Now().UTC().Format(time.RFC3339),
 		}
 		if b, err := json.Marshal(summary); err == nil {
 			slog.Info("oauth_reconcile_audit", "action", "apply_summary", "summary", string(b))
@@ -212,7 +212,7 @@ RETURNING api_key_id, grant_id, token_family_id, client_id, scopes::text
 	if err != nil {
 		return 0, fmt.Errorf("oauth_access_tokens backfill: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var n int64
 	for rows.Next() {
@@ -313,7 +313,7 @@ func scanCountAndSample(ctx context.Context, db *sql.DB, query string, count *in
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {

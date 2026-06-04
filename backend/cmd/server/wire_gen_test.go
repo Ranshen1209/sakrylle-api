@@ -81,6 +81,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // channelMonitorRunner
 		nil, // quotaFlusher
 		nil, // oauthCleanup
+		nil, // oidcKeyRotation
 	)
 
 	require.NotPanics(t, func() {

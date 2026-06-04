@@ -63,6 +63,22 @@ type OAuthClient struct {
 	// Valid values: "RS256" (RSA PKCS#1 v1.5 with SHA-256) or "ES256" (ECDSA P-256 with SHA-256).
 	// Defaults to "RS256" for backward compatibility.
 	SigningAlgorithm string
+	// SubjectType controls whether the sub claim is the user's stable ID ("public")
+	// or a per-client pseudonym ("pairwise", OIDC Core §8). Defaults to "public".
+	SubjectType string
+	// SectorIdentifierURI is the URL from which the client's sector identifier is
+	// fetched for pairwise subject computation. When nil and subject_type is
+	// "pairwise", the sector identifier is derived from redirect_uris hosts.
+	SectorIdentifierURI *string
+	// RequestURIs lists pre-registered HTTPS URIs from which request objects
+	// may be fetched (OIDC Core §6.3). Empty means request_uri not supported.
+	RequestURIs []string
+	// BackchannelLogoutURI receives logout_token POSTs on user logout.
+	// nil means no back-channel notification for this client.
+	BackchannelLogoutURI *string
+	// BackchannelLogoutSessionRequired: when true, include sid claim in
+	// id_tokens for back-channel logout session association.
+	BackchannelLogoutSessionRequired bool
 }
 
 // OAuthCode is a short-lived authorization code (RFC 6749 §4.1).
@@ -220,6 +236,10 @@ type OAuthAuthorizeTransaction struct {
 	// approve POST cannot tamper with it; copied into the OAuthCode at approval
 	// and ultimately into the id_token nonce claim. Empty when not supplied.
 	Nonce string
+	// Claims stores the parsed OIDC §5.5 voluntary claims request. When set,
+	// it is carried through to the id_token and UserInfo response to include
+	// requested claims within the scope boundary.
+	Claims map[string]any
 }
 
 // OAuthAuthorizedGrant is the v2 user-facing per-device grant projection

@@ -675,8 +675,8 @@ func uniformRandIndex(n uint32) (uint32, error) {
 // the SHA-256 lookup matches the form CreateDeviceCode wrote.
 func normalizeUserCode(raw string) (string, error) {
 	cleaned := strings.Map(func(r rune) rune {
-		switch {
-		case r == ' ', r == '\t', r == '-', r == '_':
+		switch r {
+		case ' ', '\t', '-', '_':
 			return -1
 		default:
 			return r

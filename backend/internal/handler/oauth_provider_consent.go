@@ -381,11 +381,11 @@ func scopeBulletsHTML(scopes []string) string {
 		if !ok {
 			desc = "（未知权限）"
 		}
-		b.WriteString(`<li><span class="scope-name">`)
-		b.WriteString(html.EscapeString(s))
-		b.WriteString(`</span><span class="scope-desc">`)
-		b.WriteString(html.EscapeString(desc))
-		b.WriteString(`</span></li>`)
+		_, _ = b.WriteString(`<li><span class="scope-name">`)
+		_, _ = b.WriteString(html.EscapeString(s))
+		_, _ = b.WriteString(`</span><span class="scope-desc">`)
+		_, _ = b.WriteString(html.EscapeString(desc))
+		_, _ = b.WriteString(`</span></li>`)
 	}
 	return b.String()
 }

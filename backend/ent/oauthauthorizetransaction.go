@@ -59,7 +59,9 @@ type OAuthAuthorizeTransaction struct {
 	// CreatedUserAgent holds the value of the "created_user_agent" field.
 	CreatedUserAgent *string `json:"created_user_agent,omitempty"`
 	// OIDC nonce captured at /authorize; copied to the code, then the id_token
-	Nonce        string `json:"nonce,omitempty"`
+	Nonce string `json:"nonce,omitempty"`
+	// OIDC §5.5 voluntary claims request; carried through to id_token/userinfo
+	Claims       map[string]interface{} `json:"claims,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -68,7 +70,7 @@ func (*OAuthAuthorizeTransaction) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case oauthauthorizetransaction.FieldScopes, oauthauthorizetransaction.FieldAllowedGroupsSnapshot:
+		case oauthauthorizetransaction.FieldScopes, oauthauthorizetransaction.FieldAllowedGroupsSnapshot, oauthauthorizetransaction.FieldClaims:
 			values[i] = new([]byte)
 		case oauthauthorizetransaction.FieldID, oauthauthorizetransaction.FieldUserID, oauthauthorizetransaction.FieldRequestedGroupID:
 			values[i] = new(sql.NullInt64)
@@ -233,6 +235,14 @@ func (_m *OAuthAuthorizeTransaction) assignValues(columns []string, values []any
 			} else if value.Valid {
 				_m.Nonce = value.String
 			}
+		case oauthauthorizetransaction.FieldClaims:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field claims", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Claims); err != nil {
+					return fmt.Errorf("unmarshal field claims: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -343,6 +353,9 @@ func (_m *OAuthAuthorizeTransaction) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("nonce=")
 	builder.WriteString(_m.Nonce)
+	builder.WriteString(", ")
+	builder.WriteString("claims=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Claims))
 	builder.WriteByte(')')
 	return builder.String()
 }

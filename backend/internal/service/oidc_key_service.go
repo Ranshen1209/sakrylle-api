@@ -20,10 +20,10 @@ import (
 )
 
 const (
-	oidcRSAKeyBits        = 2048
-	oidcCurrentKIDKey     = "oidc_signing_current_kid"
-	oidcKeyPrefix         = "oidc_signing_key_"
-	oidcPreviousKIDsKey   = "oidc_signing_previous_kids"
+	oidcRSAKeyBits      = 2048
+	oidcCurrentKIDKey   = "oidc_signing_current_kid"
+	oidcKeyPrefix       = "oidc_signing_key_"
+	oidcPreviousKIDsKey = "oidc_signing_previous_kids"
 	// oidcPreviousKIDsKeyEC stores the retired EC kids list. RSA keeps the
 	// historical un-suffixed key (oidcPreviousKIDsKey) for backward compat with
 	// data written before EC rotation existed; EC uses its own suffixed key.
@@ -98,8 +98,8 @@ type OIDCKeyService struct {
 
 	mu sync.RWMutex
 	// RS256 key pair
-	rsaKID     string
-	rsaPriv    *rsa.PrivateKey
+	rsaKID      string
+	rsaPriv     *rsa.PrivateKey
 	rsaPrevKIDs []string // retired RSA kids still in grace period
 	// ES256 key pair
 	ecKID      string
@@ -354,6 +354,52 @@ func (s *OIDCKeyService) CurrentECKID() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.ecKID
+}
+
+// GetVerificationKey returns the public key and key type for the given kid.
+// Used by the RP-Initiated Logout handler to verify id_token_hint signatures.
+// Returns (nil, "", error) when the kid is unknown.
+func (s *OIDCKeyService) GetVerificationKey(ctx context.Context, kid string) (any, SigningKeyType, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Check current and previous RSA kids.
+	if kid == s.rsaKID {
+		pub, err := s.loadRSAPublicKeyOnly(ctx, kid)
+		if err != nil {
+			return nil, "", fmt.Errorf("oidc: failed to load RSA public key for kid %q: %w", kid, err)
+		}
+		return pub, SigningKeyTypeRSA, nil
+	}
+	for _, prevKID := range s.rsaPrevKIDs {
+		if kid == prevKID {
+			pub, err := s.loadRSAPublicKeyOnly(ctx, kid)
+			if err != nil {
+				return nil, "", fmt.Errorf("oidc: failed to load previous RSA public key for kid %q: %w", kid, err)
+			}
+			return pub, SigningKeyTypeRSA, nil
+		}
+	}
+
+	// Check current and previous EC kids.
+	if kid == s.ecKID {
+		pub, err := s.loadECPublicKeyOnly(ctx, kid)
+		if err != nil {
+			return nil, "", fmt.Errorf("oidc: failed to load EC public key for kid %q: %w", kid, err)
+		}
+		return pub, SigningKeyTypeEC, nil
+	}
+	for _, prevKID := range s.ecPrevKIDs {
+		if kid == prevKID {
+			pub, err := s.loadECPublicKeyOnly(ctx, kid)
+			if err != nil {
+				return nil, "", fmt.Errorf("oidc: failed to load previous EC public key for kid %q: %w", kid, err)
+			}
+			return pub, SigningKeyTypeEC, nil
+		}
+	}
+
+	return nil, "", fmt.Errorf("oidc: unknown kid %q", kid)
 }
 
 // Sign produces a compact JWT for the given claims with the kid header set

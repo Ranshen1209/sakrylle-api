@@ -101,6 +101,13 @@ func (OAuthAuthorizeTransaction) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Optional().
 			Comment("OIDC nonce captured at /authorize; copied to the code, then the id_token"),
+
+		// ── OIDC claims parameter (migration 154) ──────────────────────────
+		// claims stores the parsed OIDC §5.5 claims request JSON. It is
+		// captured at /authorize and carried through to token/userinfo.
+		field.JSON("claims", map[string]any{}).
+			Optional().
+			Comment("OIDC §5.5 voluntary claims request; carried through to id_token/userinfo"),
 	}
 }
 

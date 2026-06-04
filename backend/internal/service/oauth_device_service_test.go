@@ -452,7 +452,7 @@ func TestApproveAndExchange_HappyPath(t *testing.T) {
 	// elapse — but the interval check uses LastPollAt. Construct a
 	// "wait" by sleeping just past the interval. To keep tests fast, we
 	// reach into the stub and zero out LastPollAt.
-	deviceRepo := svc.deviceRepo.(*stubDeviceCodeRepo)
+	deviceRepo, _ := svc.deviceRepo.(*stubDeviceCodeRepo)
 	deviceRepo.mu.Lock()
 	for _, row := range deviceRepo.rows {
 		row.LastPollAt = nil
@@ -714,7 +714,7 @@ func TestNormalizeUserCode_AcceptsCanonicalAndLooseForms(t *testing.T) {
 
 func TestCreateDeviceCode_GloballyDisabled(t *testing.T) {
 	svc, _, _, _, _, _ := newDeviceServiceUnderTest(t)
-	settingRepo := svc.settingRepo.(*stubSettingRepo)
+	settingRepo, _ := svc.settingRepo.(*stubSettingRepo)
 	settingRepo.values["oauth_device_flow_enabled"] = "false"
 
 	_, err := svc.CreateDeviceCode(context.Background(), &DeviceCodeRequest{

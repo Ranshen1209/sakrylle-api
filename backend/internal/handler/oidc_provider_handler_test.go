@@ -73,7 +73,7 @@ func TestOpenIDConfiguration(t *testing.T) {
 	if doc["token_endpoint"] != "https://sub.sakrylle.com/oauth/token" {
 		t.Errorf("token_endpoint=%v", doc["token_endpoint"])
 	}
-	if doc["userinfo_endpoint"] != "https://sub.sakrylle.com/v1/me" {
+	if doc["userinfo_endpoint"] != "https://sub.sakrylle.com/userinfo" {
 		t.Errorf("userinfo_endpoint=%v", doc["userinfo_endpoint"])
 	}
 	if !oidcContains(oidcStrings(doc["id_token_signing_alg_values_supported"]), "RS256") {
