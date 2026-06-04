@@ -513,7 +513,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 	}
 }
 
-
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{
 		ModelMapping: map[string]map[string]string{
@@ -735,6 +734,37 @@ func TestSupportedModels_ExactMappingUsesTargetPricing(t *testing.T) {
 	require.Equal(t, int64(200), got[0].Pricing.ID, "req-model 显示但定价是 served-model 的（mapping target）")
 	require.Equal(t, "served-model", got[1].Name)
 	require.Equal(t, int64(200), got[1].Pricing.ID)
+}
+
+func TestSupportedModels_RequestedBillingUsesSourcePricing(t *testing.T) {
+	// requested 计费按用户请求模型查价；即使上游映射到另一个 target，
+	// 模型广场也应展示 src pricing row 的 per-request 价格。
+	ch := &Channel{
+		BillingModelSource: BillingModelSourceRequested,
+		ModelPricing: []ChannelModelPricing{
+			{
+				ID:               274,
+				Platform:         "openai",
+				Models:           []string{"gpt-image-2-4k"},
+				BillingMode:      BillingModeImage,
+				PerRequestPrice:  testPtrFloat64(0.18),
+				ImageOutputPrice: testPtrFloat64(0.00003),
+			},
+		},
+		ModelMapping: map[string]map[string]string{
+			"openai": {
+				"gpt-image-2-4k": "gpt-image-2-vip",
+			},
+		},
+	}
+
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "gpt-image-2-4k", got[0].Name)
+	require.NotNil(t, got[0].Pricing)
+	require.Equal(t, int64(274), got[0].Pricing.ID)
+	require.NotNil(t, got[0].Pricing.PerRequestPrice)
+	require.InDelta(t, 0.18, *got[0].Pricing.PerRequestPrice, 1e-12)
 }
 
 func TestSupportedModels_ExactMappingTargetMissingFromPricing(t *testing.T) {
