@@ -694,6 +694,34 @@ func (h *OAuthProviderHandler) RevokeGrant(c *gin.Context) {
 
 // ── Discovery (§12.1) ───────────────────────────────────────────────────────
 
+// commonDiscoveryMetadata builds the shared discovery fields used by both
+// RFC 8414 (OAuth Authorization Server Metadata) and OIDC Discovery 1.0
+// (OpenID Connect Discovery). Extracting them into a single source prevents
+// the two documents from drifting apart.
+func (h *OAuthProviderHandler) commonDiscoveryMetadata(issuer string) gin.H {
+	return gin.H{
+		"issuer":                                issuer,
+		"authorization_endpoint":                issuer + "/oauth/authorize",
+		"token_endpoint":                        issuer + "/oauth/token",
+		"userinfo_endpoint":                     issuer + "/userinfo",
+		"jwks_uri":                              issuer + "/.well-known/jwks.json",
+		"end_session_endpoint":                  issuer + "/oauth/logout",
+		"response_types_supported":              []string{"code"},
+		"response_modes_supported":              []string{"query"},
+		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
+		"code_challenge_methods_supported":      []string{"S256"},
+		"scopes_supported":                      canonicalScopesForDiscovery,
+		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
+		"claims_supported": []string{
+			"iss", "sub", "aud", "exp", "iat", "nonce",
+			"name", "preferred_username", "email", "email_verified",
+			"auth_time",
+		},
+		"prompt_values_supported": []string{"none", "login", "consent", "select_account"},
+		"service_documentation":   "https://doc.sakrylle.com/developers/oauth/",
+	}
+}
+
 // Metadata serves GET /.well-known/oauth-authorization-server.
 //
 // The issuer is derived from `frontend_url` (DB setting → config fallback)
@@ -706,23 +734,11 @@ func (h *OAuthProviderHandler) RevokeGrant(c *gin.Context) {
 // minutes, not hours.
 func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 	issuer := h.discoveryIssuer(c)
-	resp := gin.H{
-		"issuer":                                     issuer,
-		"authorization_endpoint":                     issuer + "/oauth/authorize",
-		"token_endpoint":                             issuer + "/oauth/token",
-		"revocation_endpoint":                        issuer + "/oauth/revoke",
-		"device_authorization_endpoint":              issuer + "/oauth/device/code",
-		"userinfo_endpoint":                          issuer + "/userinfo",
-		"response_types_supported":                   []string{"code"},
-		"response_modes_supported":                   []string{"query"},
-		"ui_locales_supported":                       []string{"zh-CN", "en"},
-		"grant_types_supported":                      []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
-		"code_challenge_methods_supported":           []string{"S256"},
-		"token_endpoint_auth_methods_supported":      []string{"none", "client_secret_basic", "client_secret_post"},
-		"revocation_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
-		"scopes_supported":                           canonicalScopesForDiscovery,
-		"service_documentation":                      "https://doc.sakrylle.com/developers/oauth/",
-	}
+	resp := h.commonDiscoveryMetadata(issuer)
+	resp["revocation_endpoint"] = issuer + "/oauth/revoke"
+	resp["device_authorization_endpoint"] = issuer + "/oauth/device/code"
+	resp["ui_locales_supported"] = []string{"zh-CN", "en"}
+	resp["revocation_endpoint_auth_methods_supported"] = []string{"none", "client_secret_basic", "client_secret_post"}
 	c.Header("Content-Type", "application/json")
 	c.Header("Cache-Control", "public, max-age=60")
 	c.JSON(http.StatusOK, resp)
@@ -750,35 +766,15 @@ func (h *OAuthProviderHandler) OpenIDConfiguration(c *gin.Context) {
 		return
 	}
 	issuer := h.discoveryIssuer(c)
-	resp := gin.H{
-		"issuer":                                issuer,
-		"authorization_endpoint":                issuer + "/oauth/authorize",
-		"token_endpoint":                        issuer + "/oauth/token",
-		"userinfo_endpoint":                     issuer + "/userinfo",
-		"jwks_uri":                              issuer + "/.well-known/jwks.json",
-		"end_session_endpoint":                  issuer + "/oauth/logout",
-		"response_types_supported":              []string{"code"},
-		"response_modes_supported":              []string{"query"},
-		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
-		"subject_types_supported":               []string{"public", "pairwise"},
-		"id_token_signing_alg_values_supported": []string{"RS256", "ES256"},
-		"userinfo_signing_alg_values_supported": []string{"RS256", "ES256"},
-		"scopes_supported":                      canonicalScopesForDiscovery,
-		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
-		"code_challenge_methods_supported":      []string{"S256"},
-		"claims_supported": []string{
-			"iss", "sub", "aud", "exp", "iat", "nonce",
-			"name", "preferred_username", "email", "email_verified",
-			"auth_time",
-		},
-		"prompt_values_supported":         []string{"none", "login", "consent", "select_account"},
-		"request_parameter_supported":     true,
-		"request_uri_parameter_supported": true,
-		"claims_parameter_supported":        true,
-		"backchannel_logout_supported":          true,
-		"backchannel_logout_session_supported":    true,
-		"service_documentation":           "https://doc.sakrylle.com/developers/oauth/",
-	}
+	resp := h.commonDiscoveryMetadata(issuer)
+	resp["subject_types_supported"] = []string{"public", "pairwise"}
+	resp["id_token_signing_alg_values_supported"] = []string{"RS256", "ES256"}
+	resp["userinfo_signing_alg_values_supported"] = []string{"RS256", "ES256"}
+	resp["request_parameter_supported"] = true
+	resp["request_uri_parameter_supported"] = true
+	resp["claims_parameter_supported"] = true
+	resp["backchannel_logout_supported"] = true
+	resp["backchannel_logout_session_supported"] = true
 	c.Header("Content-Type", "application/json")
 	c.Header("Cache-Control", "public, max-age=60")
 	c.JSON(http.StatusOK, resp)
