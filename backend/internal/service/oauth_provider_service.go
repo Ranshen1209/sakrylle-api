@@ -539,6 +539,16 @@ func (s *OAuthProviderService) ListClientsWithFrontchannelLogout(ctx context.Con
 	return s.clientRepo.ListClientsWithFrontchannelLogout(ctx)
 }
 
+// ListClientsWithBackchannelLogout returns all non-disabled clients that have
+// a non-empty backchannel_logout_uri. Used by back-channel logout to broadcast
+// logout_token to all registered RPs.
+func (s *OAuthProviderService) ListClientsWithBackchannelLogout(ctx context.Context) ([]*OAuthClient, error) {
+	if s.clientRepo == nil {
+		return nil, nil
+	}
+	return s.clientRepo.ListClientsWithBackchannelLogout(ctx)
+}
+
 // IntrospectToken implements RFC 7662 token introspection. Only confidential
 // clients (those with client_secret_hash) may call this endpoint.
 //

@@ -196,6 +196,20 @@ func (_c *OAuthCodeCreate) SetNillableNonce(v *string) *OAuthCodeCreate {
 	return _c
 }
 
+// SetSid sets the "sid" field.
+func (_c *OAuthCodeCreate) SetSid(v string) *OAuthCodeCreate {
+	_c.mutation.SetSid(v)
+	return _c
+}
+
+// SetNillableSid sets the "sid" field if the given value is not nil.
+func (_c *OAuthCodeCreate) SetNillableSid(v *string) *OAuthCodeCreate {
+	if v != nil {
+		_c.SetSid(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_c *OAuthCodeCreate) Mutation() *OAuthCodeMutation {
 	return _c.mutation
@@ -418,6 +432,10 @@ func (_c *OAuthCodeCreate) createSpec() (*OAuthCode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Nonce(); ok {
 		_spec.SetField(oauthcode.FieldNonce, field.TypeString, value)
 		_node.Nonce = value
+	}
+	if value, ok := _c.mutation.Sid(); ok {
+		_spec.SetField(oauthcode.FieldSid, field.TypeString, value)
+		_node.Sid = value
 	}
 	return _node, _spec
 }
@@ -708,6 +726,24 @@ func (u *OAuthCodeUpsert) UpdateNonce() *OAuthCodeUpsert {
 // ClearNonce clears the value of the "nonce" field.
 func (u *OAuthCodeUpsert) ClearNonce() *OAuthCodeUpsert {
 	u.SetNull(oauthcode.FieldNonce)
+	return u
+}
+
+// SetSid sets the "sid" field.
+func (u *OAuthCodeUpsert) SetSid(v string) *OAuthCodeUpsert {
+	u.Set(oauthcode.FieldSid, v)
+	return u
+}
+
+// UpdateSid sets the "sid" field to the value that was provided on create.
+func (u *OAuthCodeUpsert) UpdateSid() *OAuthCodeUpsert {
+	u.SetExcluded(oauthcode.FieldSid)
+	return u
+}
+
+// ClearSid clears the value of the "sid" field.
+func (u *OAuthCodeUpsert) ClearSid() *OAuthCodeUpsert {
+	u.SetNull(oauthcode.FieldSid)
 	return u
 }
 
@@ -1033,6 +1069,27 @@ func (u *OAuthCodeUpsertOne) UpdateNonce() *OAuthCodeUpsertOne {
 func (u *OAuthCodeUpsertOne) ClearNonce() *OAuthCodeUpsertOne {
 	return u.Update(func(s *OAuthCodeUpsert) {
 		s.ClearNonce()
+	})
+}
+
+// SetSid sets the "sid" field.
+func (u *OAuthCodeUpsertOne) SetSid(v string) *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetSid(v)
+	})
+}
+
+// UpdateSid sets the "sid" field to the value that was provided on create.
+func (u *OAuthCodeUpsertOne) UpdateSid() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateSid()
+	})
+}
+
+// ClearSid clears the value of the "sid" field.
+func (u *OAuthCodeUpsertOne) ClearSid() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearSid()
 	})
 }
 
@@ -1524,6 +1581,27 @@ func (u *OAuthCodeUpsertBulk) UpdateNonce() *OAuthCodeUpsertBulk {
 func (u *OAuthCodeUpsertBulk) ClearNonce() *OAuthCodeUpsertBulk {
 	return u.Update(func(s *OAuthCodeUpsert) {
 		s.ClearNonce()
+	})
+}
+
+// SetSid sets the "sid" field.
+func (u *OAuthCodeUpsertBulk) SetSid(v string) *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.SetSid(v)
+	})
+}
+
+// UpdateSid sets the "sid" field to the value that was provided on create.
+func (u *OAuthCodeUpsertBulk) UpdateSid() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.UpdateSid()
+	})
+}
+
+// ClearSid clears the value of the "sid" field.
+func (u *OAuthCodeUpsertBulk) ClearSid() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearSid()
 	})
 }
 

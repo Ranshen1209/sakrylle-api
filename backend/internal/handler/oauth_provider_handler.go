@@ -1025,7 +1025,7 @@ func (h *OAuthProviderHandler) UserInfo(c *gin.Context) {
 		}
 		if service.HasScope(scopes, service.ScopeEmail) {
 			resp["email"] = user.Email
-			resp["email_verified"] = false
+			resp["email_verified"] = user.EmailVerified
 		}
 	}
 
@@ -1628,18 +1628,6 @@ func (h *OAuthProviderHandler) dispatchBackchannelLogout(c *gin.Context, clientI
 		return
 	}
 
-	// Look up the client to check if backchannel_logout_uri is set.
-	client, err := h.provider.LookupClient(c.Request.Context(), clientID)
-	if err != nil || client == nil {
-		slog.Warn("oidc backchannel logout: failed to look up client",
-			"client_id", clientID, "error", err)
-		return
-	}
-	if client.BackchannelLogoutURI == nil || *client.BackchannelLogoutURI == "" {
-		return // No back-channel logout configured for this client.
-	}
-
-	// Extract sub from the id_token_hint to identify the user.
 	if sub == "" {
 		slog.Warn("oidc backchannel logout: cannot determine sub for logout_token")
 		return
@@ -1651,58 +1639,72 @@ func (h *OAuthProviderHandler) dispatchBackchannelLogout(c *gin.Context, clientI
 		return
 	}
 
-	// Build and sign the logout_token.
-	now := time.Now()
-	claims := service.BuildLogoutToken(issuer, sub, clientID, "", now, 0)
-	alg := service.SigningAlgRS256
-	if client.SigningAlgorithm == "ES256" {
-		alg = service.SigningAlgES256
-	}
-	logoutToken, signErr := h.oidcKeys.Sign(claims, alg)
-	if signErr != nil {
-		slog.Error("oidc backchannel logout: failed to sign logout_token",
-			"client_id", clientID, "error", signErr)
+	// Broadcast to ALL clients with backchannel_logout_uri (OIDC Back-Channel
+	// Logout §15: the OP MUST notify all RPs where the user has an active session).
+	clients, err := h.provider.ListClientsWithBackchannelLogout(c.Request.Context())
+	if err != nil {
+		slog.Error("oidc backchannel logout: failed to list clients", "error", err)
 		return
 	}
 
-	// POST the logout_token asynchronously with a 5-second timeout.
-	backchannelURI := *client.BackchannelLogoutURI
-	go func(uri, token string) {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Error("oidc backchannel logout: panic recovered",
-					"uri", uri, "panic", r)
+	now := time.Now()
+	for _, client := range clients {
+		if client.BackchannelLogoutURI == nil || *client.BackchannelLogoutURI == "" {
+			continue
+		}
+
+		// Build and sign a logout_token per client (audience-specific).
+		claims := service.BuildLogoutToken(issuer, sub, client.ClientID, "", now, 0)
+		alg := service.SigningAlgRS256
+		if client.SigningAlgorithm == "ES256" {
+			alg = service.SigningAlgES256
+		}
+		logoutToken, signErr := h.oidcKeys.Sign(claims, alg)
+		if signErr != nil {
+			slog.Error("oidc backchannel logout: failed to sign logout_token",
+				"client_id", client.ClientID, "error", signErr)
+			continue
+		}
+
+		// POST asynchronously per client.
+		uri := *client.BackchannelLogoutURI
+		go func(uri, token, cid string) {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("oidc backchannel logout: panic recovered",
+						"uri", uri, "panic", r)
+				}
+			}()
+			reqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			body := url.Values{"logout_token": {token}}.Encode()
+			req, reqErr := http.NewRequestWithContext(reqCtx, http.MethodPost, uri,
+				strings.NewReader(body))
+			if reqErr != nil {
+				slog.Warn("oidc backchannel logout: failed to build request",
+					"uri", uri, "error", reqErr)
+				return
 			}
-		}()
-		reqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		body := url.Values{"logout_token": {token}}.Encode()
-		req, reqErr := http.NewRequestWithContext(reqCtx, http.MethodPost, uri,
-			strings.NewReader(body))
-		if reqErr != nil {
-			slog.Warn("oidc backchannel logout: failed to build request",
-				"uri", uri, "error", reqErr)
-			return
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		client := &http.Client{}
-		resp, doErr := client.Do(req)
-		if doErr != nil {
-			slog.Warn("oidc backchannel logout: POST failed",
-				"uri", uri, "error", doErr)
-			return
-		}
-		resp.Body.Close()
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			slog.Info("oidc backchannel logout: logout_token delivered",
-				"uri", uri, "status", resp.StatusCode)
-		} else {
-			slog.Warn("oidc backchannel logout: unexpected response",
-				"uri", uri, "status", resp.StatusCode)
-		}
-	}(backchannelURI, logoutToken)
+			httpClient := &http.Client{}
+			resp, doErr := httpClient.Do(req)
+			if doErr != nil {
+				slog.Warn("oidc backchannel logout: POST failed",
+					"uri", uri, "error", doErr)
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				slog.Info("oidc backchannel logout: logout_token delivered",
+					"uri", uri, "client_id", cid, "status", resp.StatusCode)
+			} else {
+				slog.Warn("oidc backchannel logout: unexpected response",
+					"uri", uri, "client_id", cid, "status", resp.StatusCode)
+			}
+		}(uri, logoutToken, client.ClientID)
+	}
 }
 
 func (h *OAuthProviderHandler) discoveryIssuer(c *gin.Context) string {

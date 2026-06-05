@@ -57,6 +57,8 @@ const (
 	FieldNonce = "nonce"
 	// FieldClaims holds the string denoting the claims field in the database.
 	FieldClaims = "claims"
+	// FieldSid holds the string denoting the sid field in the database.
+	FieldSid = "sid"
 	// Table holds the table name of the oauthauthorizetransaction in the database.
 	Table = "oauth_authorize_transactions"
 )
@@ -86,6 +88,7 @@ var Columns = []string{
 	FieldCreatedUserAgent,
 	FieldNonce,
 	FieldClaims,
+	FieldSid,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -236,4 +239,9 @@ func ByCreatedUserAgent(opts ...sql.OrderTermOption) OrderOption {
 // ByNonce orders the results by the nonce field.
 func ByNonce(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNonce, opts...).ToFunc()
+}
+
+// BySid orders the results by the sid field.
+func BySid(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSid, opts...).ToFunc()
 }

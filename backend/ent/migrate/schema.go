@@ -896,6 +896,7 @@ var (
 		{Name: "created_user_agent", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "nonce", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "claims", Type: field.TypeJSON, Nullable: true},
+		{Name: "sid", Type: field.TypeString, Nullable: true},
 	}
 	// OauthAuthorizeTransactionsTable holds the schema information for the "oauth_authorize_transactions" table.
 	OauthAuthorizeTransactionsTable = &schema.Table{
@@ -989,6 +990,7 @@ var (
 		{Name: "device_id", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "device_name", Type: field.TypeString, Nullable: true, Size: 200},
 		{Name: "nonce", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "sid", Type: field.TypeString, Nullable: true},
 	}
 	// OauthCodesTable holds the schema information for the "oauth_codes" table.
 	OauthCodesTable = &schema.Table{

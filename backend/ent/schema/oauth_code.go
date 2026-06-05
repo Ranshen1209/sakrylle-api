@@ -95,6 +95,11 @@ func (OAuthCode) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Optional().
 			Comment("OIDC nonce from the authorize request; echoed in id_token nonce claim"),
+
+		// ── OIDC session ID (migration 158) ────────────────────────────
+		field.String("sid").
+			Optional().
+			Comment("OIDC session identifier; copied from authorize transaction at code mint"),
 	}
 }
 

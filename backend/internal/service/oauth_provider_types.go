@@ -324,6 +324,10 @@ type OAuthClientRepository interface {
 	// have a non-empty frontchannel_logout_uri. Used by the front-channel
 	// logout endpoint to render hidden iframes for each registered RP.
 	ListClientsWithFrontchannelLogout(ctx context.Context) ([]*OAuthClient, error)
+	// ListClientsWithBackchannelLogout returns all non-disabled clients that
+	// have a non-empty backchannel_logout_uri. Used by back-channel logout
+	// to broadcast logout_token to all registered RPs.
+	ListClientsWithBackchannelLogout(ctx context.Context) ([]*OAuthClient, error)
 }
 
 type OAuthCodeRepository interface {
