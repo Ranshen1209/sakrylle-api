@@ -742,9 +742,10 @@ func ProvideOAuthProviderService(
 					return OIDCUserClaims{UserID: userID}, err
 				}
 				return OIDCUserClaims{
-					UserID:   userID,
-					Email:    u.Email,
-					Username: u.Username,
+					UserID:        userID,
+					Email:         u.Email,
+					Username:      u.Username,
+					EmailVerified: u.EmailVerified,
 				}, nil
 			},
 		)

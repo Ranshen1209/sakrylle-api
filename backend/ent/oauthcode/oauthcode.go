@@ -47,6 +47,8 @@ const (
 	FieldDeviceName = "device_name"
 	// FieldNonce holds the string denoting the nonce field in the database.
 	FieldNonce = "nonce"
+	// FieldSid holds the string denoting the sid field in the database.
+	FieldSid = "sid"
 	// Table holds the table name of the oauthcode in the database.
 	Table = "oauth_codes"
 )
@@ -71,6 +73,7 @@ var Columns = []string{
 	FieldDeviceID,
 	FieldDeviceName,
 	FieldNonce,
+	FieldSid,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -193,4 +196,9 @@ func ByDeviceName(opts ...sql.OrderTermOption) OrderOption {
 // ByNonce orders the results by the nonce field.
 func ByNonce(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNonce, opts...).ToFunc()
+}
+
+// BySid orders the results by the sid field.
+func BySid(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSid, opts...).ToFunc()
 }

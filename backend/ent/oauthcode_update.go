@@ -291,6 +291,26 @@ func (_u *OAuthCodeUpdate) ClearNonce() *OAuthCodeUpdate {
 	return _u
 }
 
+// SetSid sets the "sid" field.
+func (_u *OAuthCodeUpdate) SetSid(v string) *OAuthCodeUpdate {
+	_u.mutation.SetSid(v)
+	return _u
+}
+
+// SetNillableSid sets the "sid" field if the given value is not nil.
+func (_u *OAuthCodeUpdate) SetNillableSid(v *string) *OAuthCodeUpdate {
+	if v != nil {
+		_u.SetSid(*v)
+	}
+	return _u
+}
+
+// ClearSid clears the value of the "sid" field.
+func (_u *OAuthCodeUpdate) ClearSid() *OAuthCodeUpdate {
+	_u.mutation.ClearSid()
+	return _u
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_u *OAuthCodeUpdate) Mutation() *OAuthCodeMutation {
 	return _u.mutation
@@ -470,6 +490,12 @@ func (_u *OAuthCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.NonceCleared() {
 		_spec.ClearField(oauthcode.FieldNonce, field.TypeString)
+	}
+	if value, ok := _u.mutation.Sid(); ok {
+		_spec.SetField(oauthcode.FieldSid, field.TypeString, value)
+	}
+	if _u.mutation.SidCleared() {
+		_spec.ClearField(oauthcode.FieldSid, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -753,6 +779,26 @@ func (_u *OAuthCodeUpdateOne) ClearNonce() *OAuthCodeUpdateOne {
 	return _u
 }
 
+// SetSid sets the "sid" field.
+func (_u *OAuthCodeUpdateOne) SetSid(v string) *OAuthCodeUpdateOne {
+	_u.mutation.SetSid(v)
+	return _u
+}
+
+// SetNillableSid sets the "sid" field if the given value is not nil.
+func (_u *OAuthCodeUpdateOne) SetNillableSid(v *string) *OAuthCodeUpdateOne {
+	if v != nil {
+		_u.SetSid(*v)
+	}
+	return _u
+}
+
+// ClearSid clears the value of the "sid" field.
+func (_u *OAuthCodeUpdateOne) ClearSid() *OAuthCodeUpdateOne {
+	_u.mutation.ClearSid()
+	return _u
+}
+
 // Mutation returns the OAuthCodeMutation object of the builder.
 func (_u *OAuthCodeUpdateOne) Mutation() *OAuthCodeMutation {
 	return _u.mutation
@@ -962,6 +1008,12 @@ func (_u *OAuthCodeUpdateOne) sqlSave(ctx context.Context) (_node *OAuthCode, er
 	}
 	if _u.mutation.NonceCleared() {
 		_spec.ClearField(oauthcode.FieldNonce, field.TypeString)
+	}
+	if value, ok := _u.mutation.Sid(); ok {
+		_spec.SetField(oauthcode.FieldSid, field.TypeString, value)
+	}
+	if _u.mutation.SidCleared() {
+		_spec.ClearField(oauthcode.FieldSid, field.TypeString)
 	}
 	_node = &OAuthCode{config: _u.config}
 	_spec.Assign = _node.assignValues

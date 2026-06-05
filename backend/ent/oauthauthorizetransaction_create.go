@@ -242,6 +242,20 @@ func (_c *OAuthAuthorizeTransactionCreate) SetClaims(v map[string]interface{}) *
 	return _c
 }
 
+// SetSid sets the "sid" field.
+func (_c *OAuthAuthorizeTransactionCreate) SetSid(v string) *OAuthAuthorizeTransactionCreate {
+	_c.mutation.SetSid(v)
+	return _c
+}
+
+// SetNillableSid sets the "sid" field if the given value is not nil.
+func (_c *OAuthAuthorizeTransactionCreate) SetNillableSid(v *string) *OAuthAuthorizeTransactionCreate {
+	if v != nil {
+		_c.SetSid(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_c *OAuthAuthorizeTransactionCreate) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _c.mutation
@@ -511,6 +525,10 @@ func (_c *OAuthAuthorizeTransactionCreate) createSpec() (*OAuthAuthorizeTransact
 	if value, ok := _c.mutation.Claims(); ok {
 		_spec.SetField(oauthauthorizetransaction.FieldClaims, field.TypeJSON, value)
 		_node.Claims = value
+	}
+	if value, ok := _c.mutation.Sid(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldSid, field.TypeString, value)
+		_node.Sid = value
 	}
 	return _node, _spec
 }
@@ -873,6 +891,24 @@ func (u *OAuthAuthorizeTransactionUpsert) UpdateClaims() *OAuthAuthorizeTransact
 // ClearClaims clears the value of the "claims" field.
 func (u *OAuthAuthorizeTransactionUpsert) ClearClaims() *OAuthAuthorizeTransactionUpsert {
 	u.SetNull(oauthauthorizetransaction.FieldClaims)
+	return u
+}
+
+// SetSid sets the "sid" field.
+func (u *OAuthAuthorizeTransactionUpsert) SetSid(v string) *OAuthAuthorizeTransactionUpsert {
+	u.Set(oauthauthorizetransaction.FieldSid, v)
+	return u
+}
+
+// UpdateSid sets the "sid" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsert) UpdateSid() *OAuthAuthorizeTransactionUpsert {
+	u.SetExcluded(oauthauthorizetransaction.FieldSid)
+	return u
+}
+
+// ClearSid clears the value of the "sid" field.
+func (u *OAuthAuthorizeTransactionUpsert) ClearSid() *OAuthAuthorizeTransactionUpsert {
+	u.SetNull(oauthauthorizetransaction.FieldSid)
 	return u
 }
 
@@ -1282,6 +1318,27 @@ func (u *OAuthAuthorizeTransactionUpsertOne) UpdateClaims() *OAuthAuthorizeTrans
 func (u *OAuthAuthorizeTransactionUpsertOne) ClearClaims() *OAuthAuthorizeTransactionUpsertOne {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.ClearClaims()
+	})
+}
+
+// SetSid sets the "sid" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) SetSid(v string) *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.SetSid(v)
+	})
+}
+
+// UpdateSid sets the "sid" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsertOne) UpdateSid() *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.UpdateSid()
+	})
+}
+
+// ClearSid clears the value of the "sid" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) ClearSid() *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.ClearSid()
 	})
 }
 
@@ -1857,6 +1914,27 @@ func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateClaims() *OAuthAuthorizeTran
 func (u *OAuthAuthorizeTransactionUpsertBulk) ClearClaims() *OAuthAuthorizeTransactionUpsertBulk {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.ClearClaims()
+	})
+}
+
+// SetSid sets the "sid" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) SetSid(v string) *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.SetSid(v)
+	})
+}
+
+// UpdateSid sets the "sid" field to the value that was provided on create.
+func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateSid() *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.UpdateSid()
+	})
+}
+
+// ClearSid clears the value of the "sid" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) ClearSid() *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.ClearSid()
 	})
 }
 
