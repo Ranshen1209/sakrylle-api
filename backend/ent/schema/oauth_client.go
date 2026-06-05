@@ -164,6 +164,15 @@ func (OAuthClient) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("URI for fetching the sector identifier JSON document; empty means use redirect_uris hosts"),
+
+		// ── OIDC front-channel logout (migration 161) ─────────────────────
+		// frontchannel_logout_uri is rendered as a hidden iframe during
+		// front-channel logout so the RP can clear its session state.
+		// NULL = no front-channel notification for this client.
+		field.Text("frontchannel_logout_uri").
+			Optional().
+			Nillable().
+			Comment("URI rendered as a hidden iframe on front-channel logout; NULL means no front-channel notification"),
 	}
 }
 

@@ -80,7 +80,9 @@ type OAuthClient struct {
 	SubjectType string `json:"subject_type,omitempty"`
 	// URI for fetching the sector identifier JSON document; empty means use redirect_uris hosts
 	SectorIdentifierURI *string `json:"sector_identifier_uri,omitempty"`
-	selectValues        sql.SelectValues
+	// URI rendered as a hidden iframe on front-channel logout; NULL means no front-channel notification
+	FrontchannelLogoutURI *string `json:"frontchannel_logout_uri,omitempty"`
+	selectValues          sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -94,7 +96,7 @@ func (*OAuthClient) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case oauthclient.FieldID, oauthclient.FieldDefaultGroupID, oauthclient.FieldAccessTokenTTLSeconds, oauthclient.FieldRefreshTokenTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case oauthclient.FieldClientID, oauthclient.FieldName, oauthclient.FieldClientSecretHash, oauthclient.FieldClientType, oauthclient.FieldAppType, oauthclient.FieldIconURL, oauthclient.FieldHomepageURL, oauthclient.FieldPrivacyURL, oauthclient.FieldTermsURL, oauthclient.FieldSigningAlgorithm, oauthclient.FieldBackchannelLogoutURI, oauthclient.FieldSubjectType, oauthclient.FieldSectorIdentifierURI:
+		case oauthclient.FieldClientID, oauthclient.FieldName, oauthclient.FieldClientSecretHash, oauthclient.FieldClientType, oauthclient.FieldAppType, oauthclient.FieldIconURL, oauthclient.FieldHomepageURL, oauthclient.FieldPrivacyURL, oauthclient.FieldTermsURL, oauthclient.FieldSigningAlgorithm, oauthclient.FieldBackchannelLogoutURI, oauthclient.FieldSubjectType, oauthclient.FieldSectorIdentifierURI, oauthclient.FieldFrontchannelLogoutURI:
 			values[i] = new(sql.NullString)
 		case oauthclient.FieldCreatedAt, oauthclient.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -327,6 +329,13 @@ func (_m *OAuthClient) assignValues(columns []string, values []any) error {
 				_m.SectorIdentifierURI = new(string)
 				*_m.SectorIdentifierURI = value.String
 			}
+		case oauthclient.FieldFrontchannelLogoutURI:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field frontchannel_logout_uri", values[i])
+			} else if value.Valid {
+				_m.FrontchannelLogoutURI = new(string)
+				*_m.FrontchannelLogoutURI = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -469,6 +478,11 @@ func (_m *OAuthClient) String() string {
 	builder.WriteString(", ")
 	if v := _m.SectorIdentifierURI; v != nil {
 		builder.WriteString("sector_identifier_uri=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.FrontchannelLogoutURI; v != nil {
+		builder.WriteString("frontchannel_logout_uri=")
 		builder.WriteString(*v)
 	}
 	builder.WriteByte(')')

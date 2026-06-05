@@ -384,6 +384,20 @@ func (_c *OAuthClientCreate) SetNillableSectorIdentifierURI(v *string) *OAuthCli
 	return _c
 }
 
+// SetFrontchannelLogoutURI sets the "frontchannel_logout_uri" field.
+func (_c *OAuthClientCreate) SetFrontchannelLogoutURI(v string) *OAuthClientCreate {
+	_c.mutation.SetFrontchannelLogoutURI(v)
+	return _c
+}
+
+// SetNillableFrontchannelLogoutURI sets the "frontchannel_logout_uri" field if the given value is not nil.
+func (_c *OAuthClientCreate) SetNillableFrontchannelLogoutURI(v *string) *OAuthClientCreate {
+	if v != nil {
+		_c.SetFrontchannelLogoutURI(*v)
+	}
+	return _c
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_c *OAuthClientCreate) Mutation() *OAuthClientMutation {
 	return _c.mutation
@@ -741,6 +755,10 @@ func (_c *OAuthClientCreate) createSpec() (*OAuthClient, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SectorIdentifierURI(); ok {
 		_spec.SetField(oauthclient.FieldSectorIdentifierURI, field.TypeString, value)
 		_node.SectorIdentifierURI = &value
+	}
+	if value, ok := _c.mutation.FrontchannelLogoutURI(); ok {
+		_spec.SetField(oauthclient.FieldFrontchannelLogoutURI, field.TypeString, value)
+		_node.FrontchannelLogoutURI = &value
 	}
 	return _node, _spec
 }
@@ -1223,6 +1241,24 @@ func (u *OAuthClientUpsert) UpdateSectorIdentifierURI() *OAuthClientUpsert {
 // ClearSectorIdentifierURI clears the value of the "sector_identifier_uri" field.
 func (u *OAuthClientUpsert) ClearSectorIdentifierURI() *OAuthClientUpsert {
 	u.SetNull(oauthclient.FieldSectorIdentifierURI)
+	return u
+}
+
+// SetFrontchannelLogoutURI sets the "frontchannel_logout_uri" field.
+func (u *OAuthClientUpsert) SetFrontchannelLogoutURI(v string) *OAuthClientUpsert {
+	u.Set(oauthclient.FieldFrontchannelLogoutURI, v)
+	return u
+}
+
+// UpdateFrontchannelLogoutURI sets the "frontchannel_logout_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsert) UpdateFrontchannelLogoutURI() *OAuthClientUpsert {
+	u.SetExcluded(oauthclient.FieldFrontchannelLogoutURI)
+	return u
+}
+
+// ClearFrontchannelLogoutURI clears the value of the "frontchannel_logout_uri" field.
+func (u *OAuthClientUpsert) ClearFrontchannelLogoutURI() *OAuthClientUpsert {
+	u.SetNull(oauthclient.FieldFrontchannelLogoutURI)
 	return u
 }
 
@@ -1772,6 +1808,27 @@ func (u *OAuthClientUpsertOne) UpdateSectorIdentifierURI() *OAuthClientUpsertOne
 func (u *OAuthClientUpsertOne) ClearSectorIdentifierURI() *OAuthClientUpsertOne {
 	return u.Update(func(s *OAuthClientUpsert) {
 		s.ClearSectorIdentifierURI()
+	})
+}
+
+// SetFrontchannelLogoutURI sets the "frontchannel_logout_uri" field.
+func (u *OAuthClientUpsertOne) SetFrontchannelLogoutURI(v string) *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetFrontchannelLogoutURI(v)
+	})
+}
+
+// UpdateFrontchannelLogoutURI sets the "frontchannel_logout_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsertOne) UpdateFrontchannelLogoutURI() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateFrontchannelLogoutURI()
+	})
+}
+
+// ClearFrontchannelLogoutURI clears the value of the "frontchannel_logout_uri" field.
+func (u *OAuthClientUpsertOne) ClearFrontchannelLogoutURI() *OAuthClientUpsertOne {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearFrontchannelLogoutURI()
 	})
 }
 
@@ -2487,6 +2544,27 @@ func (u *OAuthClientUpsertBulk) UpdateSectorIdentifierURI() *OAuthClientUpsertBu
 func (u *OAuthClientUpsertBulk) ClearSectorIdentifierURI() *OAuthClientUpsertBulk {
 	return u.Update(func(s *OAuthClientUpsert) {
 		s.ClearSectorIdentifierURI()
+	})
+}
+
+// SetFrontchannelLogoutURI sets the "frontchannel_logout_uri" field.
+func (u *OAuthClientUpsertBulk) SetFrontchannelLogoutURI(v string) *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.SetFrontchannelLogoutURI(v)
+	})
+}
+
+// UpdateFrontchannelLogoutURI sets the "frontchannel_logout_uri" field to the value that was provided on create.
+func (u *OAuthClientUpsertBulk) UpdateFrontchannelLogoutURI() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.UpdateFrontchannelLogoutURI()
+	})
+}
+
+// ClearFrontchannelLogoutURI clears the value of the "frontchannel_logout_uri" field.
+func (u *OAuthClientUpsertBulk) ClearFrontchannelLogoutURI() *OAuthClientUpsertBulk {
+	return u.Update(func(s *OAuthClientUpsert) {
+		s.ClearFrontchannelLogoutURI()
 	})
 }
 

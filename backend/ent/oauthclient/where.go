@@ -174,6 +174,11 @@ func SectorIdentifierURI(v string) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldEQ(FieldSectorIdentifierURI, v))
 }
 
+// FrontchannelLogoutURI applies equality check predicate on the "frontchannel_logout_uri" field. It's identical to FrontchannelLogoutURIEQ.
+func FrontchannelLogoutURI(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldFrontchannelLogoutURI, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldEQ(FieldCreatedAt, v))
@@ -1367,6 +1372,81 @@ func SectorIdentifierURIEqualFold(v string) predicate.OAuthClient {
 // SectorIdentifierURIContainsFold applies the ContainsFold predicate on the "sector_identifier_uri" field.
 func SectorIdentifierURIContainsFold(v string) predicate.OAuthClient {
 	return predicate.OAuthClient(sql.FieldContainsFold(FieldSectorIdentifierURI, v))
+}
+
+// FrontchannelLogoutURIEQ applies the EQ predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEQ(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURINEQ applies the NEQ predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURINEQ(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNEQ(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURIIn applies the In predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldIn(FieldFrontchannelLogoutURI, vs...))
+}
+
+// FrontchannelLogoutURINotIn applies the NotIn predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURINotIn(vs ...string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNotIn(FieldFrontchannelLogoutURI, vs...))
+}
+
+// FrontchannelLogoutURIGT applies the GT predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIGT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGT(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURIGTE applies the GTE predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIGTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldGTE(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURILT applies the LT predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURILT(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLT(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURILTE applies the LTE predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURILTE(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldLTE(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURIContains applies the Contains predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIContains(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContains(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURIHasPrefix applies the HasPrefix predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIHasPrefix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasPrefix(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURIHasSuffix applies the HasSuffix predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIHasSuffix(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldHasSuffix(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURIIsNil applies the IsNil predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIIsNil() predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldIsNull(FieldFrontchannelLogoutURI))
+}
+
+// FrontchannelLogoutURINotNil applies the NotNil predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURINotNil() predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldNotNull(FieldFrontchannelLogoutURI))
+}
+
+// FrontchannelLogoutURIEqualFold applies the EqualFold predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIEqualFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldEqualFold(FieldFrontchannelLogoutURI, v))
+}
+
+// FrontchannelLogoutURIContainsFold applies the ContainsFold predicate on the "frontchannel_logout_uri" field.
+func FrontchannelLogoutURIContainsFold(v string) predicate.OAuthClient {
+	return predicate.OAuthClient(sql.FieldContainsFold(FieldFrontchannelLogoutURI, v))
 }
 
 // And groups predicates with the AND operator between them.
