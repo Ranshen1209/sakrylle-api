@@ -27,6 +27,11 @@ type OAuthClient struct {
 	AccessTokenTTLSeconds  int
 	RefreshTokenTTLSeconds int
 	Disabled               bool
+	// ClientConfidential marks clients capable of client_secret_basic /
+	// client_secret_post authentication. Only these clients may call
+	// POST /oauth/introspect (RFC 7662 §2.1). Public clients use PKCE-only
+	// and cannot introspect.
+	ClientConfidential     bool
 
 	// ── v2 ────────────────────────────────────────────────────────────────
 
@@ -79,6 +84,10 @@ type OAuthClient struct {
 	// BackchannelLogoutSessionRequired: when true, include sid claim in
 	// id_tokens for back-channel logout session association.
 	BackchannelLogoutSessionRequired bool
+	// FrontchannelLogoutURI is rendered as a hidden iframe during
+	// front-channel logout so the RP can clear its session state.
+	// nil means no front-channel notification for this client.
+	FrontchannelLogoutURI *string
 }
 
 // OAuthCode is a short-lived authorization code (RFC 6749 §4.1).
@@ -275,6 +284,25 @@ type OAuthAllowedGroup struct {
 	AllowImageGeneration bool    `json:"allow_image_generation"`
 }
 
+// IntrospectionResponse is the RFC 7662 token introspection response.
+//
+// When Active is false, all other fields are omitted (per §2.2: "The
+// value of the active claim is the only claim that is required... If the
+// introspection request is not authorized, the resource server SHOULD
+// respond with an HTTP 401").
+type IntrospectionResponse struct {
+	Active     bool    `json:"active"`
+	Scope      *string `json:"scope,omitempty"`
+	ClientID   *string `json:"client_id,omitempty"`
+	Username   *string `json:"username,omitempty"`
+	TokenType  *string `json:"token_type,omitempty"`
+	Exp        *int64  `json:"exp,omitempty"`
+	Iat        *int64  `json:"iat,omitempty"`
+	Sub        *string `json:"sub,omitempty"`
+	Aud        *string `json:"aud,omitempty"`
+	Iss        *string `json:"iss,omitempty"`
+}
+
 // ── Repository interfaces ───────────────────────────────────────────────────
 
 type OAuthClientRepository interface {
@@ -284,6 +312,10 @@ type OAuthClientRepository interface {
 	// dynamic browser-origin allowlist for /oauth/token (public PKCE clients
 	// must call the token endpoint cross-origin from the browser).
 	ListEnabledRedirectURIs(ctx context.Context) ([]string, error)
+	// ListClientsWithFrontchannelLogout returns all non-disabled clients that
+	// have a non-empty frontchannel_logout_uri. Used by the front-channel
+	// logout endpoint to render hidden iframes for each registered RP.
+	ListClientsWithFrontchannelLogout(ctx context.Context) ([]*OAuthClient, error)
 }
 
 type OAuthCodeRepository interface {
@@ -481,6 +513,7 @@ var (
 	ErrOAuthClientNotFound       = infraerrors.NotFound("INVALID_CLIENT", "oauth client not found")
 	ErrOAuthClientDisabled       = infraerrors.Forbidden("INVALID_CLIENT", "oauth client disabled")
 	ErrOAuthClientMisconfigured  = infraerrors.Forbidden("INVALID_CLIENT", "oauth client has neither pkce_required nor client_secret_hash configured")
+	ErrOAuthClientNotConfidential = infraerrors.Forbidden("INVALID_CLIENT", "only confidential clients may call this endpoint")
 	ErrOAuthClientAuthFailed     = infraerrors.Forbidden("INVALID_CLIENT", "client authentication failed")
 	ErrOAuthInvalidRedirectURI   = infraerrors.BadRequest("INVALID_REQUEST", "redirect_uri does not match any registered uri")
 	ErrOAuthInvalidScope         = infraerrors.BadRequest("INVALID_SCOPE", "requested scope is not allowed for this client")
