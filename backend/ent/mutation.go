@@ -23463,6 +23463,7 @@ type OAuthClientMutation struct {
 	backchannel_logout_session_required  *bool
 	subject_type                         *string
 	sector_identifier_uri                *string
+	frontchannel_logout_uri              *string
 	clearedFields                        map[string]struct{}
 	done                                 bool
 	oldValue                             func(context.Context) (*OAuthClient, error)
@@ -24967,6 +24968,55 @@ func (m *OAuthClientMutation) ResetSectorIdentifierURI() {
 	delete(m.clearedFields, oauthclient.FieldSectorIdentifierURI)
 }
 
+// SetFrontchannelLogoutURI sets the "frontchannel_logout_uri" field.
+func (m *OAuthClientMutation) SetFrontchannelLogoutURI(s string) {
+	m.frontchannel_logout_uri = &s
+}
+
+// FrontchannelLogoutURI returns the value of the "frontchannel_logout_uri" field in the mutation.
+func (m *OAuthClientMutation) FrontchannelLogoutURI() (r string, exists bool) {
+	v := m.frontchannel_logout_uri
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFrontchannelLogoutURI returns the old "frontchannel_logout_uri" field's value of the OAuthClient entity.
+// If the OAuthClient object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuthClientMutation) OldFrontchannelLogoutURI(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFrontchannelLogoutURI is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFrontchannelLogoutURI requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFrontchannelLogoutURI: %w", err)
+	}
+	return oldValue.FrontchannelLogoutURI, nil
+}
+
+// ClearFrontchannelLogoutURI clears the value of the "frontchannel_logout_uri" field.
+func (m *OAuthClientMutation) ClearFrontchannelLogoutURI() {
+	m.frontchannel_logout_uri = nil
+	m.clearedFields[oauthclient.FieldFrontchannelLogoutURI] = struct{}{}
+}
+
+// FrontchannelLogoutURICleared returns if the "frontchannel_logout_uri" field was cleared in this mutation.
+func (m *OAuthClientMutation) FrontchannelLogoutURICleared() bool {
+	_, ok := m.clearedFields[oauthclient.FieldFrontchannelLogoutURI]
+	return ok
+}
+
+// ResetFrontchannelLogoutURI resets all changes to the "frontchannel_logout_uri" field.
+func (m *OAuthClientMutation) ResetFrontchannelLogoutURI() {
+	m.frontchannel_logout_uri = nil
+	delete(m.clearedFields, oauthclient.FieldFrontchannelLogoutURI)
+}
+
 // Where appends a list predicates to the OAuthClientMutation builder.
 func (m *OAuthClientMutation) Where(ps ...predicate.OAuthClient) {
 	m.predicates = append(m.predicates, ps...)
@@ -25001,7 +25051,7 @@ func (m *OAuthClientMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuthClientMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, oauthclient.FieldCreatedAt)
 	}
@@ -25095,6 +25145,9 @@ func (m *OAuthClientMutation) Fields() []string {
 	if m.sector_identifier_uri != nil {
 		fields = append(fields, oauthclient.FieldSectorIdentifierURI)
 	}
+	if m.frontchannel_logout_uri != nil {
+		fields = append(fields, oauthclient.FieldFrontchannelLogoutURI)
+	}
 	return fields
 }
 
@@ -25165,6 +25218,8 @@ func (m *OAuthClientMutation) Field(name string) (ent.Value, bool) {
 		return m.SubjectType()
 	case oauthclient.FieldSectorIdentifierURI:
 		return m.SectorIdentifierURI()
+	case oauthclient.FieldFrontchannelLogoutURI:
+		return m.FrontchannelLogoutURI()
 	}
 	return nil, false
 }
@@ -25236,6 +25291,8 @@ func (m *OAuthClientMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldSubjectType(ctx)
 	case oauthclient.FieldSectorIdentifierURI:
 		return m.OldSectorIdentifierURI(ctx)
+	case oauthclient.FieldFrontchannelLogoutURI:
+		return m.OldFrontchannelLogoutURI(ctx)
 	}
 	return nil, fmt.Errorf("unknown OAuthClient field %s", name)
 }
@@ -25462,6 +25519,13 @@ func (m *OAuthClientMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSectorIdentifierURI(v)
 		return nil
+	case oauthclient.FieldFrontchannelLogoutURI:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFrontchannelLogoutURI(v)
+		return nil
 	}
 	return fmt.Errorf("unknown OAuthClient field %s", name)
 }
@@ -25558,6 +25622,9 @@ func (m *OAuthClientMutation) ClearedFields() []string {
 	if m.FieldCleared(oauthclient.FieldSectorIdentifierURI) {
 		fields = append(fields, oauthclient.FieldSectorIdentifierURI)
 	}
+	if m.FieldCleared(oauthclient.FieldFrontchannelLogoutURI) {
+		fields = append(fields, oauthclient.FieldFrontchannelLogoutURI)
+	}
 	return fields
 }
 
@@ -25598,6 +25665,9 @@ func (m *OAuthClientMutation) ClearField(name string) error {
 		return nil
 	case oauthclient.FieldSectorIdentifierURI:
 		m.ClearSectorIdentifierURI()
+		return nil
+	case oauthclient.FieldFrontchannelLogoutURI:
+		m.ClearFrontchannelLogoutURI()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthClient nullable field %s", name)
@@ -25699,6 +25769,9 @@ func (m *OAuthClientMutation) ResetField(name string) error {
 		return nil
 	case oauthclient.FieldSectorIdentifierURI:
 		m.ResetSectorIdentifierURI()
+		return nil
+	case oauthclient.FieldFrontchannelLogoutURI:
+		m.ResetFrontchannelLogoutURI()
 		return nil
 	}
 	return fmt.Errorf("unknown OAuthClient field %s", name)
@@ -49227,6 +49300,7 @@ type UserMutation struct {
 	addtotal_recharged            *float64
 	rpm_limit                     *int
 	addrpm_limit                  *int
+	email_verified                *bool
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -50377,6 +50451,42 @@ func (m *UserMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetEmailVerified sets the "email_verified" field.
+func (m *UserMutation) SetEmailVerified(b bool) {
+	m.email_verified = &b
+}
+
+// EmailVerified returns the value of the "email_verified" field in the mutation.
+func (m *UserMutation) EmailVerified() (r bool, exists bool) {
+	v := m.email_verified
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEmailVerified returns the old "email_verified" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldEmailVerified(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEmailVerified is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEmailVerified requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEmailVerified: %w", err)
+	}
+	return oldValue.EmailVerified, nil
+}
+
+// ResetEmailVerified resets all changes to the "email_verified" field.
+func (m *UserMutation) ResetEmailVerified() {
+	m.email_verified = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -51113,7 +51223,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 24)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -51183,6 +51293,9 @@ func (m *UserMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
+	if m.email_verified != nil {
+		fields = append(fields, user.FieldEmailVerified)
+	}
 	return fields
 }
 
@@ -51237,6 +51350,8 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotalRecharged()
 	case user.FieldRpmLimit:
 		return m.RpmLimit()
+	case user.FieldEmailVerified:
+		return m.EmailVerified()
 	}
 	return nil, false
 }
@@ -51292,6 +51407,8 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotalRecharged(ctx)
 	case user.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case user.FieldEmailVerified:
+		return m.OldEmailVerified(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -51461,6 +51578,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRpmLimit(v)
+		return nil
+	case user.FieldEmailVerified:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEmailVerified(v)
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
@@ -51681,6 +51805,9 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case user.FieldEmailVerified:
+		m.ResetEmailVerified()
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)

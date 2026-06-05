@@ -112,6 +112,10 @@ func (User) Fields() []ent.Field {
 		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
 		field.Int("rpm_limit").
 			Default(0),
+
+		// OIDC email_verified claim: per-user flag surfaced in id_token and UserInfo.
+		field.Bool("email_verified").
+			Default(false),
 	}
 }
 
