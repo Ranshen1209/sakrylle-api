@@ -124,6 +124,12 @@ func (_u *OAuthCodeUpdate) SetNillableCodeChallenge(v *string) *OAuthCodeUpdate 
 	return _u
 }
 
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (_u *OAuthCodeUpdate) ClearCodeChallenge() *OAuthCodeUpdate {
+	_u.mutation.ClearCodeChallenge()
+	return _u
+}
+
 // SetCodeChallengeMethod sets the "code_challenge_method" field.
 func (_u *OAuthCodeUpdate) SetCodeChallengeMethod(v string) *OAuthCodeUpdate {
 	_u.mutation.SetCodeChallengeMethod(v)
@@ -438,6 +444,9 @@ func (_u *OAuthCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.CodeChallenge(); ok {
 		_spec.SetField(oauthcode.FieldCodeChallenge, field.TypeString, value)
 	}
+	if _u.mutation.CodeChallengeCleared() {
+		_spec.ClearField(oauthcode.FieldCodeChallenge, field.TypeString)
+	}
 	if value, ok := _u.mutation.CodeChallengeMethod(); ok {
 		_spec.SetField(oauthcode.FieldCodeChallengeMethod, field.TypeString, value)
 	}
@@ -609,6 +618,12 @@ func (_u *OAuthCodeUpdateOne) SetNillableCodeChallenge(v *string) *OAuthCodeUpda
 	if v != nil {
 		_u.SetCodeChallenge(*v)
 	}
+	return _u
+}
+
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (_u *OAuthCodeUpdateOne) ClearCodeChallenge() *OAuthCodeUpdateOne {
+	_u.mutation.ClearCodeChallenge()
 	return _u
 }
 
@@ -955,6 +970,9 @@ func (_u *OAuthCodeUpdateOne) sqlSave(ctx context.Context) (_node *OAuthCode, er
 	}
 	if value, ok := _u.mutation.CodeChallenge(); ok {
 		_spec.SetField(oauthcode.FieldCodeChallenge, field.TypeString, value)
+	}
+	if _u.mutation.CodeChallengeCleared() {
+		_spec.ClearField(oauthcode.FieldCodeChallenge, field.TypeString)
 	}
 	if value, ok := _u.mutation.CodeChallengeMethod(); ok {
 		_spec.SetField(oauthcode.FieldCodeChallengeMethod, field.TypeString, value)
