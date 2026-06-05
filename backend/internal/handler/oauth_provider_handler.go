@@ -282,6 +282,12 @@ func (h *OAuthProviderHandler) BeginAuthorize(c *gin.Context) {
 	}
 	result, err := h.provider.BeginAuthorizeTransaction(c.Request.Context(), params)
 	if err != nil {
+		slog.Warn("oauth: begin authorize transaction failed",
+			"client_id", params.ClientID,
+			"user_id", params.UserID,
+			"redirect_uri", params.RedirectURI,
+			"err", err,
+			"err_type", fmt.Sprintf("%T", err))
 		c.JSON(httpStatusForOAuthError(err), gin.H{
 			"error":             oauthErrorReason(err),
 			"error_description": infraerrors.Message(err),
