@@ -263,7 +263,12 @@ func scopeRunner(method, path string, mw gin.HandlerFunc, apiKey *service.APIKey
 		c.Next()
 	})
 	r.Use(mw)
-	r.Handle(method, path, func(c *gin.Context) { c.Status(http.StatusOK) })
+	// Strip query params for route registration — gin matches on path only.
+	routePath := path
+	if idx := strings.Index(routePath, "?"); idx >= 0 {
+		routePath = routePath[:idx]
+	}
+	r.Handle(method, routePath, func(c *gin.Context) { c.Status(http.StatusOK) })
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, nil)
 	r.ServeHTTP(rec, req)
