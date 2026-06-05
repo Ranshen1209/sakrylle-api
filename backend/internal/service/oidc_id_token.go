@@ -97,6 +97,8 @@ func ComputeCHash(code string) (string, error) {
 //   - profile scope yields name/preferred_username; email scope yields email
 //     and email_verified from the user's per-user flag. OIDC Core §5.1 says an
 //     absent email_verified is treated as unverified, so we always emit it.
+//   - sid, when non-empty, is the OIDC session identifier for back-channel
+//     logout (OIDC Back-Channel Logout 1.0 §2.4). Empty for refresh flows.
 //   - hashClaims is a variadic trailing parameter for optional OIDC hash claims.
 //     Pass at most two strings: [0]=at_hash (OIDC Core §3.1.3.8), [1]=c_hash
 //     (OIDC Core §3.3.2.11). Empty strings are treated as "not provided".
@@ -110,6 +112,7 @@ func BuildIDTokenClaims(
 	now time.Time,
 	ttl time.Duration,
 	pairwiseSub string,
+	sid string,
 	hashClaims ...string,
 ) (jwt.MapClaims, error) {
 	if issuer == "" {
@@ -150,6 +153,9 @@ func BuildIDTokenClaims(
 	if HasScope(grantedScopes, ScopeEmail) && u.Email != "" {
 		claims["email"] = u.Email
 		claims["email_verified"] = u.EmailVerified
+	}
+	if sid != "" {
+		claims["sid"] = sid
 	}
 	// OIDC Core §3.1.3.8: at_hash is REQUIRED when the id_token is issued
 	// alongside an access_token (implicit/hybrid) and OPTIONAL for code flow.
