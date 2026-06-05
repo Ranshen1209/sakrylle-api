@@ -1137,21 +1137,7 @@ func init() {
 	// oauthauthorizetransactionDescCodeChallenge is the schema descriptor for code_challenge field.
 	oauthauthorizetransactionDescCodeChallenge := oauthauthorizetransactionFields[9].Descriptor()
 	// oauthauthorizetransaction.CodeChallengeValidator is a validator for the "code_challenge" field. It is called by the builders before save.
-	oauthauthorizetransaction.CodeChallengeValidator = func() func(string) error {
-		validators := oauthauthorizetransactionDescCodeChallenge.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(code_challenge string) error {
-			for _, fn := range fns {
-				if err := fn(code_challenge); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	oauthauthorizetransaction.CodeChallengeValidator = oauthauthorizetransactionDescCodeChallenge.Validators[0].(func(string) error)
 	// oauthauthorizetransactionDescCodeChallengeMethod is the schema descriptor for code_challenge_method field.
 	oauthauthorizetransactionDescCodeChallengeMethod := oauthauthorizetransactionFields[10].Descriptor()
 	// oauthauthorizetransaction.DefaultCodeChallengeMethod holds the default value on creation for the code_challenge_method field.

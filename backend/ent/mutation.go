@@ -22313,9 +22313,22 @@ func (m *OAuthAuthorizeTransactionMutation) OldCodeChallenge(ctx context.Context
 	return oldValue.CodeChallenge, nil
 }
 
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (m *OAuthAuthorizeTransactionMutation) ClearCodeChallenge() {
+	m.code_challenge = nil
+	m.clearedFields[oauthauthorizetransaction.FieldCodeChallenge] = struct{}{}
+}
+
+// CodeChallengeCleared returns if the "code_challenge" field was cleared in this mutation.
+func (m *OAuthAuthorizeTransactionMutation) CodeChallengeCleared() bool {
+	_, ok := m.clearedFields[oauthauthorizetransaction.FieldCodeChallenge]
+	return ok
+}
+
 // ResetCodeChallenge resets all changes to the "code_challenge" field.
 func (m *OAuthAuthorizeTransactionMutation) ResetCodeChallenge() {
 	m.code_challenge = nil
+	delete(m.clearedFields, oauthauthorizetransaction.FieldCodeChallenge)
 }
 
 // SetCodeChallengeMethod sets the "code_challenge_method" field.
@@ -23292,6 +23305,9 @@ func (m *OAuthAuthorizeTransactionMutation) AddField(name string, value ent.Valu
 // mutation.
 func (m *OAuthAuthorizeTransactionMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(oauthauthorizetransaction.FieldCodeChallenge) {
+		fields = append(fields, oauthauthorizetransaction.FieldCodeChallenge)
+	}
 	if m.FieldCleared(oauthauthorizetransaction.FieldRequestedGroupID) {
 		fields = append(fields, oauthauthorizetransaction.FieldRequestedGroupID)
 	}
@@ -23333,6 +23349,9 @@ func (m *OAuthAuthorizeTransactionMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *OAuthAuthorizeTransactionMutation) ClearField(name string) error {
 	switch name {
+	case oauthauthorizetransaction.FieldCodeChallenge:
+		m.ClearCodeChallenge()
+		return nil
 	case oauthauthorizetransaction.FieldRequestedGroupID:
 		m.ClearRequestedGroupID()
 		return nil

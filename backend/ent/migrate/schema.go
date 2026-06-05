@@ -868,7 +868,7 @@ var (
 		{Name: "scopes", Type: field.TypeJSON},
 		{Name: "allowed_groups_snapshot", Type: field.TypeJSON},
 		{Name: "state", Type: field.TypeString, Size: 2147483647},
-		{Name: "code_challenge", Type: field.TypeString, Size: 128},
+		{Name: "code_challenge", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "code_challenge_method", Type: field.TypeString, Size: 10, Default: "S256"},
 		{Name: "requested_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "device_id", Type: field.TypeString, Nullable: true, Size: 128},
