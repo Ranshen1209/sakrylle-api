@@ -275,7 +275,14 @@ func resolveSigningAlgorithm(raw string) SigningAlgorithm {
 // unresolved or signing fails, it returns an error so the token request fails
 // loudly rather than emitting a malformed identity assertion. When OIDC is not
 // wired at all (feature off), it returns ("", nil) and the OAuth flow proceeds.
-func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, client *OAuthClient, userID int64, scopes []string, nonce string, authTime time.Time) (string, error) {
+//
+// tokenContext is variadic for backward compatibility with existing callers:
+//   - tokenContext[0]: access_token plaintext (for at_hash per OIDC Core §3.1.3.8)
+//   - tokenContext[1]: authorization_code plaintext (for c_hash per OIDC Core §3.3.2.11)
+//
+// Empty or absent entries are treated as "not applicable" and the corresponding
+// hash claim is omitted.
+func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, client *OAuthClient, userID int64, scopes []string, nonce string, authTime time.Time, tokenContext ...string) (string, error) {
 	if s.oidcSign == nil || s.oidcIssuer == nil || !HasScope(scopes, ScopeOpenID) {
 		return "", nil
 	}
@@ -306,7 +313,37 @@ func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, client *OAu
 			u = got
 		}
 	}
-	claims, err := BuildIDTokenClaims(issuer, client.ClientID, u, claimScopes, nonce, authTime, time.Now(), DefaultOIDCIDTokenTTL, pairwiseSub)
+
+	// Compute optional OIDC hash claims from the token context.
+	var hashArgs []string
+	var atHash, cHash string
+	accessToken := ""
+	codePlain := ""
+	if len(tokenContext) > 0 {
+		accessToken = tokenContext[0]
+	}
+	if len(tokenContext) > 1 {
+		codePlain = tokenContext[1]
+	}
+	if accessToken != "" {
+		h, err := ComputeAtHash(accessToken)
+		if err != nil {
+			return "", fmt.Errorf("oidc: compute at_hash: %w", err)
+		}
+		atHash = h
+	}
+	if codePlain != "" {
+		h, err := ComputeCHash(codePlain)
+		if err != nil {
+			return "", fmt.Errorf("oidc: compute c_hash: %w", err)
+		}
+		cHash = h
+	}
+	if atHash != "" || cHash != "" {
+		hashArgs = []string{atHash, cHash}
+	}
+
+	claims, err := BuildIDTokenClaims(issuer, client.ClientID, u, claimScopes, nonce, authTime, time.Now(), DefaultOIDCIDTokenTTL, pairwiseSub, hashArgs...)
 	if err != nil {
 		return "", fmt.Errorf("oidc: build id_token claims: %w", err)
 	}
@@ -424,6 +461,16 @@ func (s *OAuthProviderService) LookupClient(ctx context.Context, clientID string
 		return nil, ErrOAuthClientMisconfigured
 	}
 	return client, nil
+}
+
+// ListClientsWithFrontchannelLogout returns all non-disabled clients that have
+// a non-empty frontchannel_logout_uri. Used by the front-channel logout
+// endpoint to render hidden iframes for each registered RP.
+func (s *OAuthProviderService) ListClientsWithFrontchannelLogout(ctx context.Context) ([]*OAuthClient, error) {
+	if s.clientRepo == nil {
+		return nil, nil
+	}
+	return s.clientRepo.ListClientsWithFrontchannelLogout(ctx)
 }
 
 // authenticateClient verifies client credentials at the /oauth/token endpoint.
@@ -925,7 +972,7 @@ func (s *OAuthProviderService) ExchangeAuthorizationCode(
 			return nil, ErrOAuthPKCEFailed
 		}
 	}
-	return s.mintTokensFromCode(ctx, client, code)
+	return s.mintTokensFromCode(ctx, client, code, codePlain)
 }
 
 // RefreshAccessToken handles /oauth/token grant_type=refresh_token with the
@@ -1115,7 +1162,8 @@ func (s *OAuthProviderService) RefreshAccessToken(
 	// carry a nonce claim (nonce binds the original authentication request,
 	// not this rotation) and has no fresh auth_time (no re-authentication
 	// happened here). So we deliberately pass empty nonce + zero authTime.
-	idTok, idErr := s.maybeSignIDToken(ctx, client, row.UserID, scopes, "", time.Time{})
+	// Pass newAccessKey for at_hash computation (no authorization code in refresh flow).
+	idTok, idErr := s.maybeSignIDToken(ctx, client, row.UserID, scopes, "", time.Time{}, newAccessKey)
 	if idErr != nil {
 		return nil, idErr
 	}
@@ -1706,6 +1754,9 @@ func timeOrZero(t *time.Time) time.Time {
 // ConsumeCode succeeds. It creates api_keys + oauth_access_tokens +
 // (optional) oauth_refresh_tokens.
 //
+// codePlain is the plaintext authorization code consumed in ExchangeAuthorizationCode;
+// it is needed to compute c_hash for the OIDC id_token (OIDC Core §3.3.2.11).
+//
 // FIX H4: when the mintRepo is wired, all three writes happen inside one
 // Postgres tx so a failure between writes can never leave a live sk_oauth_*
 // api_keys row that lacks scope metadata. Legacy callers (test fakes) get
@@ -1714,6 +1765,7 @@ func (s *OAuthProviderService) mintTokensFromCode(
 	ctx context.Context,
 	client *OAuthClient,
 	code *OAuthCode,
+	codePlain string,
 ) (*IssuedToken, error) {
 	now := time.Now()
 
@@ -1911,7 +1963,7 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		}
 	}
 
-	idTok, idErr := s.maybeSignIDToken(ctx, client, code.UserID, scopes, code.Nonce, code.CreatedAt)
+	idTok, idErr := s.maybeSignIDToken(ctx, client, code.UserID, scopes, code.Nonce, code.CreatedAt, accessKey, codePlain)
 	if idErr != nil {
 		return nil, idErr
 	}

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"time"
@@ -18,9 +20,10 @@ const DefaultOIDCIDTokenTTL = time.Hour
 // business state (those live behind /v1/me + the gateway, not in a bearer
 // token the client can decode and cache).
 type OIDCUserClaims struct {
-	UserID   int64
-	Email    string
-	Username string
+	UserID        int64
+	Email         string
+	Username      string
+	EmailVerified bool
 }
 
 // forbiddenIDTokenClaims are claim names that must never appear in an id_token
@@ -42,6 +45,42 @@ var forbiddenIDTokenClaims = map[string]struct{}{
 	"allowed_groups":  {},
 }
 
+// computeHashClaim implements the OIDC hash algorithm used for at_hash and c_hash:
+//
+//	claim = left_half(Base64URL(SHA-256(value)))
+//
+// where left_half takes the first 16 bytes of the 32-byte SHA-256 digest and
+// Base64URL encoding uses no padding (RFC 4648 §5).
+func computeHashClaim(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	// Left half: first 16 bytes of the 32-byte digest.
+	return base64.RawURLEncoding.EncodeToString(sum[:16])
+}
+
+// ComputeAtHash computes the at_hash claim for an access_token per OIDC Core §3.1.3.8.
+//
+//	at_hash = left_half(Base64URL(SHA-256(access_token)))
+//
+// Returns the Base64URL-encoded hash value, or an error if the input is empty.
+func ComputeAtHash(accessToken string) (string, error) {
+	if accessToken == "" {
+		return "", fmt.Errorf("oidc: access_token is required for at_hash computation")
+	}
+	return computeHashClaim(accessToken), nil
+}
+
+// ComputeCHash computes the c_hash claim for an authorization code per OIDC Core §3.3.2.11.
+//
+//	c_hash = left_half(Base64URL(SHA-256(authorization_code)))
+//
+// Returns the Base64URL-encoded hash value, or an error if the input is empty.
+func ComputeCHash(code string) (string, error) {
+	if code == "" {
+		return "", fmt.Errorf("oidc: authorization_code is required for c_hash computation")
+	}
+	return computeHashClaim(code), nil
+}
+
 // BuildIDTokenClaims constructs the OIDC id_token claim set.
 //
 //   - iss is fixed to the provider issuer (https://sub.sakrylle.com).
@@ -55,11 +94,13 @@ var forbiddenIDTokenClaims = map[string]struct{}{
 //   - nonce is echoed only when the authorize request supplied one.
 //   - auth_time is emitted only when known (non-zero); RPs requesting max_age
 //     or doing step-up rely on it.
-//   - profile scope yields name/preferred_username; email scope yields email.
-//     When email is emitted we also emit email_verified=false: there is no
-//     per-user verification flag in the data model, and OIDC Core §5.1 says an
-//     absent email_verified is treated as unverified, so we state it honestly
-//     rather than letting an RP guess.
+//   - profile scope yields name/preferred_username; email scope yields email
+//     and email_verified from the user's per-user flag. OIDC Core §5.1 says an
+//     absent email_verified is treated as unverified, so we always emit it.
+//   - hashClaims is a variadic trailing parameter for optional OIDC hash claims.
+//     Pass at most two strings: [0]=at_hash (OIDC Core §3.1.3.8), [1]=c_hash
+//     (OIDC Core §3.3.2.11). Empty strings are treated as "not provided".
+//     Callers should compute these via ComputeAtHash / ComputeCHash.
 func BuildIDTokenClaims(
 	issuer, clientID string,
 	u OIDCUserClaims,
@@ -69,6 +110,7 @@ func BuildIDTokenClaims(
 	now time.Time,
 	ttl time.Duration,
 	pairwiseSub string,
+	hashClaims ...string,
 ) (jwt.MapClaims, error) {
 	if issuer == "" {
 		return nil, fmt.Errorf("oidc: issuer is required for id_token iss claim")
@@ -107,7 +149,18 @@ func BuildIDTokenClaims(
 	}
 	if HasScope(grantedScopes, ScopeEmail) && u.Email != "" {
 		claims["email"] = u.Email
-		claims["email_verified"] = false
+		claims["email_verified"] = u.EmailVerified
+	}
+	// OIDC Core §3.1.3.8: at_hash is REQUIRED when the id_token is issued
+	// alongside an access_token (implicit/hybrid) and OPTIONAL for code flow.
+	// We include it whenever the caller provides it.
+	// OIDC Core §3.3.2.11: c_hash is REQUIRED when the id_token is issued
+	// alongside an authorization_code.
+	if len(hashClaims) > 0 && hashClaims[0] != "" {
+		claims["at_hash"] = hashClaims[0]
+	}
+	if len(hashClaims) > 1 && hashClaims[1] != "" {
+		claims["c_hash"] = hashClaims[1]
 	}
 
 	if err := assertNoForbiddenClaims(claims); err != nil {
