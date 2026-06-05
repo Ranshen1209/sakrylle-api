@@ -1382,6 +1382,69 @@ func (h *OAuthProviderHandler) renderLogoutErrorPage(c *gin.Context, errorCode, 
 	c.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(htmlContent))
 }
 
+// ── Front-Channel Logout (OIDC Front-Channel Logout 1.0) ───────────────────
+
+// FrontChannelLogout implements GET /oauth/frontchannel-logout per
+// OIDC Front-Channel Logout 1.0 §2.
+//
+// Parameters:
+//   - iss (optional): the OP issuer URL
+//   - sid (optional): the session ID to log out
+//
+// The endpoint renders an HTML page with hidden iframes for each registered
+// client's frontchannel_logout_uri. Each iframe URL includes iss and sid
+// as query parameters so the RP can clear its session state.
+func (h *OAuthProviderHandler) FrontChannelLogout(c *gin.Context) {
+	iss := c.Query("iss")
+	sid := c.Query("sid")
+
+	// Clear local session cookie if present.
+	c.SetCookie("token", "", -1, "/", "", false, true)
+
+	// Fetch clients with frontchannel_logout_uri configured.
+	clients, err := h.provider.ListClientsWithFrontchannelLogout(c.Request.Context())
+	if err != nil {
+		slog.Error("frontchannel logout: failed to list clients", "error", err)
+	}
+
+	// Build hidden iframes for each client.
+	var iframes string
+	for _, client := range clients {
+		if client.FrontchannelLogoutURI == nil || *client.FrontchannelLogoutURI == "" {
+			continue
+		}
+		uri := *client.FrontchannelLogoutURI
+		separator := "?"
+		if strings.Contains(uri, "?") {
+			separator = "&"
+		}
+		iframeURL := uri
+		if iss != "" {
+			iframeURL += separator + "iss=" + url.QueryEscape(iss)
+			separator = "&"
+		}
+		if sid != "" {
+			iframeURL += separator + "sid=" + url.QueryEscape(sid)
+		}
+		iframes += fmt.Sprintf(`<iframe src="%s" style="display:none"></iframe>`+"\n", html.EscapeString(iframeURL))
+	}
+
+	if iframes == "" {
+		iframes = "<!-- no clients with frontchannel_logout_uri -->"
+	}
+
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Header("Cache-Control", "no-store")
+	c.String(http.StatusOK, `<!DOCTYPE html>
+<html>
+<head><title>Logout</title></head>
+<body>
+%s
+<p>Logged out. You may close this window.</p>
+</body>
+</html>`, iframes)
+}
+
 // handlePromptNone handles OIDC prompt=none (silent authentication).
 //
 // Per OIDC Core §3.1.2.1, when prompt=none is specified:
