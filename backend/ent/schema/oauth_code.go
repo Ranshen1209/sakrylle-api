@@ -52,7 +52,7 @@ func (OAuthCode) Fields() []ent.Field {
 		field.JSON("scopes", []string{}),
 		field.String("code_challenge").
 			MaxLen(128).
-			NotEmpty().
+			Optional().
 			Comment("PKCE code_challenge value"),
 		field.String("code_challenge_method").
 			MaxLen(10).

@@ -963,7 +963,7 @@ var (
 		{Name: "user_id", Type: field.TypeInt64},
 		{Name: "redirect_uri", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "scopes", Type: field.TypeJSON},
-		{Name: "code_challenge", Type: field.TypeString, Size: 128},
+		{Name: "code_challenge", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "code_challenge_method", Type: field.TypeString, Size: 10, Default: "S256"},
 		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "used_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},

@@ -504,6 +504,16 @@ func CodeChallengeHasSuffix(v string) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldHasSuffix(FieldCodeChallenge, v))
 }
 
+// CodeChallengeIsNil applies the IsNil predicate on the "code_challenge" field.
+func CodeChallengeIsNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIsNull(FieldCodeChallenge))
+}
+
+// CodeChallengeNotNil applies the NotNil predicate on the "code_challenge" field.
+func CodeChallengeNotNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotNull(FieldCodeChallenge))
+}
+
 // CodeChallengeEqualFold applies the EqualFold predicate on the "code_challenge" field.
 func CodeChallengeEqualFold(v string) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldEqualFold(FieldCodeChallenge, v))

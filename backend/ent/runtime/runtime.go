@@ -1337,21 +1337,7 @@ func init() {
 	// oauthcodeDescCodeChallenge is the schema descriptor for code_challenge field.
 	oauthcodeDescCodeChallenge := oauthcodeFields[5].Descriptor()
 	// oauthcode.CodeChallengeValidator is a validator for the "code_challenge" field. It is called by the builders before save.
-	oauthcode.CodeChallengeValidator = func() func(string) error {
-		validators := oauthcodeDescCodeChallenge.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(code_challenge string) error {
-			for _, fn := range fns {
-				if err := fn(code_challenge); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	oauthcode.CodeChallengeValidator = oauthcodeDescCodeChallenge.Validators[0].(func(string) error)
 	// oauthcodeDescCodeChallengeMethod is the schema descriptor for code_challenge_method field.
 	oauthcodeDescCodeChallengeMethod := oauthcodeFields[6].Descriptor()
 	// oauthcode.DefaultCodeChallengeMethod holds the default value on creation for the code_challenge_method field.
