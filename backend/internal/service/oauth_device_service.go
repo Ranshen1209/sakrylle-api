@@ -496,7 +496,7 @@ func (s *OAuthProviderService) mintTokensFromDeviceCode(
 		DeviceName:            row.DeviceName,
 	}
 
-	issued, err := s.mintTokensFromCode(ctx, client, pseudoCode)
+	issued, err := s.mintTokensFromCode(ctx, client, pseudoCode, "")
 	if err != nil {
 		// Mint failed AFTER atomic consume — per RFC 8628 §3.5 this is
 		// acceptable. Log so operators can track the rare race; the user

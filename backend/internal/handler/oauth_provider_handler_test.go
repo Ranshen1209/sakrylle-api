@@ -54,6 +54,10 @@ func (s *oauthHandlerClientRepoStub) ListEnabledRedirectURIs(_ context.Context) 
 	return out, nil
 }
 
+func (s *oauthHandlerClientRepoStub) ListClientsWithFrontchannelLogout(_ context.Context) ([]*service.OAuthClient, error) {
+	return nil, nil
+}
+
 type oauthHandlerCodeRepoStub struct {
 	mu    sync.Mutex
 	codes map[string]*service.OAuthCode

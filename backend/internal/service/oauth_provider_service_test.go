@@ -39,6 +39,16 @@ func (s *stubClientRepo) ListEnabledRedirectURIs(_ context.Context) ([]string, e
 	return out, nil
 }
 
+func (s *stubClientRepo) ListClientsWithFrontchannelLogout(_ context.Context) ([]*OAuthClient, error) {
+	var out []*OAuthClient
+	for _, c := range s.clients {
+		if !c.Disabled && c.FrontchannelLogoutURI != nil && *c.FrontchannelLogoutURI != "" {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
 type stubCodeRepo struct {
 	mu    sync.Mutex
 	codes map[string]*OAuthCode
@@ -1440,6 +1450,10 @@ func (s *stubOriginRepo) ListEnabledRedirectURIs(_ context.Context) ([]string, e
 		return nil, s.err
 	}
 	return s.uris, nil
+}
+
+func (s *stubOriginRepo) ListClientsWithFrontchannelLogout(_ context.Context) ([]*OAuthClient, error) {
+	return nil, nil
 }
 
 func newOriginTestService(repo OAuthClientRepository) *OAuthProviderService {
