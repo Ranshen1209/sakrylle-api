@@ -86,6 +86,14 @@ func (_c *OAuthCodeCreate) SetCodeChallenge(v string) *OAuthCodeCreate {
 	return _c
 }
 
+// SetNillableCodeChallenge sets the "code_challenge" field if the given value is not nil.
+func (_c *OAuthCodeCreate) SetNillableCodeChallenge(v *string) *OAuthCodeCreate {
+	if v != nil {
+		_c.SetCodeChallenge(*v)
+	}
+	return _c
+}
+
 // SetCodeChallengeMethod sets the "code_challenge_method" field.
 func (_c *OAuthCodeCreate) SetCodeChallengeMethod(v string) *OAuthCodeCreate {
 	_c.mutation.SetCodeChallengeMethod(v)
@@ -300,9 +308,6 @@ func (_c *OAuthCodeCreate) check() error {
 	}
 	if _, ok := _c.mutation.Scopes(); !ok {
 		return &ValidationError{Name: "scopes", err: errors.New(`ent: missing required field "OAuthCode.scopes"`)}
-	}
-	if _, ok := _c.mutation.CodeChallenge(); !ok {
-		return &ValidationError{Name: "code_challenge", err: errors.New(`ent: missing required field "OAuthCode.code_challenge"`)}
 	}
 	if v, ok := _c.mutation.CodeChallenge(); ok {
 		if err := oauthcode.CodeChallengeValidator(v); err != nil {
@@ -576,6 +581,12 @@ func (u *OAuthCodeUpsert) SetCodeChallenge(v string) *OAuthCodeUpsert {
 // UpdateCodeChallenge sets the "code_challenge" field to the value that was provided on create.
 func (u *OAuthCodeUpsert) UpdateCodeChallenge() *OAuthCodeUpsert {
 	u.SetExcluded(oauthcode.FieldCodeChallenge)
+	return u
+}
+
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (u *OAuthCodeUpsert) ClearCodeChallenge() *OAuthCodeUpsert {
+	u.SetNull(oauthcode.FieldCodeChallenge)
 	return u
 }
 
@@ -894,6 +905,13 @@ func (u *OAuthCodeUpsertOne) SetCodeChallenge(v string) *OAuthCodeUpsertOne {
 func (u *OAuthCodeUpsertOne) UpdateCodeChallenge() *OAuthCodeUpsertOne {
 	return u.Update(func(s *OAuthCodeUpsert) {
 		s.UpdateCodeChallenge()
+	})
+}
+
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (u *OAuthCodeUpsertOne) ClearCodeChallenge() *OAuthCodeUpsertOne {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearCodeChallenge()
 	})
 }
 
@@ -1406,6 +1424,13 @@ func (u *OAuthCodeUpsertBulk) SetCodeChallenge(v string) *OAuthCodeUpsertBulk {
 func (u *OAuthCodeUpsertBulk) UpdateCodeChallenge() *OAuthCodeUpsertBulk {
 	return u.Update(func(s *OAuthCodeUpsert) {
 		s.UpdateCodeChallenge()
+	})
+}
+
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (u *OAuthCodeUpsertBulk) ClearCodeChallenge() *OAuthCodeUpsertBulk {
+	return u.Update(func(s *OAuthCodeUpsert) {
+		s.ClearCodeChallenge()
 	})
 }
 
