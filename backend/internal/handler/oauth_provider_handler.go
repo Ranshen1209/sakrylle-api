@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // canonicalScopesForDiscovery is the §12.1 `scopes_supported` advertisement.
@@ -691,6 +692,94 @@ func (h *OAuthProviderHandler) RevokeGrant(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"revoked": revoked})
+}
+
+// ── Introspection (RFC 7662) ────────────────────────────────────────────────
+
+// Introspect implements POST /oauth/introspect per RFC 7662.
+//
+// Only confidential clients (those with client_secret_hash) may call this
+// endpoint. The client authenticates via client_secret_basic or
+// client_secret_post (same as /oauth/token).
+//
+// Request: token (required), token_type_hint (optional)
+// Response: {active, scope, client_id, token_type, sub, exp, iat, iss} or {active: false}
+func (h *OAuthProviderHandler) Introspect(c *gin.Context) {
+	if !h.provider.IsEnabled(c.Request.Context()) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "oauth_provider_disabled"})
+		return
+	}
+
+	// Authenticate the client.
+	clientID, clientSecret, ok := c.Request.BasicAuth()
+	if !ok {
+		// Try client_secret_post
+		clientID = c.PostForm("client_id")
+		clientSecret = c.PostForm("client_secret")
+	}
+	if clientID == "" || clientSecret == "" {
+		c.Header("WWW-Authenticate", `Basic realm="oauth"`)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_client", "error_description": "client authentication required"})
+		return
+	}
+
+	client, err := h.authenticateClientForIntrospect(c.Request.Context(), clientID, clientSecret)
+	if err != nil {
+		c.JSON(httpStatusForOAuthError(err), gin.H{
+			"error":             oauthErrorReason(err),
+			"error_description": infraerrors.Message(err),
+		})
+		return
+	}
+
+	// Only confidential clients may introspect.
+	if !client.ClientConfidential {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":             "invalid_client",
+			"error_description": "only confidential clients may call introspect",
+		})
+		return
+	}
+
+	token := strings.TrimSpace(c.PostForm("token"))
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "token parameter is required",
+		})
+		return
+	}
+
+	resp, err := h.provider.IntrospectToken(c.Request.Context(), client.ClientID, token)
+	if err != nil {
+		slog.Error("oauth: introspect failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error"})
+		return
+	}
+
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+	c.JSON(http.StatusOK, resp)
+}
+
+// authenticateClientForIntrospect verifies client credentials for the
+// introspect endpoint. Similar to authenticateClient but returns the client
+// struct directly.
+func (h *OAuthProviderHandler) authenticateClientForIntrospect(ctx context.Context, clientID, clientSecret string) (*service.OAuthClient, error) {
+	client, err := h.provider.LookupClient(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if client.Disabled {
+		return nil, service.ErrOAuthClientDisabled
+	}
+	if client.ClientSecretHash == "" {
+		return nil, service.ErrOAuthClientNotConfidential
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(client.ClientSecretHash), []byte(clientSecret)); err != nil {
+		return nil, service.ErrOAuthClientAuthFailed
+	}
+	return client, nil
 }
 
 // ── Discovery (§12.1) ───────────────────────────────────────────────────────

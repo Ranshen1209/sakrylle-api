@@ -94,6 +94,14 @@ func RegisterOAuthRoutes(
 		servermiddleware.RequestBodyLimit(32*1024),
 		h.OAuthProvider.Revoke,
 	)
+	// RFC 7662: token introspection for confidential clients.
+	r.POST("/oauth/introspect",
+		rateLimiter.LimitWithOptions("oauth-introspect", 30, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}),
+		servermiddleware.RequestBodyLimit(32*1024),
+		h.OAuthProvider.Introspect,
+	)
 
 	oauth := v1.Group("/oauth")
 	oauth.Use(gin.HandlerFunc(jwtAuth))
