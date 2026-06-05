@@ -173,6 +173,10 @@ type OAuthProviderService struct {
 	oidcSign   func(claims jwt.MapClaims, alg SigningAlgorithm) (string, error)
 	oidcIssuer func(ctx context.Context) string
 	oidcUser   func(ctx context.Context, userID int64) (OIDCUserClaims, error)
+
+	// consentRepo tracks user consent for third-party clients.
+	// nil when not wired; consent features are silently disabled.
+	consentRepo OAuthConsentGrantRepository
 }
 
 // NewOAuthProviderService is the v2 constructor. See §11.2.
@@ -247,6 +251,64 @@ func (s *OAuthProviderService) WithOIDC(
 		s.oidcUser = userClaims
 	}
 	return s
+}
+
+// WithConsent wires the consent grant repository for third-party client
+// consent tracking. When not wired, consent features are silently disabled.
+func (s *OAuthProviderService) WithConsent(repo OAuthConsentGrantRepository) *OAuthProviderService {
+	if s != nil {
+		s.consentRepo = repo
+	}
+	return s
+}
+
+// HasValidConsent checks if the user has a valid (non-expired) consent grant
+// for the given client with sufficient scopes. Returns true if the client
+// can be auto-approved.
+func (s *OAuthProviderService) HasValidConsent(ctx context.Context, userID int64, clientID string, requestedScopes []string) (bool, error) {
+	if s.consentRepo == nil {
+		return false, nil
+	}
+	grant, err := s.consentRepo.GetGrant(ctx, userID, clientID)
+	if err != nil {
+		return false, err
+	}
+	if grant == nil {
+		return false, nil
+	}
+	// Check expiry.
+	if grant.ExpiresAt != nil && grant.ExpiresAt.Before(time.Now()) {
+		return false, nil
+	}
+	// Check that granted scopes cover all requested scopes.
+	if !ScopeAllowed(grant.Scope, requestedScopes) {
+		return false, nil
+	}
+	return true, nil
+}
+
+// RecordConsent upserts a consent grant for the user+client combination.
+func (s *OAuthProviderService) RecordConsent(ctx context.Context, userID int64, clientID string, scopes []string) error {
+	if s.consentRepo == nil {
+		return nil
+	}
+	return s.consentRepo.UpsertGrant(ctx, userID, clientID, scopes, nil)
+}
+
+// RevokeConsent deletes the consent grant for the user+client combination.
+func (s *OAuthProviderService) RevokeConsent(ctx context.Context, userID int64, clientID string) error {
+	if s.consentRepo == nil {
+		return nil
+	}
+	return s.consentRepo.DeleteGrant(ctx, userID, clientID)
+}
+
+// ListConsents returns all consent grants for the user.
+func (s *OAuthProviderService) ListConsents(ctx context.Context, userID int64) ([]*OAuthConsentGrant, error) {
+	if s.consentRepo == nil {
+		return nil, nil
+	}
+	return s.consentRepo.ListGrantsByUser(ctx, userID)
 }
 
 // resolveSigningAlgorithm maps a client's stored signing_algorithm to a
