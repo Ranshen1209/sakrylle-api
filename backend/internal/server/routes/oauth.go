@@ -69,6 +69,8 @@ func RegisterOAuthRoutes(
 	// No rate limit (logout is user-initiated, low volume).
 	r.GET("/oauth/logout", h.OAuthProvider.Logout)
 	r.POST("/oauth/logout", h.OAuthProvider.Logout)
+	// OIDC Front-Channel Logout 1.0
+	r.GET("/oauth/frontchannel-logout", h.OAuthProvider.FrontChannelLogout)
 
 	// GET renders the consent page; POST accepts form-encoded body for the
 	// same flow (some clients POST the authorization request directly).
