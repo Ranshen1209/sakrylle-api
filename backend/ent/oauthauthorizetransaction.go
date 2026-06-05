@@ -61,7 +61,9 @@ type OAuthAuthorizeTransaction struct {
 	// OIDC nonce captured at /authorize; copied to the code, then the id_token
 	Nonce string `json:"nonce,omitempty"`
 	// OIDC §5.5 voluntary claims request; carried through to id_token/userinfo
-	Claims       map[string]interface{} `json:"claims,omitempty"`
+	Claims map[string]interface{} `json:"claims,omitempty"`
+	// OIDC session identifier for back-channel logout; generated at /authorize
+	Sid          string `json:"sid,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -74,7 +76,7 @@ func (*OAuthAuthorizeTransaction) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case oauthauthorizetransaction.FieldID, oauthauthorizetransaction.FieldUserID, oauthauthorizetransaction.FieldRequestedGroupID:
 			values[i] = new(sql.NullInt64)
-		case oauthauthorizetransaction.FieldTransactionID, oauthauthorizetransaction.FieldCsrfHash, oauthauthorizetransaction.FieldClientID, oauthauthorizetransaction.FieldRedirectURI, oauthauthorizetransaction.FieldResponseType, oauthauthorizetransaction.FieldState, oauthauthorizetransaction.FieldCodeChallenge, oauthauthorizetransaction.FieldCodeChallengeMethod, oauthauthorizetransaction.FieldDeviceID, oauthauthorizetransaction.FieldDeviceName, oauthauthorizetransaction.FieldCreatedIP, oauthauthorizetransaction.FieldCreatedUserAgent, oauthauthorizetransaction.FieldNonce:
+		case oauthauthorizetransaction.FieldTransactionID, oauthauthorizetransaction.FieldCsrfHash, oauthauthorizetransaction.FieldClientID, oauthauthorizetransaction.FieldRedirectURI, oauthauthorizetransaction.FieldResponseType, oauthauthorizetransaction.FieldState, oauthauthorizetransaction.FieldCodeChallenge, oauthauthorizetransaction.FieldCodeChallengeMethod, oauthauthorizetransaction.FieldDeviceID, oauthauthorizetransaction.FieldDeviceName, oauthauthorizetransaction.FieldCreatedIP, oauthauthorizetransaction.FieldCreatedUserAgent, oauthauthorizetransaction.FieldNonce, oauthauthorizetransaction.FieldSid:
 			values[i] = new(sql.NullString)
 		case oauthauthorizetransaction.FieldCreatedAt, oauthauthorizetransaction.FieldUpdatedAt, oauthauthorizetransaction.FieldConsumedAt, oauthauthorizetransaction.FieldExpiresAt:
 			values[i] = new(sql.NullTime)
@@ -243,6 +245,12 @@ func (_m *OAuthAuthorizeTransaction) assignValues(columns []string, values []any
 					return fmt.Errorf("unmarshal field claims: %w", err)
 				}
 			}
+		case oauthauthorizetransaction.FieldSid:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sid", values[i])
+			} else if value.Valid {
+				_m.Sid = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -356,6 +364,9 @@ func (_m *OAuthAuthorizeTransaction) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("claims=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Claims))
+	builder.WriteString(", ")
+	builder.WriteString("sid=")
+	builder.WriteString(_m.Sid)
 	builder.WriteByte(')')
 	return builder.String()
 }

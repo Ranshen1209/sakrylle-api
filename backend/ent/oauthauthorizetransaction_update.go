@@ -365,6 +365,26 @@ func (_u *OAuthAuthorizeTransactionUpdate) ClearClaims() *OAuthAuthorizeTransact
 	return _u
 }
 
+// SetSid sets the "sid" field.
+func (_u *OAuthAuthorizeTransactionUpdate) SetSid(v string) *OAuthAuthorizeTransactionUpdate {
+	_u.mutation.SetSid(v)
+	return _u
+}
+
+// SetNillableSid sets the "sid" field if the given value is not nil.
+func (_u *OAuthAuthorizeTransactionUpdate) SetNillableSid(v *string) *OAuthAuthorizeTransactionUpdate {
+	if v != nil {
+		_u.SetSid(*v)
+	}
+	return _u
+}
+
+// ClearSid clears the value of the "sid" field.
+func (_u *OAuthAuthorizeTransactionUpdate) ClearSid() *OAuthAuthorizeTransactionUpdate {
+	_u.mutation.ClearSid()
+	return _u
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_u *OAuthAuthorizeTransactionUpdate) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _u.mutation
@@ -575,6 +595,12 @@ func (_u *OAuthAuthorizeTransactionUpdate) sqlSave(ctx context.Context) (_node i
 	}
 	if _u.mutation.ClaimsCleared() {
 		_spec.ClearField(oauthauthorizetransaction.FieldClaims, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Sid(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldSid, field.TypeString, value)
+	}
+	if _u.mutation.SidCleared() {
+		_spec.ClearField(oauthauthorizetransaction.FieldSid, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -932,6 +958,26 @@ func (_u *OAuthAuthorizeTransactionUpdateOne) ClearClaims() *OAuthAuthorizeTrans
 	return _u
 }
 
+// SetSid sets the "sid" field.
+func (_u *OAuthAuthorizeTransactionUpdateOne) SetSid(v string) *OAuthAuthorizeTransactionUpdateOne {
+	_u.mutation.SetSid(v)
+	return _u
+}
+
+// SetNillableSid sets the "sid" field if the given value is not nil.
+func (_u *OAuthAuthorizeTransactionUpdateOne) SetNillableSid(v *string) *OAuthAuthorizeTransactionUpdateOne {
+	if v != nil {
+		_u.SetSid(*v)
+	}
+	return _u
+}
+
+// ClearSid clears the value of the "sid" field.
+func (_u *OAuthAuthorizeTransactionUpdateOne) ClearSid() *OAuthAuthorizeTransactionUpdateOne {
+	_u.mutation.ClearSid()
+	return _u
+}
+
 // Mutation returns the OAuthAuthorizeTransactionMutation object of the builder.
 func (_u *OAuthAuthorizeTransactionUpdateOne) Mutation() *OAuthAuthorizeTransactionMutation {
 	return _u.mutation
@@ -1172,6 +1218,12 @@ func (_u *OAuthAuthorizeTransactionUpdateOne) sqlSave(ctx context.Context) (_nod
 	}
 	if _u.mutation.ClaimsCleared() {
 		_spec.ClearField(oauthauthorizetransaction.FieldClaims, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Sid(); ok {
+		_spec.SetField(oauthauthorizetransaction.FieldSid, field.TypeString, value)
+	}
+	if _u.mutation.SidCleared() {
+		_spec.ClearField(oauthauthorizetransaction.FieldSid, field.TypeString)
 	}
 	_node = &OAuthAuthorizeTransaction{config: _u.config}
 	_spec.Assign = _node.assignValues

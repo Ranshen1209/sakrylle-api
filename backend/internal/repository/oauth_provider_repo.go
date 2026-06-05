@@ -113,6 +113,26 @@ func (r *oauthProviderRepository) ListClientsWithFrontchannelLogout(ctx context.
 	return out, nil
 }
 
+// ListClientsWithBackchannelLogout returns all non-disabled clients that
+// have a non-empty backchannel_logout_uri. Used by back-channel logout
+// to broadcast logout_token to all registered RPs.
+func (r *oauthProviderRepository) ListClientsWithBackchannelLogout(ctx context.Context) ([]*service.OAuthClient, error) {
+	rows, err := r.client.OAuthClient.Query().
+		Where(
+			oauthclient.DisabledEQ(false),
+			oauthclient.BackchannelLogoutURINotNil(),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list clients with backchannel_logout_uri: %w", err)
+	}
+	out := make([]*service.OAuthClient, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entOAuthClientToService(row))
+	}
+	return out, nil
+}
+
 // ── OAuthCodeRepository ─────────────────────────────────────────────────────
 
 func (r *oauthProviderRepository) CreateCode(ctx context.Context, code *service.OAuthCode) error {
@@ -140,6 +160,9 @@ func (r *oauthProviderRepository) CreateCode(ctx context.Context, code *service.
 	}
 	if code.Nonce != "" {
 		q = q.SetNonce(code.Nonce)
+	}
+	if code.SID != "" {
+		q = q.SetSid(code.SID)
 	}
 	if _, err := q.Save(ctx); err != nil {
 		return fmt.Errorf("create oauth code: %w", err)
@@ -949,6 +972,9 @@ func (r *oauthProviderRepository) CreateAuthorizeTransaction(ctx context.Context
 	if tx.Nonce != "" {
 		q = q.SetNonce(tx.Nonce)
 	}
+	if tx.SID != "" {
+		q = q.SetSid(tx.SID)
+	}
 	if _, err := q.Save(ctx); err != nil {
 		return fmt.Errorf("create oauth authorize transaction: %w", err)
 	}
@@ -1164,6 +1190,7 @@ func entOAuthCodeToService(row *dbent.OAuthCode) *service.OAuthCode {
 		DeviceID:              row.DeviceID,
 		DeviceName:            row.DeviceName,
 		Nonce:                 row.Nonce,
+		SID:                   row.Sid,
 		CreatedAt:             row.CreatedAt,
 	}
 	return out
@@ -1264,6 +1291,7 @@ func entOAuthAuthorizeTransactionToService(row *dbent.OAuthAuthorizeTransaction)
 		CreatedUserAgent:      row.CreatedUserAgent,
 		CreatedAt:             row.CreatedAt,
 		Nonce:                 row.Nonce,
+		SID:                   row.Sid,
 		Claims:                row.Claims,
 	}
 }

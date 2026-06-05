@@ -250,7 +250,7 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 		}
 		if hasOIDCEmail {
 			resp["email"] = user.Email
-			resp["email_verified"] = false
+			resp["email_verified"] = user.EmailVerified
 		}
 	}
 

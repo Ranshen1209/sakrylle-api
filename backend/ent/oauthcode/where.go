@@ -129,6 +129,11 @@ func Nonce(v string) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldEQ(FieldNonce, v))
 }
 
+// Sid applies equality check predicate on the "sid" field. It's identical to SidEQ.
+func Sid(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldSid, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldEQ(FieldCreatedAt, v))
@@ -1012,6 +1017,81 @@ func NonceEqualFold(v string) predicate.OAuthCode {
 // NonceContainsFold applies the ContainsFold predicate on the "nonce" field.
 func NonceContainsFold(v string) predicate.OAuthCode {
 	return predicate.OAuthCode(sql.FieldContainsFold(FieldNonce, v))
+}
+
+// SidEQ applies the EQ predicate on the "sid" field.
+func SidEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEQ(FieldSid, v))
+}
+
+// SidNEQ applies the NEQ predicate on the "sid" field.
+func SidNEQ(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNEQ(FieldSid, v))
+}
+
+// SidIn applies the In predicate on the "sid" field.
+func SidIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIn(FieldSid, vs...))
+}
+
+// SidNotIn applies the NotIn predicate on the "sid" field.
+func SidNotIn(vs ...string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotIn(FieldSid, vs...))
+}
+
+// SidGT applies the GT predicate on the "sid" field.
+func SidGT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGT(FieldSid, v))
+}
+
+// SidGTE applies the GTE predicate on the "sid" field.
+func SidGTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldGTE(FieldSid, v))
+}
+
+// SidLT applies the LT predicate on the "sid" field.
+func SidLT(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLT(FieldSid, v))
+}
+
+// SidLTE applies the LTE predicate on the "sid" field.
+func SidLTE(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldLTE(FieldSid, v))
+}
+
+// SidContains applies the Contains predicate on the "sid" field.
+func SidContains(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContains(FieldSid, v))
+}
+
+// SidHasPrefix applies the HasPrefix predicate on the "sid" field.
+func SidHasPrefix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasPrefix(FieldSid, v))
+}
+
+// SidHasSuffix applies the HasSuffix predicate on the "sid" field.
+func SidHasSuffix(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldHasSuffix(FieldSid, v))
+}
+
+// SidIsNil applies the IsNil predicate on the "sid" field.
+func SidIsNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldIsNull(FieldSid))
+}
+
+// SidNotNil applies the NotNil predicate on the "sid" field.
+func SidNotNil() predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldNotNull(FieldSid))
+}
+
+// SidEqualFold applies the EqualFold predicate on the "sid" field.
+func SidEqualFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldEqualFold(FieldSid, v))
+}
+
+// SidContainsFold applies the ContainsFold predicate on the "sid" field.
+func SidContainsFold(v string) predicate.OAuthCode {
+	return predicate.OAuthCode(sql.FieldContainsFold(FieldSid, v))
 }
 
 // And groups predicates with the AND operator between them.

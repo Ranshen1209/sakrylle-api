@@ -108,6 +108,11 @@ func (OAuthAuthorizeTransaction) Fields() []ent.Field {
 		field.JSON("claims", map[string]any{}).
 			Optional().
 			Comment("OIDC §5.5 voluntary claims request; carried through to id_token/userinfo"),
+
+		// ── OIDC session ID (migration 158) ────────────────────────────
+		field.String("sid").
+			Optional().
+			Comment("OIDC session identifier for back-channel logout; generated at /authorize"),
 	}
 }
 
