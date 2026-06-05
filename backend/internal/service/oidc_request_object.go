@@ -1,15 +1,42 @@
 package service
 
 import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rsa"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math/big"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+const (
+	// maxRequestBodySize is the maximum size of a request_uri response body (64KB).
+	maxRequestBodySize = 64 * 1024
+	// requestURITimeout is the HTTP client timeout for request_uri fetches.
+	requestURITimeout = 5 * time.Second
+)
+
+// DefaultHTTPClient is the HTTP client used for request_uri fetches and
+// sector_identifier_uri fetches. Set this at startup before any OAuth flows.
+// If nil, request_uri fetches will fail.
+var DefaultHTTPClient *http.Client
+
+func init() {
+	// Provide a sensible default with timeout and size limits.
+	DefaultHTTPClient = &http.Client{
+		Timeout: requestURITimeout,
+	}
+}
 
 // ClaimsRequest represents an OIDC §5.5 claims request parameter. It is a JSON
 // object with two top-level keys:
@@ -193,15 +220,9 @@ func ParseRequestObjectJWT(rawJWT, issuer, clientID, clientSecret string) (*Auth
 		}
 		verifyKey = []byte(clientSecret)
 	case strings.HasPrefix(algStr, "RS"), strings.HasPrefix(algStr, "ES"), strings.HasPrefix(algStr, "PS"):
-		// Asymmetric: verify with client's JWKS. For now, we support
-		// client_secret as a simplified verification path since our clients
-		// are largely public PKCE-only. Full JWKS retrieval would require
-		// the client to register a jwks_uri or jwks field.
-		//
-		// When a public client (no secret) sends a request object, we verify
-		// using the client_secret is empty path — this is valid per OIDC Core
-		// §6.1 which says the JWT MAY be signed with the client_secret.
-		return nil, fmt.Errorf("asymmetric request object verification requires client JWKS (not yet implemented)")
+		// Asymmetric: require JWKS verification via VerifyKeyFunc.
+		// The caller must provide a key lookup function via ParseRequestObjectJWTWithJWKS.
+		return nil, fmt.Errorf("asymmetric request object verification requires ParseRequestObjectJWTWithJWKS")
 	default:
 		return nil, fmt.Errorf("unsupported request object algorithm: %s", algStr)
 	}
@@ -251,6 +272,186 @@ func ParseRequestObjectJWT(rawJWT, issuer, clientID, clientSecret string) (*Auth
 	return req, nil
 }
 
+// JWKSKeyFunc is a function that returns the verification key for a given
+// algorithm and optional kid from a JWT header. Used by
+// ParseRequestObjectJWTWithJWKS to resolve asymmetric signing keys.
+type JWKSKeyFunc func(alg string, kid string) (any, error)
+
+// ParseRequestObjectJWTWithJWKS validates and unpacks a signed request object
+// JWT, supporting both symmetric (HS256/384/512) and asymmetric
+// (RS256/384/512, ES256/384/512, PS256/384/512) algorithms.
+//
+// For asymmetric algorithms, the caller provides a JWKSKeyFunc that resolves
+// the verification key from the client's JWKS. The key function receives the
+// algorithm string and kid from the JWT header.
+//
+// For symmetric algorithms, clientSecret is used as the HMAC key (same as
+// ParseRequestObjectJWT).
+func ParseRequestObjectJWTWithJWKS(rawJWT, issuer, clientID, clientSecret string, keyFunc JWKSKeyFunc) (*AuthorizeRequest, error) {
+	if rawJWT == "" {
+		return nil, fmt.Errorf("request object JWT is empty")
+	}
+
+	// Parse without verification first to extract algorithm and claims.
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	unverified, _, err := parser.ParseUnverified(rawJWT, &RequestObjectClaims{})
+	if err != nil {
+		return nil, fmt.Errorf("parse request object: %w", err)
+	}
+
+	if _, ok := unverified.Claims.(*RequestObjectClaims); !ok {
+		return nil, fmt.Errorf("invalid request object claims")
+	}
+
+	alg := unverified.Header["alg"]
+	if alg == nil {
+		return nil, fmt.Errorf("request object missing alg header")
+	}
+	algStr, ok := alg.(string)
+	if !ok {
+		return nil, fmt.Errorf("request object alg is not a string")
+	}
+
+	// Extract optional kid for JWKS lookup.
+	var kid string
+	if k, exists := unverified.Header["kid"]; exists {
+		if ks, ok := k.(string); ok {
+			kid = ks
+		}
+	}
+
+	var verifyKey any
+	switch {
+	case strings.HasPrefix(algStr, "HS"):
+		if clientSecret == "" {
+			return nil, fmt.Errorf("HS-signed request object requires a client_secret")
+		}
+		verifyKey = []byte(clientSecret)
+	case strings.HasPrefix(algStr, "RS"), strings.HasPrefix(algStr, "ES"), strings.HasPrefix(algStr, "PS"):
+		if keyFunc == nil {
+			return nil, fmt.Errorf("asymmetric request object requires a JWKS key function")
+		}
+		verifyKey, err = keyFunc(algStr, kid)
+		if err != nil {
+			return nil, fmt.Errorf("resolve verification key for %s (kid=%q): %w", algStr, kid, err)
+		}
+		if verifyKey == nil {
+			return nil, fmt.Errorf("no verification key found for %s (kid=%q)", algStr, kid)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported request object algorithm: %s", algStr)
+	}
+
+	// Verify with the resolved key, enforcing standard claims.
+	token, err := jwt.ParseWithClaims(rawJWT, &RequestObjectClaims{},
+		func(t *jwt.Token) (any, error) { return verifyKey, nil },
+		jwt.WithLeeway(30*time.Second),
+		jwt.WithIssuer(issuer),
+		jwt.WithAudience(issuer),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("verify request object: %w", err)
+	}
+
+	claims, ok := token.Claims.(*RequestObjectClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("request object claims invalid")
+	}
+
+	// Validate iss == client_id (OIDC Core §6.1).
+	if claims.Issuer != clientID {
+		return nil, fmt.Errorf("request object iss %q != client_id %q", claims.Issuer, clientID)
+	}
+
+	// Build AuthorizeRequest from the request object claims.
+	req := &AuthorizeRequest{
+		ClientID:            clientID,
+		RedirectURI:         claims.RedirectURI,
+		ResponseType:        claims.ResponseType,
+		Scopes:              ParseScopes(claims.Scope),
+		State:               claims.State,
+		CodeChallenge:       claims.CodeChallenge,
+		CodeChallengeMethod: claims.CodeChallengeMethod,
+		Nonce:               claims.Nonce,
+	}
+	return req, nil
+}
+
+// JWKSKeyFuncFromSet creates a JWKSKeyFunc from a JWKS document (fetched from
+// the client's jwks_uri or embedded jwks). It supports RSA, EC, and RSASSA-PSS
+// key types.
+func JWKSKeyFuncFromSet(jwks JWKS) JWKSKeyFunc {
+	return func(alg string, kid string) (any, error) {
+		for _, key := range jwks.Keys {
+			if key.Kid != kid {
+				continue
+			}
+			switch key.Kty {
+			case "RSA":
+				return parseRSAJWK(key)
+			case "EC":
+				return parseECJWK(key)
+			default:
+				return nil, fmt.Errorf("unsupported JWK kty %q for kid %q", key.Kty, kid)
+			}
+		}
+		return nil, fmt.Errorf("kid %q not found in JWKS", kid)
+	}
+}
+
+// parseRSAJWK converts an RSA JWK to an *rsa.PublicKey.
+func parseRSAJWK(jwk JWK) (*rsa.PublicKey, error) {
+	if jwk.N == "" || jwk.E == "" {
+		return nil, fmt.Errorf("RSA JWK missing n or e")
+	}
+	nBytes, err := base64.RawURLEncoding.DecodeString(jwk.N)
+	if err != nil {
+		return nil, fmt.Errorf("decode RSA n: %w", err)
+	}
+	eBytes, err := base64.RawURLEncoding.DecodeString(jwk.E)
+	if err != nil {
+		return nil, fmt.Errorf("decode RSA e: %w", err)
+	}
+	n := new(big.Int).SetBytes(nBytes)
+	e := 0
+	for _, b := range eBytes {
+		e = e<<8 | int(b)
+	}
+	return &rsa.PublicKey{N: n, E: e}, nil
+}
+
+// parseECJWK converts an EC JWK to an *ecdsa.PublicKey.
+func parseECJWK(jwk JWK) (*ecdsa.PublicKey, error) {
+	if jwk.X == "" || jwk.Y == "" || jwk.Crv == "" {
+		return nil, fmt.Errorf("EC JWK missing x, y, or crv")
+	}
+	xBytes, err := base64.RawURLEncoding.DecodeString(jwk.X)
+	if err != nil {
+		return nil, fmt.Errorf("decode EC x: %w", err)
+	}
+	yBytes, err := base64.RawURLEncoding.DecodeString(jwk.Y)
+	if err != nil {
+		return nil, fmt.Errorf("decode EC y: %w", err)
+	}
+	x := new(big.Int).SetBytes(xBytes)
+	y := new(big.Int).SetBytes(yBytes)
+
+	// Map curve name to elliptic.Curve
+	var curve elliptic.Curve
+	switch jwk.Crv {
+	case "P-256":
+		curve = elliptic.P256()
+	case "P-384":
+		curve = elliptic.P384()
+	case "P-521":
+		curve = elliptic.P521()
+	default:
+		return nil, fmt.Errorf("unsupported EC curve %q", jwk.Crv)
+	}
+
+	return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
+}
+
 // FetchRequestURI fetches the request object from a request_uri (OIDC Core §6.3).
 // The URI MUST use the https scheme, and the host MUST match an entry in the
 // client's pre-registered request_uris whitelist.
@@ -294,8 +495,36 @@ func FetchRequestURI(rawURI string, allowedURIs []string) (string, error) {
 		return "", fmt.Errorf("request_uri host %q is not in the client's registered request_uris", parsed.Host)
 	}
 
-	// Fetch with timeout.
-	// Note: This import requires "net/http" which must be added.
-	// We'll implement this as a callable function that takes an http.Client.
-	return "", fmt.Errorf("request_uri fetch requires HTTP client (injected at call site)")
+	// Fetch with timeout and size limit.
+	if DefaultHTTPClient == nil {
+		return "", fmt.Errorf("request_uri fetch: no HTTP client configured")
+	}
+
+	req, err := http.NewRequestWithContext(
+		context.Background(), // caller should use a proper context
+		http.MethodGet,
+		rawURI,
+		nil,
+	)
+	if err != nil {
+		return "", fmt.Errorf("build request_uri request: %w", err)
+	}
+
+	resp, err := DefaultHTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetch request_uri: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("request_uri returned HTTP %d", resp.StatusCode)
+	}
+
+	// Read with 64KB limit.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxRequestBodySize))
+	if err != nil {
+		return "", fmt.Errorf("read request_uri body: %w", err)
+	}
+
+	return string(body), nil
 }
