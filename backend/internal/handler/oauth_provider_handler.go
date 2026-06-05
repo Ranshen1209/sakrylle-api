@@ -277,6 +277,7 @@ func (h *OAuthProviderHandler) BeginAuthorize(c *gin.Context) {
 		DeviceName:          stringPtrIfNotEmpty(strings.TrimSpace(body.DeviceName)),
 		UserID:              subject.UserID,
 		Nonce:               strings.TrimSpace(body.Nonce),
+		SID:                 service.GenerateSessionID(),
 	}
 	result, err := h.provider.BeginAuthorizeTransaction(c.Request.Context(), params)
 	if err != nil {
@@ -1424,6 +1425,7 @@ func (h *OAuthProviderHandler) handlePromptNone(c *gin.Context, req *service.Aut
 		ExpiresAt:           now.Add(10 * time.Minute), // authCodeTTL
 		GroupID:             &resolvedGroup,
 		Nonce:               req.Nonce,
+		SID:                 service.GenerateSessionID(),
 		CreatedAt:           now,
 	}
 
