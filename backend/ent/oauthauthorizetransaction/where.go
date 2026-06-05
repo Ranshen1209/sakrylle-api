@@ -719,6 +719,16 @@ func CodeChallengeHasSuffix(v string) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldHasSuffix(FieldCodeChallenge, v))
 }
 
+// CodeChallengeIsNil applies the IsNil predicate on the "code_challenge" field.
+func CodeChallengeIsNil() predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldIsNull(FieldCodeChallenge))
+}
+
+// CodeChallengeNotNil applies the NotNil predicate on the "code_challenge" field.
+func CodeChallengeNotNil() predicate.OAuthAuthorizeTransaction {
+	return predicate.OAuthAuthorizeTransaction(sql.FieldNotNull(FieldCodeChallenge))
+}
+
 // CodeChallengeEqualFold applies the EqualFold predicate on the "code_challenge" field.
 func CodeChallengeEqualFold(v string) predicate.OAuthAuthorizeTransaction {
 	return predicate.OAuthAuthorizeTransaction(sql.FieldEqualFold(FieldCodeChallenge, v))

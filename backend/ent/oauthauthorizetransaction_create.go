@@ -118,6 +118,14 @@ func (_c *OAuthAuthorizeTransactionCreate) SetCodeChallenge(v string) *OAuthAuth
 	return _c
 }
 
+// SetNillableCodeChallenge sets the "code_challenge" field if the given value is not nil.
+func (_c *OAuthAuthorizeTransactionCreate) SetNillableCodeChallenge(v *string) *OAuthAuthorizeTransactionCreate {
+	if v != nil {
+		_c.SetCodeChallenge(*v)
+	}
+	return _c
+}
+
 // SetCodeChallengeMethod sets the "code_challenge_method" field.
 func (_c *OAuthAuthorizeTransactionCreate) SetCodeChallengeMethod(v string) *OAuthAuthorizeTransactionCreate {
 	_c.mutation.SetCodeChallengeMethod(v)
@@ -376,9 +384,6 @@ func (_c *OAuthAuthorizeTransactionCreate) check() error {
 	}
 	if _, ok := _c.mutation.State(); !ok {
 		return &ValidationError{Name: "state", err: errors.New(`ent: missing required field "OAuthAuthorizeTransaction.state"`)}
-	}
-	if _, ok := _c.mutation.CodeChallenge(); !ok {
-		return &ValidationError{Name: "code_challenge", err: errors.New(`ent: missing required field "OAuthAuthorizeTransaction.code_challenge"`)}
 	}
 	if v, ok := _c.mutation.CodeChallenge(); ok {
 		if err := oauthauthorizetransaction.CodeChallengeValidator(v); err != nil {
@@ -717,6 +722,12 @@ func (u *OAuthAuthorizeTransactionUpsert) SetCodeChallenge(v string) *OAuthAutho
 // UpdateCodeChallenge sets the "code_challenge" field to the value that was provided on create.
 func (u *OAuthAuthorizeTransactionUpsert) UpdateCodeChallenge() *OAuthAuthorizeTransactionUpsert {
 	u.SetExcluded(oauthauthorizetransaction.FieldCodeChallenge)
+	return u
+}
+
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (u *OAuthAuthorizeTransactionUpsert) ClearCodeChallenge() *OAuthAuthorizeTransactionUpsert {
+	u.SetNull(oauthauthorizetransaction.FieldCodeChallenge)
 	return u
 }
 
@@ -1115,6 +1126,13 @@ func (u *OAuthAuthorizeTransactionUpsertOne) SetCodeChallenge(v string) *OAuthAu
 func (u *OAuthAuthorizeTransactionUpsertOne) UpdateCodeChallenge() *OAuthAuthorizeTransactionUpsertOne {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.UpdateCodeChallenge()
+	})
+}
+
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (u *OAuthAuthorizeTransactionUpsertOne) ClearCodeChallenge() *OAuthAuthorizeTransactionUpsertOne {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.ClearCodeChallenge()
 	})
 }
 
@@ -1711,6 +1729,13 @@ func (u *OAuthAuthorizeTransactionUpsertBulk) SetCodeChallenge(v string) *OAuthA
 func (u *OAuthAuthorizeTransactionUpsertBulk) UpdateCodeChallenge() *OAuthAuthorizeTransactionUpsertBulk {
 	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
 		s.UpdateCodeChallenge()
+	})
+}
+
+// ClearCodeChallenge clears the value of the "code_challenge" field.
+func (u *OAuthAuthorizeTransactionUpsertBulk) ClearCodeChallenge() *OAuthAuthorizeTransactionUpsertBulk {
+	return u.Update(func(s *OAuthAuthorizeTransactionUpsert) {
+		s.ClearCodeChallenge()
 	})
 }
 
