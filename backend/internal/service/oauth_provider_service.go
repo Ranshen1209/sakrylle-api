@@ -477,6 +477,59 @@ func (s *OAuthProviderService) ListClientsWithFrontchannelLogout(ctx context.Con
 	return s.clientRepo.ListClientsWithFrontchannelLogout(ctx)
 }
 
+// IntrospectToken implements RFC 7662 token introspection. Only confidential
+// clients (those with client_secret_hash) may call this endpoint.
+//
+// The token parameter is the access or refresh token to introspect.
+// Returns an IntrospectionResponse with active=true and full claims if the
+// token is valid, or active=false if not found/expired/revoked.
+func (s *OAuthProviderService) IntrospectToken(ctx context.Context, clientID string, token string) (*IntrospectionResponse, error) {
+	if s.apiKeyRepo == nil {
+		return &IntrospectionResponse{Active: false}, nil
+	}
+
+	apiKey, err := s.apiKeyRepo.GetByKey(ctx, token)
+	if err != nil || apiKey == nil || apiKey.Status != "active" {
+		return &IntrospectionResponse{Active: false}, nil
+	}
+
+	// Check if the token has expired.
+	if apiKey.ExpiresAt != nil && apiKey.ExpiresAt.Before(time.Now()) {
+		return &IntrospectionResponse{Active: false}, nil
+	}
+
+	// Load OAuth access metadata for scope info.
+	meta, err := s.LoadOAuthAccessMetadata(ctx, apiKey.ID)
+	if err != nil || meta == nil {
+		return &IntrospectionResponse{Active: false}, nil
+	}
+
+	issuer := ""
+	if s.oidcIssuer != nil {
+		issuer = s.oidcIssuer(ctx)
+	}
+
+	scopeStr := strings.Join(meta.Scopes, " ")
+	userIDStr := fmt.Sprintf("%d", apiKey.UserID)
+	tokenType := "Bearer"
+
+	resp := &IntrospectionResponse{
+		Active:    true,
+		Scope:     &scopeStr,
+		ClientID:  &meta.ClientID,
+		TokenType: &tokenType,
+		Sub:       &userIDStr,
+		Iss:       &issuer,
+	}
+
+	exp := meta.ExpiresAt.Unix()
+	resp.Exp = &exp
+	iat := meta.IssuedAt.Unix()
+	resp.Iat = &iat
+
+	return resp, nil
+}
+
 // authenticateClient verifies client credentials at the /oauth/token endpoint.
 //
 //	PKCE-only client → no further check; PKCE verifier validation happens later.
