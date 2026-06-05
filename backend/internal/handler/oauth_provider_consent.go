@@ -359,6 +359,10 @@ func mustMarshalJSONForScript(v any, panicLabel string) string {
 // scopeBulletsHTML renders scope <li>s with a friendly description per known scope.
 func scopeBulletsHTML(scopes []string) string {
 	descs := map[string]string{
+		// OIDC standard scopes
+		"openid":   "使用您的账户登录（OpenID Connect）/ Sign in with your account (OpenID Connect)",
+		"profile":  "查看您的基本资料（用户名）/ Read your basic profile (username)",
+		"email":    "查看您的邮箱地址 / Read your email address",
 		// legacy scopes (kept for backward compat)
 		"image_generation": "调用图像生成 API（gpt-image-2 等）/ Call image generation API",
 		"balance:read":     "读取您的账户余额 / Read your balance",
