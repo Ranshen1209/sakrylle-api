@@ -64,7 +64,7 @@ func (OAuthAuthorizeTransaction) Fields() []ent.Field {
 			Comment("Opaque client state echoed back on redirect; not validated server-side"),
 		field.String("code_challenge").
 			MaxLen(128).
-			NotEmpty(),
+			Optional(),
 		field.String("code_challenge_method").
 			MaxLen(10).
 			Default("S256"),
