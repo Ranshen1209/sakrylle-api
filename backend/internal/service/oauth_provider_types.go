@@ -118,6 +118,10 @@ type OAuthCode struct {
 	// the id_token's nonce claim (OIDC Core §3.1.3.7). Empty when the RP did
 	// not supply one.
 	Nonce string
+	// SID is the OIDC session identifier generated at /oauth/authorize for
+	// back-channel logout session tracking. Included in id_token and
+	// logout_token so RPs can correlate sessions. Empty for legacy rows.
+	SID string
 	// CreatedAt is when the code row was written (≈ when the user completed
 	// authentication + consent). Used as the id_token auth_time on the initial
 	// mint. Zero for legacy rows / the in-memory test path.
@@ -249,6 +253,10 @@ type OAuthAuthorizeTransaction struct {
 	// it is carried through to the id_token and UserInfo response to include
 	// requested claims within the scope boundary.
 	Claims map[string]any
+	// SID is the OIDC session identifier generated at /oauth/authorize for
+	// back-channel logout session tracking. Copied into the OAuthCode at
+	// approval and ultimately into id_token and logout_token.
+	SID string
 }
 
 // OAuthAuthorizedGrant is the v2 user-facing per-device grant projection

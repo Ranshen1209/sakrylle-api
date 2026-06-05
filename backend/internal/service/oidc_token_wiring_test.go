@@ -29,14 +29,14 @@ func TestMaybeSignIDToken_GatingAndSigning(t *testing.T) {
 	)
 
 	// Without openid: no id_token.
-	tok, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "cid", SigningAlgorithm: "RS256"}, 7, []string{"profile:read"}, "", time.Time{})
+	tok, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "cid", SigningAlgorithm: "RS256"}, 7, []string{"profile:read"}, "", time.Time{}, "")
 	if err != nil || tok != "" {
 		t.Fatalf("expected no id_token without openid; tok=%q err=%v", tok, err)
 	}
 
 	// With openid + profile + email: signed token with correct claims.
 	authTime := time.Unix(1_699_990_000, 0)
-	tok, err = svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "cid", SigningAlgorithm: "RS256"}, 7, []string{"openid", "profile", "email"}, "nce", authTime)
+	tok, err = svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "cid", SigningAlgorithm: "RS256"}, 7, []string{"openid", "profile", "email"}, "nce", authTime, "")
 	if err != nil || tok == "" {
 		t.Fatalf("expected id_token; err=%v", err)
 	}
@@ -73,7 +73,7 @@ func TestMaybeSignIDToken_ES256PerClient(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tok, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "cid", SigningAlgorithm: tc.alg}, 7, []string{"openid"}, "", time.Time{})
+			tok, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "cid", SigningAlgorithm: tc.alg}, 7, []string{"openid"}, "", time.Time{}, "")
 			if err != nil || tok == "" {
 				t.Fatalf("expected id_token; tok=%q err=%v", tok, err)
 			}
@@ -123,7 +123,7 @@ func assertSignedClaims(t *testing.T, parsed *jwt.Token, authTime time.Time) {
 
 func TestMaybeSignIDToken_NotWiredIsNoOp(t *testing.T) {
 	svc := &OAuthProviderService{} // OIDC not wired
-	tok, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "c", SigningAlgorithm: "RS256"}, 1, []string{"openid"}, "", time.Time{})
+	tok, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "c", SigningAlgorithm: "RS256"}, 1, []string{"openid"}, "", time.Time{}, "")
 	if err != nil || tok != "" {
 		t.Errorf("unwired OIDC must no-op; tok=%q err=%v", tok, err)
 	}
@@ -132,7 +132,7 @@ func TestMaybeSignIDToken_NotWiredIsNoOp(t *testing.T) {
 func TestMaybeSignIDToken_EmptyIssuerFailsClosed(t *testing.T) {
 	ks := newTestSignerSvc(t)
 	svc := (&OAuthProviderService{}).WithOIDC(ks.Sign, func(context.Context) string { return "" }, nil)
-	if _, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "c", SigningAlgorithm: "RS256"}, 1, []string{"openid"}, "", time.Time{}); err == nil {
+	if _, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "c", SigningAlgorithm: "RS256"}, 1, []string{"openid"}, "", time.Time{}, ""); err == nil {
 		t.Error("empty issuer with openid granted must fail closed")
 	}
 }
@@ -150,7 +150,7 @@ func TestMaybeSignIDToken_UserLookupErrorStripsProfileEmail(t *testing.T) {
 			return OIDCUserClaims{}, errors.New("db down")
 		},
 	)
-	tok, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "cid", SigningAlgorithm: "RS256"}, 7, []string{"openid", "profile", "email"}, "n", time.Time{})
+	tok, err := svc.maybeSignIDToken(context.Background(), &OAuthClient{ClientID: "cid", SigningAlgorithm: "RS256"}, 7, []string{"openid", "profile", "email"}, "n", time.Time{}, "")
 	if err != nil || tok == "" {
 		t.Fatalf("token must still mint on lookup failure (sub suffices); tok=%q err=%v", tok, err)
 	}

@@ -387,6 +387,7 @@ func TestIDTokenClaimsBuilder(t *testing.T) {
 				now,
 				ttl,
 				"",
+				"",
 			)
 
 			// Assert

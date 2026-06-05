@@ -88,6 +88,7 @@ type BeginAuthorizeParams struct {
 	CreatedIP           *string
 	CreatedUserAgent    *string
 	Nonce               string // OIDC nonce captured from the authorize request
+	SID                 string // OIDC session id for back-channel logout
 }
 
 // BeginAuthorizeResult carries the rendering payload + plaintext CSRF token
@@ -282,7 +283,10 @@ func resolveSigningAlgorithm(raw string) SigningAlgorithm {
 //
 // Empty or absent entries are treated as "not applicable" and the corresponding
 // hash claim is omitted.
-func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, client *OAuthClient, userID int64, scopes []string, nonce string, authTime time.Time, tokenContext ...string) (string, error) {
+//
+// sid is the OIDC session identifier for back-channel logout. Empty means no
+// session tracking (e.g., refresh flow).
+func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, client *OAuthClient, userID int64, scopes []string, nonce string, authTime time.Time, sid string, tokenContext ...string) (string, error) {
 	if s.oidcSign == nil || s.oidcIssuer == nil || !HasScope(scopes, ScopeOpenID) {
 		return "", nil
 	}
@@ -343,7 +347,7 @@ func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, client *OAu
 		hashArgs = []string{atHash, cHash}
 	}
 
-	claims, err := BuildIDTokenClaims(issuer, client.ClientID, u, claimScopes, nonce, authTime, time.Now(), DefaultOIDCIDTokenTTL, pairwiseSub, hashArgs...)
+	claims, err := BuildIDTokenClaims(issuer, client.ClientID, u, claimScopes, nonce, authTime, time.Now(), DefaultOIDCIDTokenTTL, pairwiseSub, sid, hashArgs...)
 	if err != nil {
 		return "", fmt.Errorf("oidc: build id_token claims: %w", err)
 	}
@@ -721,6 +725,7 @@ func (s *OAuthProviderService) BeginAuthorizeTransaction(
 		CreatedIP:             params.CreatedIP,
 		CreatedUserAgent:      params.CreatedUserAgent,
 		Nonce:                 params.Nonce,
+		SID:                   params.SID,
 	}
 	if err := s.authzTxRepo.CreateAuthorizeTransaction(ctx, tx); err != nil {
 		return nil, fmt.Errorf("create authorize transaction: %w", err)
@@ -881,6 +886,7 @@ func (s *OAuthProviderService) ApproveAuthorization(
 		DeviceID:              tx.DeviceID,
 		DeviceName:            tx.DeviceName,
 		Nonce:                 tx.Nonce,
+		SID:                   tx.SID,
 		CreatedAt:             now,
 	}
 	if atomic, ok := s.authzTxRepo.(OAuthAuthorizeAtomicRepository); ok {
@@ -1163,7 +1169,7 @@ func (s *OAuthProviderService) RefreshAccessToken(
 	// not this rotation) and has no fresh auth_time (no re-authentication
 	// happened here). So we deliberately pass empty nonce + zero authTime.
 	// Pass newAccessKey for at_hash computation (no authorization code in refresh flow).
-	idTok, idErr := s.maybeSignIDToken(ctx, client, row.UserID, scopes, "", time.Time{}, newAccessKey)
+	idTok, idErr := s.maybeSignIDToken(ctx, client, row.UserID, scopes, "", time.Time{}, "", newAccessKey)
 	if idErr != nil {
 		return nil, idErr
 	}
@@ -1963,7 +1969,7 @@ func (s *OAuthProviderService) mintTokensFromCode(
 		}
 	}
 
-	idTok, idErr := s.maybeSignIDToken(ctx, client, code.UserID, scopes, code.Nonce, code.CreatedAt, accessKey, codePlain)
+	idTok, idErr := s.maybeSignIDToken(ctx, client, code.UserID, scopes, code.Nonce, code.CreatedAt, code.SID, accessKey, codePlain)
 	if idErr != nil {
 		return nil, idErr
 	}
