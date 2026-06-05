@@ -954,6 +954,7 @@ var (
 		{Name: "backchannel_logout_session_required", Type: field.TypeBool, Default: false},
 		{Name: "subject_type", Type: field.TypeString, Size: 16, Default: "public"},
 		{Name: "sector_identifier_uri", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "frontchannel_logout_uri", Type: field.TypeString, Nullable: true, Size: 2147483647},
 	}
 	// OauthClientsTable holds the schema information for the "oauth_clients" table.
 	OauthClientsTable = &schema.Table{
@@ -1848,6 +1849,7 @@ var (
 		{Name: "balance_notify_extra_emails", Type: field.TypeString, Default: "[]", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "total_recharged", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
+		{Name: "email_verified", Type: field.TypeBool, Default: false},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{

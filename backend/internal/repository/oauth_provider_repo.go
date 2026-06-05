@@ -93,6 +93,26 @@ func (r *oauthProviderRepository) ListEnabledRedirectURIs(ctx context.Context) (
 	return out, nil
 }
 
+// ListClientsWithFrontchannelLogout returns all non-disabled clients that
+// have a non-empty frontchannel_logout_uri. Used by the front-channel logout
+// endpoint to render hidden iframes for each registered RP.
+func (r *oauthProviderRepository) ListClientsWithFrontchannelLogout(ctx context.Context) ([]*service.OAuthClient, error) {
+	rows, err := r.client.OAuthClient.Query().
+		Where(
+			oauthclient.DisabledEQ(false),
+			oauthclient.FrontchannelLogoutURINotNil(),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list clients with frontchannel_logout_uri: %w", err)
+	}
+	out := make([]*service.OAuthClient, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entOAuthClientToService(row))
+	}
+	return out, nil
+}
+
 // ── OAuthCodeRepository ─────────────────────────────────────────────────────
 
 func (r *oauthProviderRepository) CreateCode(ctx context.Context, code *service.OAuthCode) error {
@@ -1116,6 +1136,7 @@ func entOAuthClientToService(row *dbent.OAuthClient) *service.OAuthClient {
 		RequestURIs:                      row.RequestUris,
 		BackchannelLogoutURI:             row.BackchannelLogoutURI,
 		BackchannelLogoutSessionRequired: row.BackchannelLogoutSessionRequired,
+		FrontchannelLogoutURI:            row.FrontchannelLogoutURI,
 	}
 	if row.ClientSecretHash != nil {
 		out.ClientSecretHash = *row.ClientSecretHash

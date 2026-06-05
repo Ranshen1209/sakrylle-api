@@ -75,6 +75,8 @@ const (
 	FieldSubjectType = "subject_type"
 	// FieldSectorIdentifierURI holds the string denoting the sector_identifier_uri field in the database.
 	FieldSectorIdentifierURI = "sector_identifier_uri"
+	// FieldFrontchannelLogoutURI holds the string denoting the frontchannel_logout_uri field in the database.
+	FieldFrontchannelLogoutURI = "frontchannel_logout_uri"
 	// Table holds the table name of the oauthclient in the database.
 	Table = "oauth_clients"
 )
@@ -113,6 +115,7 @@ var Columns = []string{
 	FieldBackchannelLogoutSessionRequired,
 	FieldSubjectType,
 	FieldSectorIdentifierURI,
+	FieldFrontchannelLogoutURI,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -304,4 +307,9 @@ func BySubjectType(opts ...sql.OrderTermOption) OrderOption {
 // BySectorIdentifierURI orders the results by the sector_identifier_uri field.
 func BySectorIdentifierURI(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSectorIdentifierURI, opts...).ToFunc()
+}
+
+// ByFrontchannelLogoutURI orders the results by the frontchannel_logout_uri field.
+func ByFrontchannelLogoutURI(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFrontchannelLogoutURI, opts...).ToFunc()
 }

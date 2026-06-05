@@ -502,6 +502,26 @@ func (_u *OAuthClientUpdate) ClearSectorIdentifierURI() *OAuthClientUpdate {
 	return _u
 }
 
+// SetFrontchannelLogoutURI sets the "frontchannel_logout_uri" field.
+func (_u *OAuthClientUpdate) SetFrontchannelLogoutURI(v string) *OAuthClientUpdate {
+	_u.mutation.SetFrontchannelLogoutURI(v)
+	return _u
+}
+
+// SetNillableFrontchannelLogoutURI sets the "frontchannel_logout_uri" field if the given value is not nil.
+func (_u *OAuthClientUpdate) SetNillableFrontchannelLogoutURI(v *string) *OAuthClientUpdate {
+	if v != nil {
+		_u.SetFrontchannelLogoutURI(*v)
+	}
+	return _u
+}
+
+// ClearFrontchannelLogoutURI clears the value of the "frontchannel_logout_uri" field.
+func (_u *OAuthClientUpdate) ClearFrontchannelLogoutURI() *OAuthClientUpdate {
+	_u.mutation.ClearFrontchannelLogoutURI()
+	return _u
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_u *OAuthClientUpdate) Mutation() *OAuthClientMutation {
 	return _u.mutation
@@ -750,6 +770,12 @@ func (_u *OAuthClientUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.SectorIdentifierURICleared() {
 		_spec.ClearField(oauthclient.FieldSectorIdentifierURI, field.TypeString)
+	}
+	if value, ok := _u.mutation.FrontchannelLogoutURI(); ok {
+		_spec.SetField(oauthclient.FieldFrontchannelLogoutURI, field.TypeString, value)
+	}
+	if _u.mutation.FrontchannelLogoutURICleared() {
+		_spec.ClearField(oauthclient.FieldFrontchannelLogoutURI, field.TypeString)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1244,6 +1270,26 @@ func (_u *OAuthClientUpdateOne) ClearSectorIdentifierURI() *OAuthClientUpdateOne
 	return _u
 }
 
+// SetFrontchannelLogoutURI sets the "frontchannel_logout_uri" field.
+func (_u *OAuthClientUpdateOne) SetFrontchannelLogoutURI(v string) *OAuthClientUpdateOne {
+	_u.mutation.SetFrontchannelLogoutURI(v)
+	return _u
+}
+
+// SetNillableFrontchannelLogoutURI sets the "frontchannel_logout_uri" field if the given value is not nil.
+func (_u *OAuthClientUpdateOne) SetNillableFrontchannelLogoutURI(v *string) *OAuthClientUpdateOne {
+	if v != nil {
+		_u.SetFrontchannelLogoutURI(*v)
+	}
+	return _u
+}
+
+// ClearFrontchannelLogoutURI clears the value of the "frontchannel_logout_uri" field.
+func (_u *OAuthClientUpdateOne) ClearFrontchannelLogoutURI() *OAuthClientUpdateOne {
+	_u.mutation.ClearFrontchannelLogoutURI()
+	return _u
+}
+
 // Mutation returns the OAuthClientMutation object of the builder.
 func (_u *OAuthClientUpdateOne) Mutation() *OAuthClientMutation {
 	return _u.mutation
@@ -1522,6 +1568,12 @@ func (_u *OAuthClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuthClient
 	}
 	if _u.mutation.SectorIdentifierURICleared() {
 		_spec.ClearField(oauthclient.FieldSectorIdentifierURI, field.TypeString)
+	}
+	if value, ok := _u.mutation.FrontchannelLogoutURI(); ok {
+		_spec.SetField(oauthclient.FieldFrontchannelLogoutURI, field.TypeString, value)
+	}
+	if _u.mutation.FrontchannelLogoutURICleared() {
+		_spec.ClearField(oauthclient.FieldFrontchannelLogoutURI, field.TypeString)
 	}
 	_node = &OAuthClient{config: _u.config}
 	_spec.Assign = _node.assignValues
