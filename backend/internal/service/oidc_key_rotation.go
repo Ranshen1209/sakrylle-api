@@ -12,6 +12,10 @@ const (
 	// DefaultOIDCKeyRotationIntervalHours is the default interval between
 	// automatic key rotations (90 days).
 	DefaultOIDCKeyRotationIntervalHours = 2160
+	// DefaultOIDCKeyCleanupIntervalHours is the default interval between
+	// independent cleanup cycles (24 hours). Cleanup removes keys whose
+	// grace period has expired, independent of the rotation schedule.
+	DefaultOIDCKeyCleanupIntervalHours = 24
 	// DefaultOIDCAutoRotationEnabled controls whether automatic key rotation
 	// runs by default.
 	DefaultOIDCAutoRotationEnabled = true
@@ -19,13 +23,23 @@ const (
 
 // OIDCKeyRotationScheduler manages automatic background rotation of OIDC
 // signing keys (both RSA and EC). It reads configuration from the settings
-// service and starts a ticker-based goroutine.
+// service and starts two ticker-based goroutines: one for rotation and one
+// for independent cleanup.
 //
 // Rotation sequence:
 //  1. Rotate both RSA and EC keys.
 //  2. Wait for the grace period (so RPs can refresh their JWKS cache).
 //  3. Clean up expired keys.
 //  4. Sleep until the next rotation interval.
+//
+// Cleanup sequence (independent of rotation):
+//  1. Check if auto-rotation is enabled.
+//  2. Clean up expired keys.
+//  3. Sleep until the next cleanup interval.
+//
+// This dual-loop design ensures keys whose grace period has expired (e.g.,
+// after a scheduler restart or from a previous rotation) are cleaned up
+// promptly, regardless of when the next rotation fires.
 //
 // Failures are logged but never abort the scheduler — a failed rotation
 // is retried on the next tick.
@@ -35,21 +49,20 @@ type OIDCKeyRotationScheduler struct {
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
-	done   chan struct{} // closed when the goroutine exits
+	wg     sync.WaitGroup // tracks both goroutines
 }
 
 // NewOIDCKeyRotationScheduler creates the scheduler. It does not start
-// the background goroutine — call Start() for that.
+// the background goroutines — call Start() for that.
 func NewOIDCKeyRotationScheduler(keySvc *OIDCKeyService, settingSvc SettingRepository) *OIDCKeyRotationScheduler {
 	return &OIDCKeyRotationScheduler{
 		keySvc:     keySvc,
 		settingSvc: settingSvc,
-		done:       make(chan struct{}),
 	}
 }
 
-// Start launches the background rotation goroutine. It is idempotent and
-// safe to call multiple times (only the first call has effect).
+// Start launches both background goroutines (rotation and cleanup). It is
+// idempotent and safe to call multiple times (only the first call has effect).
 func (s *OIDCKeyRotationScheduler) Start() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -61,12 +74,15 @@ func (s *OIDCKeyRotationScheduler) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 
-	go s.loop(ctx)
-	slog.Info("oidc key rotation scheduler started")
+	s.wg.Add(2)
+	go s.rotationLoop(ctx)
+	go s.cleanupLoop(ctx)
+	slog.Info("oidc key rotation scheduler started",
+		"goroutines", "rotation,cleanup")
 }
 
-// Stop signals the background goroutine to exit and waits for it to finish.
-// Idempotent and safe to call when not started.
+// Stop signals both background goroutines to exit and waits for them to
+// finish. Idempotent and safe to call when not started.
 func (s *OIDCKeyRotationScheduler) Stop() {
 	s.mu.Lock()
 	if s.cancel == nil {
@@ -78,17 +94,21 @@ func (s *OIDCKeyRotationScheduler) Stop() {
 	s.mu.Unlock()
 
 	cancel()
-	<-s.done
+	s.wg.Wait()
 	slog.Info("oidc key rotation scheduler stopped")
 }
 
-func (s *OIDCKeyRotationScheduler) loop(ctx context.Context) {
-	defer close(s.done)
+// rotationLoop is the main rotation goroutine. It rotates both RSA and EC
+// keys on a configurable interval, waits for the grace period, then cleans
+// up expired keys from the just-rotated set. Failures are logged but never
+// abort the loop.
+func (s *OIDCKeyRotationScheduler) rotationLoop(ctx context.Context) {
+	defer s.wg.Done()
 
 	// Recover from panics so a single rotation failure doesn't kill the scheduler.
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("oidc key rotation: panic recovered, scheduler will restart on next tick", "panic", r)
+			slog.Error("oidc key rotation: panic recovered in rotation loop", "panic", r)
 		}
 	}()
 
@@ -135,7 +155,7 @@ func (s *OIDCKeyRotationScheduler) loop(ctx context.Context) {
 		}
 
 		// Clean up expired keys.
-		s.cleanupExpired(ctx)
+		s.cleanupExpired(ctx, "rotation_cycle")
 
 		// Sleep until next rotation interval.
 		interval := time.Duration(intervalHours) * time.Hour
@@ -145,6 +165,54 @@ func (s *OIDCKeyRotationScheduler) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(interval):
+		}
+	}
+}
+
+// cleanupLoop runs an independent cleanup cycle that removes expired keys
+// regardless of when rotation last fired. This ensures keys whose grace
+// period has passed (e.g., after a scheduler restart) are cleaned up
+// promptly.
+func (s *OIDCKeyRotationScheduler) cleanupLoop(ctx context.Context) {
+	defer s.wg.Done()
+
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("oidc key rotation: panic recovered in cleanup loop", "panic", r)
+		}
+	}()
+
+	// Short startup delay, slightly offset from rotation to avoid both
+	// goroutines hammering the store simultaneously at boot.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(45 * time.Second):
+	}
+
+	for {
+		if !s.isEnabled(ctx) {
+			slog.Debug("oidc cleanup: auto rotation disabled; waiting for enable")
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Minute):
+				continue
+			}
+		}
+
+		intervalHours := s.cleanupIntervalHours(ctx)
+		slog.Info("oidc cleanup cycle starting",
+			"interval_hours", intervalHours)
+
+		s.cleanupExpired(ctx, "independent")
+
+		slog.Info("oidc cleanup cycle complete; next cleanup scheduled",
+			"next_in_hours", intervalHours)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(intervalHours) * time.Hour):
 		}
 	}
 }
@@ -163,13 +231,30 @@ func (s *OIDCKeyRotationScheduler) rotateBoth(ctx context.Context) {
 	}
 }
 
-func (s *OIDCKeyRotationScheduler) cleanupExpired(ctx context.Context) {
+func (s *OIDCKeyRotationScheduler) cleanupExpired(ctx context.Context, source string) {
 	deleted, err := s.keySvc.CleanupExpiredKeys(ctx)
 	if err != nil {
-		slog.Error("oidc auto rotation: cleanup failed", "error", err)
+		slog.Error("oidc key cleanup failed", "source", source, "error", err)
 	} else {
-		slog.Info("oidc auto rotation: expired keys cleaned up", "deleted", deleted)
+		slog.Info("oidc key cleanup completed", "source", source, "deleted", deleted)
 	}
+}
+
+func (s *OIDCKeyRotationScheduler) cleanupIntervalHours(ctx context.Context) int {
+	if s.settingSvc == nil {
+		return DefaultOIDCKeyCleanupIntervalHours
+	}
+	v, err := s.settingSvc.GetValue(ctx, "oidc_key_cleanup_interval_hours")
+	if err != nil || v == "" {
+		return DefaultOIDCKeyCleanupIntervalHours
+	}
+	hours, err := strconv.Atoi(v)
+	if err != nil || hours <= 0 {
+		slog.Warn("oidc cleanup: invalid interval, using default",
+			"value", v, "default", DefaultOIDCKeyCleanupIntervalHours)
+		return DefaultOIDCKeyCleanupIntervalHours
+	}
+	return hours
 }
 
 func (s *OIDCKeyRotationScheduler) isEnabled(ctx context.Context) bool {
