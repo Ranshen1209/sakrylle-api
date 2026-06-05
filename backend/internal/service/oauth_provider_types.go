@@ -514,6 +514,26 @@ type OAuthTokenMintRepository interface {
 	MintTokenSet(ctx context.Context, params *OAuthTokenMintParams) error
 }
 
+// OAuthConsentGrant records a user's consent for a third-party client.
+// This allows subsequent authorize requests to auto-approve without
+// re-showing the consent page.
+type OAuthConsentGrant struct {
+	ID        int64
+	UserID    int64
+	ClientID  string
+	Scope     []string
+	GrantedAt time.Time
+	ExpiresAt *time.Time
+}
+
+// OAuthConsentGrantRepository manages consent grants for third-party clients.
+type OAuthConsentGrantRepository interface {
+	UpsertGrant(ctx context.Context, userID int64, clientID string, scope []string, expiresAt *time.Time) error
+	GetGrant(ctx context.Context, userID int64, clientID string) (*OAuthConsentGrant, error)
+	DeleteGrant(ctx context.Context, userID int64, clientID string) error
+	ListGrantsByUser(ctx context.Context, userID int64) ([]*OAuthConsentGrant, error)
+}
+
 // ── Errors ──────────────────────────────────────────────────────────────────
 
 // Sentinel errors are mapped to OAuth standard error codes by the handler.
