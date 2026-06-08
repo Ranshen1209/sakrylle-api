@@ -46,6 +46,8 @@ Phase 4（测试 / 打包 / 发布 / 回滚）
 
 **关键判断（已确认 2026-06-03）**：**Studio 首发认证 = 复用 CLI 凭据（分支 A，读 `~/.sakrylle-cli/auth.json`）**；Phase 1 + Phase 2 可先行完成并发布该模式的 Studio。**独立 OIDC 浏览器登录（分支 B）后置为增强项**，等 sub2api OIDC 改造（`03`）完成再做（理由见 Phase 3 §取舍）。
 
+**实现状态（2026-06-06）**：CodexMonitor 工作树已完成 Sakrylle Studio 代码级品牌/配置隔离、Sakrylle CLI 默认发现与 `SAKRYLLE_CLI_HOME` 注入、localStorage `sakrylle-studio.*` 迁移、daemon `sakrylle-cli-daemon`/4733 隔离、Sentry 默认关闭、移除上游 updater 信任链、公开文档与设置页 i18n rebrand。仍需真实 Sakrylle CLI app-server 冒烟、生成 Sakrylle 自有 Tauri updater 签名公钥并恢复自动更新、在带 `cmake` 的环境中重跑 Rust checks、Monet 主题/图标/多平台打包签名发布。
+
 ---
 
 ## Phase 0 · 调研与保护
@@ -207,31 +209,31 @@ Phase 4（测试 / 打包 / 发布 / 回滚）
   - 实施说明：用 Sakrylle cherry-blossom 图标重新生成全套 Tauri 图标尺寸（`pnpm tauri icon <source.png>` 可一键生成）
   - 验收标准：所有平台应用图标为 Sakrylle 樱花，无上游残留
 
-- [ ] **P2-6：[串行，依赖 P2-1] localStorage 前缀迁移 + 启动迁移逻辑**（`20` 差距 G6 / `05` 隔离面 #13）
-  - 目标：localStorage 前缀 `codexmonitor.*` → `sakrylle-studio.*`（或规范定的 `sakrylle-monitor.*`，见下「不确定」），一次性迁移不丢用户 thread 历史
+- [x] **P2-6：[串行，依赖 P2-1] localStorage 前缀迁移 + 启动迁移逻辑**（`20` 差距 G6 / `05` 隔离面 #13）— **[✓ 2026-06-06 CodexMonitor 工作树已实现]**
+  - 目标：localStorage 前缀 `codexmonitor.*` → `sakrylle-studio.*`；历史冲突前缀 `sakrylle-monitor.*` 仅作为读旧 fallback
   - 涉及文件：`src/features/threads/utils/threadStorage.ts:3-7`
-  - 实施说明：改前缀常量；加一次性迁移逻辑（启动时检测旧前缀 key → 复制到新前缀 → 标记已迁移）。settings.json/workspaces.json 因 bundle id 变更不自动迁移（P0-8 决策为全新启动，**不迁移上游数据**）；仅 localStorage 做同实例内前缀迁移
-  - 「不确定」：`05` §13 写 `sakrylle-monitor.*`，但 `20`/本文产品名为 Sakrylle Studio。**建议统一为 `sakrylle-studio.*`** 以对齐品牌；需在迁移前与 `05` 规范对齐确认（避免两文档前缀不一致）
+  - 实施说明：改前缀常量；读新 key 优先，新 key 不存在时从旧前缀复制到新 key。settings.json/workspaces.json 因 bundle id 变更不自动迁移（P0-8 决策为全新启动，**不迁移上游数据**）；仅 localStorage 做同实例内前缀迁移
   - 验收标准：前缀迁移后旧 thread 历史可见；与上游 CodexMonitor 实例 localStorage 不混用；迁移失败有兜底（保留旧 key 不删，仅复制）
 
-- [ ] **P2-7：[并行] daemon 端口 4732 → 4733**（`20` 差距 G11 / `05` 隔离面 #11）
+- [x] **P2-7：[并行] daemon 端口 4732 → 4733**（`20` 差距 G11 / `05` 隔离面 #11）— **[✓ 2026-06-06 CodexMonitor 工作树已实现]**
   - 目标：远程 backend daemon 端口与上游隔离
   - 涉及文件：`src-tauri/src/bin/codex_monitor_daemonctl.rs:28`（默认端口）；daemon 二进制 `src-tauri/src/bin/codex_monitor_daemon.rs`
   - 实施说明：默认端口 `4732` → `4733`；`AppSettings.remoteBackendHost` 仍可用户覆盖。**远程 backend 是否纳入首发范围属产品决策（U6）**——即便首发不主推，端口仍应改以避免同机冲突。建议 daemon 二进制/进程名一并对齐 `05` §8（`sakrylle-cli-daemon` 等价命名，「不确定」是否需重命名 bin crate，可后续）
   - 验收标准：Studio fork daemon 监听 4733，与上游 4732 不冲突
 
-- [ ] **P2-8：[并行] Sentry DSN 处理**（`20` 差距 G2，§7 高风险）
+- [x] **P2-8：[并行] Sentry DSN 处理**（`20` 差距 G2，§7 高风险）— **[✓ 2026-06-06 CodexMonitor 工作树已实现：默认不初始化，需显式 DSN 才启用]**
   - 目标：消除崩溃数据外泄至 Dimillian Sentry project
   - 涉及文件：`src/main.tsx:8-9`
   - 实施说明：按 P0-5 结论 + **遥测默认关闭（已确认 2026-06-03）** —— **首发直接禁用**（删硬编码 DSN，确认空值时 Sentry 不初始化；若上游无空值禁用逻辑则补 `enabled: !!dsn`）。如未来需崩溃监控，再接 Sakrylle 自有 Sentry project（产品决策，须保持默认关闭、显式 opt-in）
   - 验收标准：无 DSN 时 Sentry 不初始化，无崩溃数据外发；构建无 Sentry 报错
   - 标注：安全相关，发布前必须完成（高风险差距 G2）
 
-- [ ] **P2-9：[并行] updater endpoint + pubkey 处理**（`20` 差距 G3，§7 高风险）
+- [x] **P2-9：[并行] updater endpoint + pubkey 处理**（`20` 差距 G3，§7 高风险）— **[部分完成 2026-06-06：上游 trust chain 已移除；Sakrylle 自有 pubkey 生成仍是发布阻断]**
   - 目标：自动更新指向 fork 仓库；重新生成签名密钥对
   - 涉及文件：`src-tauri/tauri.conf.json:plugins.updater.endpoints`（→ `Ranshen1209/sakrylle-studio` releases）、`plugins.updater.pubkey`（重新生成 minisign 密钥对）；`src/features/update/utils/postUpdateRelease.ts:4,6`（GitHub releases URL）
   - 实施说明：用 `tauri signer generate` 生成新 minisign 密钥对；**私钥安全保管（绝不入库）**，公钥写 `tauri.conf.json`；CI 发布时用私钥签名。若首发不做自动更新，可暂时禁用 updater 插件（仍须移除上游 pubkey/endpoint 避免信任他人签名）
   - 验收标准：updater endpoint 指向 fork；pubkey 为 Sakrylle 自有；无上游 Dimillian 签名信任残留
+  - 当前状态（2026-06-06）：CodexMonitor 工作树已移除上游 updater 配置和 pubkey，release notes 指向 Sakrylle fork；在生成 Sakrylle 自有 minisign key 并恢复配置前，自动更新保持禁用。
   - 标注：安全相关，发布前必须完成（高风险差距 G3）；私钥管理 → 谨慎处理
 
 ### Phase 2 风险
@@ -242,7 +244,7 @@ Phase 4（测试 / 打包 / 发布 / 回滚）
 | 漏改品牌字符串（约 20 处分散） | 中 | P2-3 逐文件 diff + 全仓 grep 复核 |
 | Sentry/updater 未处理即发布（安全） | 高 | P2-8/P2-9 列为发布阻断项 |
 | `liquid-glass` 最低 macOS 版本过高（U7） | 低 | 确认后若过高提供降级路径 |
-| 前缀命名两文档不一致（`sakrylle-monitor` vs `sakrylle-studio`） | 低 | P2-6 迁移前与 `05` 规范对齐 |
+| 前缀命名历史不一致（`sakrylle-monitor` vs `sakrylle-studio`） | 低 | 已统一为 `sakrylle-studio.*`；`sakrylle-monitor.*` 仅做 legacy fallback |
 
 ### Phase 2 验收标准
 
@@ -250,7 +252,7 @@ Phase 4（测试 / 打包 / 发布 / 回滚）
 2. 全部用户可见品牌为 Sakrylle Studio，无 `Codex Monitor`/`Dimillian` 残留。
 3. Monet Purple 主题 + 樱花图标到位，生态视觉统一。
 4. localStorage 前缀迁移有兜底，不丢用户数据。
-5. daemon 端口 4733；Sentry 不外发；updater 指向 fork + 自有 pubkey。
+5. daemon 端口 4733；Sentry 不外发；updater 不再信任上游 pubkey，生成 Sakrylle 自有 pubkey 后恢复自动更新。
 
 ---
 
@@ -411,12 +413,12 @@ Phase 4（测试 / 打包 / 发布 / 回滚）
 | 编号 | 待确认项 | 对应任务 | 状态 |
 |---|---|---|---|
 | A1 | 前端 CSS 方案（Tailwind / CSS Modules）+ Monet 替换点 | P0-2 | 待回填 |
-| A2 | 平台 conf 独立 identifier 字段清单 | P0-3 | 待回填 |
+| A2 | 平台 conf 独立 identifier 字段清单 | P0-3 | 已核实 2026-06-06：主 `tauri.conf.json` 为 `com.sakrylle.studio`；`tauri.ios.conf.json` 为 `com.sakrylle.studio.ios`；Windows/Linux conf 无独立 identifier，title 已改为 Sakrylle Studio |
 | A3 | `app-server` JSON-RPC 协议兼容结论 | P0-4 | 待回填（**首发阻断**） |
-| A4 | `VITE_SENTRY_DSN` 空值禁用结论 | P0-5 | 待回填 |
-| A5 | 持久化路径总数（是否有 `tauri-plugin-store`）+ CI 现状 | P0-6 | 待回填 |
+| A4 | `VITE_SENTRY_DSN` 空值禁用结论 | P0-5 | 已核实 2026-06-06：Studio 默认不初始化 Sentry，只有显式 DSN 才启用 |
+| A5 | 持久化路径总数（是否有 `tauri-plugin-store`）+ CI 现状 | P0-6 | 已核实 2026-06-06：无 `tauri-plugin-store`；持久化路径为 appData settings/workspaces + WebView localStorage；CI/发布签名仍待最终配置 |
 | A6 | `sakrylle-studio` vs `sakrylle-desktop` client 命名对齐 | P0-7 | 待回填 |
-| A7 | localStorage 前缀最终命名（`sakrylle-studio.*` vs `05` 的 `sakrylle-monitor.*`） | P2-6 | 待与 `05` 规范对齐 |
+| A7 | localStorage 前缀最终命名（`sakrylle-studio.*`；兼容读 `sakrylle-monitor.*`） | P2-6 | 已对齐 2026-06-06：新写入统一 `sakrylle-studio.*`，`codexmonitor.*` / `sakrylle-monitor.*` 只作为 legacy fallback |
 | A8 | Apple 代码签名/公证证书是否就绪 | P4-3 | 待回填 |
 | A9 | `tauri-plugin-liquid-glass` 最低 macOS 版本 | P2-4 | 待回填 |
 

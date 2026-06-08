@@ -143,7 +143,7 @@ last_verified: 2026-06-06
 - **确认方式**：代码核查——`grep -rn "tauri-plugin-store\|Store::load\|@tauri-apps/plugin-store" /Volumes/APFS_HD/Documents/Github/CodexMonitor/`
 - **阻塞任务**：`05` Phase 2 Studio 配置隔离完整性
 - **优先级**：P1
-- **状态**：🔧 CODE-CHECK — 留待 Studio Phase 0/2 开工时 grep `tauri-plugin-store`，无需用户决策。
+- **状态**：✅ RESOLVED — 2026-06-06 在 CodexMonitor 工作树核实未使用 `tauri-plugin-store` / `Store::load` / `@tauri-apps/plugin-store`。Studio 本地持久化面为 Tauri appData 下的 settings/workspaces 与 WebView localStorage；bundle id 迁移负责 appData 隔离，localStorage 用 `sakrylle-studio.*` 读旧写新迁移。
 
 ### Q-14：Tauri iOS/Windows conf 中 identifier 是否也含 `com.dimillian.codexmonitor`？
 - **来源**：studio uncertainties
@@ -151,7 +151,7 @@ last_verified: 2026-06-06
 - **确认方式**：代码核查——`cat /Volumes/APFS_HD/Documents/Github/CodexMonitor/src-tauri/tauri.ios.conf.json` 和 `tauri.windows.conf.json`（若存在）
 - **阻塞任务**：Phase 2 Studio iOS/Windows 构建正确性
 - **优先级**：P1
-- **状态**：🔧 CODE-CHECK — 留待 Studio Phase 2 开工时检查 `tauri.ios/windows.conf.json` identifier，统一改 `com.sakrylle.studio`，无需用户决策。
+- **状态**：✅ RESOLVED — 2026-06-06 在 CodexMonitor 工作树核实并改造：主 `tauri.conf.json` 为 `com.sakrylle.studio`，iOS 覆盖为 `com.sakrylle.studio.ios`，Windows/Linux 平台 conf 不含独立 identifier 但窗口 title 已改为 Sakrylle Studio。
 
 ### Q-15：Studio 的 `codex app-server` JSON-RPC 子协议与 Sakrylle CLI fork 是否完全兼容？
 - **来源**：studio uncertainties
