@@ -1,0 +1,14 @@
+---
+description: 通知邮件模板、管理员密码轮换与 Cloudflare DNS
+alwaysApply: true
+---
+
+# Notification Email Templates
+
+24 templates (12 events × 2 locales) in `settings` table, key `notification_email_template:<event>:<locale>`. Design: Monet purple header, inline-styled, dark mode support. Generator: `/tmp/sakrylle_email_templates.py` (one-off).
+
+## Admin & DNS Ops
+
+**Admin password rotation**: bcrypt 72B limit. **Assert hash non-empty + starts `$2b$` before SQL**. Script in original doc line 337-349. `.env` `ADMIN_PASSWORD` bootstrap-only.
+
+**Cloudflare DNS**: token at `/opt/stack/secrets/cloudflare.ini`, zone `cf223b3e0b2adcd4876cea779b041a1c`. All subdomains A → `64.83.47.108`, DNS-only (not proxied).

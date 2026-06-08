@@ -1,0 +1,18 @@
+---
+description: sakrylle-docs 文档治理 — 目录结构与 OAuth/OIDC 变更同步要求
+globs: sakrylle-docs/**,docs/**
+alwaysApply: false
+---
+
+# Sakrylle Docs Governance
+
+- `sakrylle-docs/` is tracked in this repository and is the **canonical source of truth** for Sakrylle API/OIDC/RP integration, product planning, program management, and brand-system docs.
+- Current center-doc layout:
+  - `sakrylle-docs/00-overview/` — executive summary and repository inventory.
+  - `sakrylle-docs/10-platform-identity/` — OAuth/OIDC current state, architecture, RP integration guide, commercial boundaries, configuration isolation.
+  - `sakrylle-docs/20-products/` — product-specific research/plans for CLI, Studio, Web, Chat, Image.
+  - `sakrylle-docs/30-program-management/` — roadmap, risk register, decision log, implementation checklist.
+  - `sakrylle-docs/40-brand-system/` — design/brand system.
+- Root-level numbered docs in `sakrylle-docs/` are compatibility stubs only. Update the canonical files under the structured directories, not the stubs.
+- Product repositories' `oidc-docs/` directories are local notes only. They must link back here instead of duplicating platform protocols, claims boundaries, roadmap, risk register, or design system docs.
+- When changing OAuth/OIDC behavior, scopes, claims, client registration, configuration isolation, branding rules, or product rollout status, update `sakrylle-docs/` in the same change or explicitly state why docs were not changed.

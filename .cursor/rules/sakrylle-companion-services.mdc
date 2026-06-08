@@ -1,0 +1,18 @@
+---
+description: 伴生服务域名、部署来源与 doc.sakrylle.com 锁定政策
+alwaysApply: true
+---
+
+# Companion Services
+
+| Domain | Purpose | Source | Notes |
+|---|---|---|---|
+| `api.sakrylle.com` | Nginx reverse proxy to `/v1/*` | `nginx/conf.d/sakrylle-api.conf` | Separates API from web UI |
+| `doc.sakrylle.com` | VitePress docs (zh/en) | [Ranshen1209/sakrylle-docs](https://github.com/Ranshen1209/sakrylle-docs) (private) | GHA deploy on push to `main`. **Nginx gotcha**: `try_files` MUST include `$uri.html` before fallback for `cleanUrls: true` |
+| `status.sakrylle.com` | relay-pulse fork | [Ranshen1209/relay-pulse](https://github.com/Ranshen1209/relay-pulse) `theme/sakrylle` | 7 probes @ 3m cadence, ~$0.51/mo. Config hot-reloads |
+| `sakrylle.com` / `www` | 301 redirect | `nginx/conf.d/sakrylle-redirect.conf` | → `https://sub.sakrylle.com/` |
+
+**doc.sakrylle.com locked policies** (do not revert):
+- Refund: 3 days (not 7), SLA: best-effort, no age limit, reselling needs written permission.
+- `codex-auto-review` alias docs: now `gpt-5.4` (was `gpt-5.4-mini`, changed 2026-06-01).
+- Group naming: `Claude-Kiro` / `GPT-Pro` / `GPT-Plus` (capital P).
