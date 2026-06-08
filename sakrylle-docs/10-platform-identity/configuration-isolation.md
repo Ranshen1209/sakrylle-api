@@ -111,14 +111,16 @@ last_verified: 2026-06-06
 | 10 | telemetry | `SAKRYLLE_TELEMETRY_DISABLED`（**默认关闭**，已确认 2026-06-03）；GitHub release URL 指向 fork 仓库 |
 | 11 | lock/pid/socket | codex `app-server-control.sock`/`*.pid`/`daemon.lock` 随 `SAKRYLLE_CLI_HOME` 迁移；CodexMonitor daemon 端口 **4732 → 4733**（避端口冲突） |
 | 12 | CLI history | 随 `SAKRYLLE_CLI_HOME`（sessions/archived_sessions/memories/shell_snapshots） |
-| 13 | 桌面本地存储 | CodexMonitor localStorage `codexmonitor.*` → `sakrylle-monitor.*`（需一次性迁移）；image 已 `sakrylle-image-playground.*` 无需改 |
+| 13 | 桌面本地存储 | CodexMonitor localStorage `codexmonitor.*` → `sakrylle-studio.*`（兼容读 `sakrylle-monitor.*` 历史冲突前缀，需一次性迁移）；image 已 `sakrylle-image-playground.*` 无需改 |
+
+> 2026-06-06 更新：CodexMonitor 工作树已实现 Studio 侧 `com.sakrylle.studio`、`SAKRYLLE_CLI_HOME` / `~/.sakrylle-cli`、`sakrylle-studio.*` localStorage、`sakrylle-cli-daemon` / 4733、Sentry 默认关闭和上游 updater trust chain 移除；仍需真实 CLI 冒烟与 Sakrylle updater 签名 key。
 
 ## 7. 各软件"与上游零冲突"对照表
 
 | 软件（fork） | 上游标识 | 必须改 | 绝不碰 | 风险 |
 |---|---|---|---|---|
 | **Sakrylle CLI**（codex） | `CODEX_HOME=~/.codex`、`CODEX_*` env | `find_codex_home()` 先读 `SAKRYLLE_CLI_HOME` 默认 `~/.sakrylle-cli`；系统配置 `/etc/codex` → `/etc/sakrylle`；新增 `SAKRYLLE_API_KEY` | **绝不复用 `~/.codex` 与 `CODEX_*`** | 同机跑上游 codex 会争 auth.json/sessions/socket → 必须严格隔离 |
-| **Sakrylle Studio**（CodexMonitor） | `com.dimillian.codexmonitor`、端口 4732 | `tauri.conf.json` identifier→`com.sakrylle.studio`、productName→`Sakrylle Studio`；`APP_IDENTIFIER` 常量；daemon 端口→4733；GitHub release URL→fork；localStorage `codexmonitor.*`→`sakrylle-monitor.*` | — | settings.json 路径变 → 旧配置（含 remoteBackendToken）不自动迁移，需启动迁移逻辑 |
+| **Sakrylle Studio**（CodexMonitor） | `com.dimillian.codexmonitor`、端口 4732 | `tauri.conf.json` identifier→`com.sakrylle.studio`、productName→`Sakrylle Studio`；`APP_IDENTIFIER` 常量；daemon 端口→4733；GitHub release URL→fork；localStorage `codexmonitor.*`→`sakrylle-studio.*`（兼容读 `sakrylle-monitor.*`） | — | settings.json 路径变 → 旧配置（含 remoteBackendToken）不自动迁移；localStorage 只做读旧写新迁移 |
 | **Sakrylle Web**（open-webui） | `WEBUI_NAME=Open WebUI`、favicon | `WEBUI_NAME` 默认已改为 `Sakrylle Web`；上游 `(Open WebUI)` 后缀追加逻辑已移除；`WEBUI_FAVICON_URL`；独立 `DATA_DIR`（=`SAKRYLLE_DATA_HOME`）；静态品牌资源/manifest 由 Web 本地仓库维护 | 保留 `WEBUI_*` 作 fallback ≥1 版本 | 若直接重命名 `WEBUI_SECRET_KEY` 而不留 fallback → JWT 密钥缺失服务起不来 |
 | **Sakrylle Chat**（kelivo） | `com.psyche.kelivo` / `psyche.kelivo` | Android `namespace`+`applicationId`、macOS+iOS bundle id（四处）；pubspec `name`；建议 SharedPreferences key 加前缀（breaking，需迁移）；**API key → FlutterSecureStorage** | — | 改 SharedPreferences key 前缀 = 旧数据丢失，需迁移；Windows 无 bundle id，靠 exe/`name` 隔离需验证 |
 | **Sakrylle Image**（已上线） | 已基本品牌化 | 仅补 `VITE_SAKRYLLE_OAUTH_BASE`/`VITE_SAKRYLLE_OAUTH_CLIENT_ID` 到 `vite-env.d.ts` | **localStorage/IndexedDB 前缀已是 `sakrylle-image-playground.*`，不改**（改了丢用户本地状态） | 未声明 VITE_ 变量 → `.env` 缺失静默 fallback 硬编码值 |
@@ -159,10 +161,10 @@ last_verified: 2026-06-06
   - 验收标准：同机并行运行上游 codex + Sakrylle CLI 互不污染 auth.json/sessions/socket
 
 ### Phase 2 · 桌面/移动/Web 品牌与隔离（并行）
-- [ ] Sakrylle Studio bundle/端口/localStorage 迁移
+- [x] Sakrylle Studio bundle/端口/localStorage 迁移 — **[✓ 2026-06-06 CodexMonitor 工作树已实现]**
   - 涉及文件：`tauri.conf.json:4-5`、`daemonctl.rs:28/30`、`threadStorage.ts:3-7`
-  - 实施说明：端口 4732→4733；加 settings.json + localStorage 一次性迁移逻辑
-  - 验收标准：与上游 CodexMonitor 同机并行无端口/配置冲突
+  - 实施说明：端口 4732→4733；localStorage 新前缀为 `sakrylle-studio.*`，兼容读 `codexmonitor.*` / `sakrylle-monitor.*` 后写新 key；settings.json/workspaces.json 由 bundle id 隔离，首发不迁移上游数据
+  - 验收标准：与上游 CodexMonitor 同机并行无端口/配置冲突；仍需真实 Sakrylle CLI 冒烟
 - [ ] Sakrylle Web `DATA_DIR` + 品牌
   - 涉及文件：`env.py:216/771/772-773/775`
   - 实施说明：删追加后缀逻辑；新增 `SAKRYLLE_*` 别名保留 `WEBUI_*` fallback
@@ -211,7 +213,7 @@ P2：Phase 3 凭据加固 + 审计。
 ## 13. 后续问题
 
 - codex 子目录是否全随 `CODEX_HOME`（变量遮蔽疑问）？（**不确定**，Phase 0）
-- CodexMonitor 是否有 `tauri-plugin-store` 第三持久化路径？（**不确定**）
+- CodexMonitor 是否有 `tauri-plugin-store` 第三持久化路径？（**已核实 2026-06-06：CodexMonitor 工作树未使用 `tauri-plugin-store`；持久化路径为 appData settings/workspaces + WebView localStorage**）
 - kelivo Windows 路径隔离实际机制？（**不确定**）
 - open-webui `ENABLE_OAUTH_PERSISTENT_CONFIG`（`config.py:143` 默认 False）启用后 DB OAuth 配置与 env 优先级？（**不确定**）
 - codex app-server `sqlite_home` 是否独立于 `CODEX_HOME`？（**不确定**，`config_manager.rs` 未深入）

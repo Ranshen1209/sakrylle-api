@@ -144,8 +144,8 @@ OIDC 基座（03）先行
 
 ### 1.D Studio 最小集成（`21` Phase 1，依赖 CLI Phase 1）
 
-- [ ] codexBin 默认 fallback 探测 `sakrylle`→`skl`（非上游 `codex`）— 产品：Studio｜**依赖 CLI Phase 1（硬阻断）**｜串行（`21` P1-1）
-- [ ] spawn 时注入 `SAKRYLLE_CLI_HOME` 给 CLI 子进程 + sessions 用量扫描路径对齐 — 产品：Studio｜依赖 CLI Phase 1（`21` P1-2/P1-3）
+- [x] codexBin 默认 fallback 探测 `sakrylle`→`skl`（非上游 `codex`）— 产品：Studio｜**[✓ 2026-06-06 CodexMonitor 工作树已实现；仍依赖真实 CLI 冒烟]**（`21` P1-1）
+- [x] spawn 时注入 `SAKRYLLE_CLI_HOME` 给 CLI 子进程 + sessions 用量扫描路径对齐 — 产品：Studio｜**[✓ 2026-06-06 CodexMonitor 工作树已实现；仍依赖真实 CLI 冒烟]**（`21` P1-2/P1-3）
 - [ ] 端到端冒烟（握手→线程→消息→响应→用量），CLI 数据落 `~/.sakrylle-cli` — 产品：Studio｜依赖 CLI Phase 1（`21` P1-4）
 
 ### 1.E Web 数据面（`31` Phase 1，不依赖 OIDC，密码登录模式先上线）
@@ -182,9 +182,11 @@ OIDC 基座（03）先行
 
 ### 2.C Studio 品牌/隔离（`21` Phase 2，无外部依赖，可立即启动）
 
-- [ ] bundle id `com.sakrylle.studio`（驱动三平台目录隔离）+ productName/窗口标题/Rust 元数据 — 产品：Studio｜不依赖 OIDC 基座｜串行最优先（`21` P2-1/2 / `05` §8）
-- [ ] 前端品牌字符串（~20 处）+ Monet 主题 + 樱花图标 + localStorage 前缀迁移（含兜底）+ daemon 端口 4733 — 产品：Studio｜不依赖 OIDC 基座｜并行（`21` P2-3/4/5/6/7）
-- [ ] **【发布阻断·安全】** Sentry DSN 禁用（删硬编码）+ updater endpoint→fork + 重新生成 minisign pubkey — 产品：Studio｜不依赖 OIDC 基座（`21` P2-8/9 / `91` R-CRED-03）
+> 2026-06-06 Studio 更新：CodexMonitor 工作树已完成代码级品牌/配置隔离、CLI home 注入、localStorage/daemon/Sentry/updater trust-boundary 改造；Sakrylle CLI 冒烟和 updater minisign key 仍是发布阻断。
+
+- [x] bundle id `com.sakrylle.studio`（驱动三平台目录隔离）+ productName/窗口标题/Rust 元数据 — 产品：Studio｜**[✓ 2026-06-06 CodexMonitor 工作树已实现]**（`21` P2-1/2 / `05` §8）
+- [ ] 前端品牌字符串（~20 处）+ Monet 主题 + 樱花图标 + localStorage 前缀迁移（含兜底）+ daemon 端口 4733 — 产品：Studio｜**[部分完成 2026-06-06：品牌字符串、fork 链接、localStorage `sakrylle-studio.*` 迁移、daemon 4733 已实现；Monet/图标需最终 UI 复核]**（`21` P2-3/4/5/6/7）
+- [ ] **【发布阻断·安全】** Sentry DSN 禁用（删硬编码）+ updater endpoint→fork + 重新生成 minisign pubkey — 产品：Studio｜**[部分完成 2026-06-06：Sentry 默认关闭、上游 updater trust chain 已移除；Sakrylle 自有 minisign pubkey 仍是发布阻断]**（`21` P2-8/9 / `91` R-CRED-03）
 
 ### 2.D Web 品牌/隔离已在 Phase 1 核心完成；主题色 + 收紧归入 Phase 3。
 

@@ -35,7 +35,7 @@
 | 产品 | Research | Plan / Status |
 |---|---|---|
 | Sakrylle CLI | [`20-products/cli/research.md`](./20-products/cli/research.md) | [`20-products/cli/development-plan.md`](./20-products/cli/development-plan.md) |
-| Sakrylle Studio | [`20-products/studio/research.md`](./20-products/studio/research.md) | [`20-products/studio/development-plan.md`](./20-products/studio/development-plan.md) |
+| Sakrylle Studio | [`20-products/studio/research.md`](./20-products/studio/research.md) | [`20-products/studio/development-plan.md`](./20-products/studio/development-plan.md) — 2026-06-06 CodexMonitor working tree has code-level branding/isolation + CLI credential reuse route; Sakrylle CLI smoke test and updater signing key remain release blockers |
 | Sakrylle Web | [`20-products/web/research.md`](./20-products/web/research.md) | [`20-products/web/development-plan.md`](./20-products/web/development-plan.md) |
 | Sakrylle Chat | [`20-products/chat/research.md`](./20-products/chat/research.md) | [`20-products/chat/development-plan.md`](./20-products/chat/development-plan.md) |
 | Sakrylle Image | [`20-products/image/research.md`](./20-products/image/research.md) | [`20-products/image/oidc-upgrade-plan.md`](./20-products/image/oidc-upgrade-plan.md) |
