@@ -1,0 +1,38 @@
+---
+description: 合并 upstream 流程、Wire/OIDC 陷阱、定价与测试 stub 维护
+globs: backend/**,frontend/**
+alwaysApply: false
+---
+
+# Syncing Upstream
+
+```bash
+git fetch upstream && git checkout theme/monet-purple && git rebase upstream/main
+```
+
+Likely conflicts: `frontend/tailwind.config.js`, `frontend/src/views/HomeView.vue`, `backend/internal/service/setting_service.go`.
+
+**Verified conflict set (2026-06-08 merge of v0.1.135, 156 commits)** — the recurring ones to expect:
+- `backend/internal/pkg/openai/constants.go` — keep our removal of unprovided models (gpt-5.2, gpt-5.3-codex-spark, gpt-image-1/1.5); adopt any new upstream model.
+- `frontend/src/views/user/UsageView.vue` — keep `￥` symbol (Currency policy) + upstream's `?? 0` nil guards.
+- `backend/internal/service/wire.go` + `backend/cmd/server/wire.go` — keep our OIDC/OAuth providers; merge both shutdown steps.
+
+## Wire / OIDC scheduler footgun (hit 2026-06-08)
+
+**`wire_gen.go` is committed and CI/Docker do NOT regenerate it** — it must merge correctly or the image build ships wrong wiring. After resolving the hand-written `wire.go` conflicts, **regenerate rather than hand-merge** the generated files:
+
+```bash
+brew install go   # need 1.26.x to match backend/go.mod
+go install github.com/google/wire/cmd/wire@v0.7.0
+cd backend && GOFLAGS=-mod=mod wire ./cmd/server/   # then: go build ./... && go test ./...
+```
+
+**The trap**: `ProvideOIDCKeyRotationScheduler` calls `Start()` on construction (spawns 2 goroutines). Wire only instantiates a provider if something *consumes* it — its only consumer is `provideCleanup` (which holds it to call `Stop()`). The OIDC scheduler dependency lives in the **hand-written `cmd/server/wire.go` `provideCleanup` signature**. If a merge drops that param (or it was ever a drifted manual edit in `wire_gen.go`), `wire` regenerates without the scheduler → **OIDC key rotation never starts** and the build still passes silently. Keep `oidcKeyRotation *service.OIDCKeyRotationScheduler` in `provideCleanup` and verify it appears in regenerated `wire_gen.go`.
+
+## codex-auto-review pricing (canonical = our values, not upstream's)
+
+`backend/resources/model-pricing/model_prices_and_context_window.json` + `pricing_service_test.go` carry conflicting `codex-auto-review` rates. **Ours are canonical**: input `2.5e-6`, output `1.5e-5`, cache-read `2.5e-7` (see commit `5655a6d7`; the synced entry's own `_flex`/`_batches` tiers confirm these). Upstream periodically doubles them via bulk re-sync — revert both the JSON entry and the test assertions to our values.
+
+## Merged interfaces break our test stubs
+
+Upstream + our OIDC work extend repo interfaces (e.g. `DeleteWithAudit`, `ListClientsWithBackchannelLogout`). Production code builds, but our test stubs across `service`/`handler`/`middleware` need the new methods added or `go test` fails to compile. Add them mirroring the sibling stub methods.

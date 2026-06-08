@@ -1,0 +1,14 @@
+---
+description: 货币显示策略 — UI 用 ￥，数值不转换
+alwaysApply: true
+---
+
+# Currency Policy
+
+UI renders `￥` everywhere. **Display-only — numeric values NOT converted.** `users.balance` of `8.94` was `$8.94`, now `￥8.94`; DB unchanged.
+
+**Why**: Avoids FX-conversion bugs (price drift, audit-log off-by-ones, recharge pipeline double conversion). Tradeoff: internal columns keep USD names (`balance`, `quota_used`, `daily_limit_usd`).
+
+**NOT changed**: `/v1/models` pricing (USD standard), `balance_recharge_multiplier` (1.0), DB column names, `channel_model_pricing` rows (upstream USD rates).
+
+**Regression watch**: `grep -rEn '￥\{[a-zA-Z_]'` — `￥{<identifier>` is likely mangled JS interpolation (real i18n: `￥{usd}`).

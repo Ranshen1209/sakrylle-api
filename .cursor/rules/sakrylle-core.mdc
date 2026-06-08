@@ -1,0 +1,55 @@
+---
+description: Sakrylle API 仓库身份、基础设施、构建部署与常用运维命令
+alwaysApply: true
+---
+
+# Sakrylle Core
+
+Sakrylle API fork of sub2api. Maintenance notes — operational facts, gotchas, and "why" decisions only. For "what changed", use `git log` / `git diff upstream/main`.
+
+## Repository & Infrastructure
+
+- **Upstream**: [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api)
+- **Fork**: [Ranshen1209/sub2api](https://github.com/Ranshen1209/sub2api), branch `theme/monet-purple`
+- **Production**: `sub.sakrylle.com` (app), `api.sakrylle.com` (API), `doc.sakrylle.com` (docs), `status.sakrylle.com` (monitor)
+- **Server**: `cliproxyapi-jp` (64.83.47.108, SSH alias `ssh-tokyo`)
+- **Architecture**: `Public 443 → sslh → 127.0.0.1:8443 → Nginx → upstream container`
+
+Compose stack at `/opt/stack/docker-compose.yml`:
+- `sub2api` — `ghcr.io/ranshen1209/sub2api:purple`
+- `sub2api-postgres` (PG 18), `sub2api-redis` (Redis 8), `relay-pulse`, `smtp-relay` (unused, can cleanup)
+
+Configs at `/opt/stack/`: `sub2api/.env`, `nginx/conf.d/*.conf`, `relay-pulse/config/`, `secrets/cloudflare.ini`, `certs/live/sakrylle.com/`
+
+Admin: `admin@sub2api.local`, password in `.env` as `ADMIN_PASSWORD` (bootstrap only; restarts don't reseed).
+
+## Build & Deploy
+
+Push to `theme/monet-purple` → GHA → `ghcr.io/ranshen1209/sub2api:purple`:
+
+```bash
+git push origin theme/monet-purple
+ssh ssh-tokyo 'docker pull ghcr.io/ranshen1209/sub2api:purple && cd /opt/stack && docker compose up -d sub2api'
+curl -sS https://sub.sakrylle.com/health
+```
+
+Local preview: `JWT_SECRET` ≥32B (64 hex), `TOTP_ENCRYPTION_KEY` exactly 32B (64 hex), `POSTGRES_PASSWORD` set. Access `http://localhost:18080`.
+
+## Common Ops
+
+```bash
+# Status
+ssh ssh-tokyo 'cd /opt/stack && docker compose ps sub2api sub2api-postgres sub2api-redis'
+
+# Logs
+ssh ssh-tokyo 'cd /opt/stack && docker compose logs --tail=50 sub2api'
+
+# Backup
+ssh ssh-tokyo 'docker exec sub2api-postgres pg_dump -U sub2api sub2api > /opt/stack/backups/sub2api-db-$(date +%F).sql'
+
+# Restart after config change
+ssh ssh-tokyo 'cd /opt/stack && docker compose restart sub2api'
+
+# Pull latest image
+ssh ssh-tokyo 'docker pull ghcr.io/ranshen1209/sub2api:purple && cd /opt/stack && docker compose up -d sub2api'
+```

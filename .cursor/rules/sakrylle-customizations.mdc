@@ -1,0 +1,15 @@
+---
+description: Sakrylle 品牌化与后端定制行为（主题、/v1/models、SMTP、Turnstile）
+globs: frontend/**,backend/internal/handler/gateway*,backend/internal/service/email*,backend/internal/pkg/openai/constants.go
+alwaysApply: false
+---
+
+# Customizations Overview
+
+Visual rebrand + backend behavior changes. No core gateway logic touched.
+
+- **Theme**: Monet purple `#9181bd` (was teal `#14b8a6`). Search `frontend/tailwind.config.js` + grep `frontend/src/` when extending.
+- **Backend**:
+  - `/v1/models` never falls back to `claude.DefaultModels` / `openai.DefaultModels` (prevents leaking unconfigured models).
+  - SMTP nil-auth allowed in `email_service.go`.
+  - Turnstile widget follows site's dark mode, not OS.
