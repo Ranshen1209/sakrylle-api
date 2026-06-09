@@ -134,6 +134,7 @@ last_verified: 2026-06-06
 | `backend/migrations/159_oidc_consent_grants.sql` | ✅ `oauth_grants` 表（第三方客户端 consent 跟踪） |
 | `backend/migrations/160_oidc_introspect_client_confidential.sql` | ✅ `oauth_clients.client_confidential`（RFC 7662 Token Introspection 权限控制） |
 | `backend/migrations/161_oidc_frontchannel_logout.sql` | ✅ `oauth_clients.frontchannel_logout_uri`（OIDC Front-Channel Logout 1.0） |
+| `backend/migrations/162_oauth_grant_chat_completions.sql` | ✅ 授予 `sakrylle-image-playground` 的 `chat.completions:create` scope（固化此前 psql 直改，幂等） |
 | `backend/migrations/053_add_security_secrets.sql` | ✅ `security_secrets` 表（存储加密的 OIDC 签名密钥） |
 
 ---
@@ -211,7 +212,7 @@ id_token      = ✅ **RS256 或 ES256 签名的 JWT**（2026-06-04）
 
 | client_id | app_type | client_type | PKCE | Device Flow | redirect_uris | 关键 scope |
 |---|---|---|---|---|---|---|
-| `sakrylle-image-playground` | `image` | `public` | 强制 | 否 | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `images:create`, `account:balance:read`, `models:read`, `offline_access` |
+| `sakrylle-image-playground` | `image` | `public` | 强制 | 否 | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access`（`chat.completions:create` 见 migration 162） |
 | `sakrylle-image-playground-v2` | `image` | `public` | 强制 | 否 | `https://image.sakrylle.com/oauth/callback` | `images:create`, `account:balance:read`, `models:read`, `offline_access` |
 | `sakrylle-cli` | `cli` | `public` | 强制 | 是 | `[]`（Device Flow） | `profile:read`, `account:read`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access` |
 | `sakrylle-desktop` | `desktop` | `public` | 强制 | 否 | `http://127.0.0.1/oauth/callback`, `http://[::1]/oauth/callback`, `http://localhost/oauth/callback`（loopback） | `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `offline_access` |
