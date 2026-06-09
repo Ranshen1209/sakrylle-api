@@ -1158,10 +1158,11 @@ func (h *OAuthProviderHandler) Logout(c *gin.Context) {
 
 	var clientID string
 	var sub string // verified sub from id_token_hint, used for back-channel logout
+	var sid string // verified sid from id_token_hint, echoed in logout_token
 
 	// When id_token_hint is provided, verify its signature and extract claims.
 	if idTokenHint != "" {
-		cid, verifiedSub, err := h.verifyLogoutIDToken(c.Request.Context(), idTokenHint)
+		cid, verifiedSub, verifiedSid, err := h.verifyLogoutIDToken(c.Request.Context(), idTokenHint)
 		if err != nil {
 			slog.Warn("oidc logout: id_token_hint verification failed", "error", err)
 			h.renderLogoutErrorPage(c, "invalid_request", "id_token_hint is invalid or expired")
@@ -1169,6 +1170,7 @@ func (h *OAuthProviderHandler) Logout(c *gin.Context) {
 		}
 		clientID = cid
 		sub = verifiedSub
+		sid = verifiedSid
 	}
 
 	// Without a verified id_token_hint, we cannot validate the redirect URI
@@ -1178,7 +1180,7 @@ func (h *OAuthProviderHandler) Logout(c *gin.Context) {
 		// OIDC Back-Channel Logout 1.0: asynchronously notify clients
 		// that have registered a backchannel_logout_uri.
 		if clientID != "" {
-			h.dispatchBackchannelLogout(c, clientID, sub)
+			h.dispatchBackchannelLogout(c, clientID, sub, sid)
 		}
 		return
 	}
@@ -1225,7 +1227,7 @@ func (h *OAuthProviderHandler) Logout(c *gin.Context) {
 
 	// OIDC Back-Channel Logout 1.0: asynchronously notify clients
 	// that have registered a backchannel_logout_uri.
-	h.dispatchBackchannelLogout(c, clientID, sub)
+	h.dispatchBackchannelLogout(c, clientID, sub, sid)
 
 	c.Redirect(http.StatusFound, redirectURL.String())
 }
@@ -1239,9 +1241,9 @@ func (h *OAuthProviderHandler) Logout(c *gin.Context) {
 //  3. Validate iss matches our issuer.
 //  4. Validate aud contains a recognizable client_id.
 //  5. exp is checked by the JWT library (jwt.WithLeeway allows small clock skew).
-func (h *OAuthProviderHandler) verifyLogoutIDToken(ctx context.Context, rawToken string) (string, string, error) {
+func (h *OAuthProviderHandler) verifyLogoutIDToken(ctx context.Context, rawToken string) (string, string, string, error) {
 	if h.oidcKeys == nil {
-		return "", "", errors.New("OIDC key service not available")
+		return "", "", "", errors.New("OIDC key service not available")
 	}
 
 	// Get the expected issuer for validation.
@@ -1283,17 +1285,17 @@ func (h *OAuthProviderHandler) verifyLogoutIDToken(ctx context.Context, rawToken
 	}, jwt.WithLeeway(30*time.Second))
 
 	if err != nil {
-		return "", "", fmt.Errorf("id_token_hint verification failed: %w", err)
+		return "", "", "", fmt.Errorf("id_token_hint verification failed: %w", err)
 	}
 
 	claims, ok := parsed.Claims.(jwt.MapClaims)
 	if !ok || !parsed.Valid {
-		return "", "", errors.New("id_token_hint claims invalid")
+		return "", "", "", errors.New("id_token_hint claims invalid")
 	}
 
 	// Validate iss.
 	if iss, ok := claims["iss"].(string); !ok || iss != issuer {
-		return "", "", fmt.Errorf("id_token_hint iss mismatch: got %q, want %q", iss, issuer)
+		return "", "", "", fmt.Errorf("id_token_hint iss mismatch: got %q, want %q", iss, issuer)
 	}
 
 	// Extract client_id from aud (string or []string).
@@ -1309,12 +1311,13 @@ func (h *OAuthProviderHandler) verifyLogoutIDToken(ctx context.Context, rawToken
 		}
 	}
 	if clientID == "" {
-		return "", "", errors.New("id_token_hint has no valid aud claim")
+		return "", "", "", errors.New("id_token_hint has no valid aud claim")
 	}
 
-	// Extract sub from the verified claims for back-channel logout.
+	// Extract sub and sid from the verified claims for back-channel logout.
 	sub, _ := claims["sub"].(string)
-	return clientID, sub, nil
+	sid, _ := claims["sid"].(string)
+	return clientID, sub, sid, nil
 }
 
 // discoveryIssuerForLogout resolves the issuer for id_token_hint validation.
@@ -1649,7 +1652,7 @@ func (h *OAuthProviderHandler) handlePromptNone(c *gin.Context, req *service.Aut
 // dispatchBackchannelLogout sends a logout_token to the initiating client's
 // backchannel_logout_uri asynchronously, per OIDC Back-Channel Logout 1.0.
 // Failures are logged at Warn level and never propagate to the user.
-func (h *OAuthProviderHandler) dispatchBackchannelLogout(c *gin.Context, clientID string, sub string) {
+func (h *OAuthProviderHandler) dispatchBackchannelLogout(c *gin.Context, clientID string, sub string, sid string) {
 	if h.provider == nil || h.oidcKeys == nil {
 		return
 	}
@@ -1680,7 +1683,7 @@ func (h *OAuthProviderHandler) dispatchBackchannelLogout(c *gin.Context, clientI
 		}
 
 		// Build and sign a logout_token per client (audience-specific).
-		claims := service.BuildLogoutToken(issuer, sub, client.ClientID, "", now, 0)
+		claims := service.BuildLogoutToken(issuer, sub, client.ClientID, sid, now, 0)
 		alg := service.SigningAlgRS256
 		if client.SigningAlgorithm == "ES256" {
 			alg = service.SigningAlgES256
