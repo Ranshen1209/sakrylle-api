@@ -127,3 +127,25 @@ func TestAssertNoForbiddenClaims(t *testing.T) {
 		t.Error("a forbidden business claim must be rejected")
 	}
 }
+
+func TestAssertNoForbiddenClaims_AllowlistRejectsUnknown(t *testing.T) {
+	claims := map[string]any{
+		"iss": "x", "sub": "1", "aud": []string{"c"}, "iat": 1, "exp": 2,
+		"phone_number": "+100000000", // not in the allowlist
+	}
+	if err := assertNoForbiddenClaims(claims); err == nil {
+		t.Fatal("expected allowlist to reject unknown claim phone_number")
+	}
+}
+
+func TestAssertNoForbiddenClaims_AllowsStandardSet(t *testing.T) {
+	claims := map[string]any{
+		"iss": "x", "sub": "1", "aud": []string{"c"}, "iat": 1, "exp": 2,
+		"nonce": "n", "auth_time": 3, "sid": "s",
+		"name": "a", "preferred_username": "a", "email": "a@b", "email_verified": true,
+		"at_hash": "h", "c_hash": "h2",
+	}
+	if err := assertNoForbiddenClaims(claims); err != nil {
+		t.Fatalf("standard claim set must pass, got: %v", err)
+	}
+}
