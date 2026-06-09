@@ -59,6 +59,10 @@ func buildOIDCHTTPClientWithDialGuard(dial func(ctx context.Context, network, ad
 			if req.URL.Scheme != "https" {
 				return fmt.Errorf("oidc fetch: redirect to non-https scheme %q rejected", req.URL.Scheme)
 			}
+			// Re-validate the redirect target host at the IP layer. The
+			// authoritative DNS-rebinding defense is safeDialContext (which
+			// validates and dials the resolved IP); this check is defense in
+			// depth at the redirect layer.
 			blocked, err := isPrivateOrLoopbackHost(req.Context(), req.URL.Hostname())
 			if err != nil {
 				return fmt.Errorf("oidc fetch: redirect host resolution failed: %w", err)

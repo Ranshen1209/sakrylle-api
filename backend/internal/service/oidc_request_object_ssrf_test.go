@@ -15,9 +15,10 @@ func allowLoopbackDial(ctx context.Context, network, address string) (net.Conn, 
 	return (&net.Dialer{}).DialContext(ctx, network, address)
 }
 
-func TestOIDCHTTPClient_RejectsRedirectToInternal(t *testing.T) {
+func TestOIDCHTTPClient_RejectsRedirectToInternalIP(t *testing.T) {
+	// https + 内网 IP：必须命中 CheckRedirect 的 IP 重校验分支。
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "http://169.254.169.254/latest/meta-data/", http.StatusFound)
+		http.Redirect(w, r, "https://169.254.169.254/latest/meta-data/", http.StatusFound)
 	}))
 	defer srv.Close()
 
@@ -25,10 +26,28 @@ func TestOIDCHTTPClient_RejectsRedirectToInternal(t *testing.T) {
 	resp, err := client.Get(srv.URL)
 	if err == nil {
 		resp.Body.Close()
-		t.Fatal("expected redirect to 169.254.169.254 to be rejected")
+		t.Fatal("expected redirect to internal IP to be rejected")
 	}
-	if !strings.Contains(err.Error(), "redirect") {
-		t.Fatalf("expected redirect rejection, got: %v", err)
+	if !strings.Contains(err.Error(), "internal host") {
+		t.Fatalf("expected internal-host rejection, got: %v", err)
+	}
+}
+
+func TestOIDCHTTPClient_RejectsHTTPSDowngrade(t *testing.T) {
+	// http + 公网 host：必须命中 CheckRedirect 的 scheme 降级分支。
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://example.com/downgrade", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	client := buildOIDCHTTPClientWithDialGuard(allowLoopbackDial)
+	resp, err := client.Get(srv.URL)
+	if err == nil {
+		resp.Body.Close()
+		t.Fatal("expected https->http downgrade redirect to be rejected")
+	}
+	if !strings.Contains(err.Error(), "non-https") {
+		t.Fatalf("expected scheme-downgrade rejection, got: %v", err)
 	}
 }
 
