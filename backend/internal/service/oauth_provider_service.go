@@ -630,9 +630,9 @@ func (s *OAuthProviderService) authenticateClient(client *OAuthClient, clientSec
 
 // ValidateAuthorizeRequest enforces every check from §12.2.
 //
-// PKCE is now mandatory for ALL clients (public and confidential per §10.1) —
-// we still tolerate legacy confidential clients that didn't set PKCERequired
-// for backward compatibility, but the v2 contract requires it.
+// PKCE S256 is now mandatory for ALL clients (public and confidential per
+// §10.1). The check no longer gates on client.PKCERequired — every authorize
+// request must carry a valid S256 code_challenge regardless of client type.
 func (s *OAuthProviderService) ValidateAuthorizeRequest(ctx context.Context, req *AuthorizeRequest) (*OAuthClient, error) {
 	if req.ResponseType != "code" {
 		return nil, ErrOAuthInvalidResponseType

@@ -1997,3 +1997,85 @@ func TestAuthorize_CreatesTransaction(t *testing.T) {
 	require.Error(t, mismatchErr,
 		"loading with a different subject must fail; got nil")
 }
+
+// TestPromptNoneWithoutPKCEDoesNotMintUsableCode is the #20 follow-up
+// regression: prompt=none silent authentication must NOT issue an
+// authorization code that carries an empty code_challenge. Such a code can
+// never be exchanged at the (now strict, B3) token endpoint, so emitting one
+// would be a silent dead-end for the RP.
+//
+// handlePromptNone runs ValidateAuthorizeRequest first (which enforces PKCE
+// S256 for every client), and the mint site re-asserts PKCE as defense in
+// depth. Either way the contract is the security property asserted here: no
+// code_challenge → the request is rejected and NO `code` ever reaches the RP.
+//
+// Note on response shape: ValidateAuthorizeRequest returns ErrOAuthMissingPKCE,
+// which shares its (HTTP 400, reason INVALID_REQUEST) identity with
+// ErrOAuthInvalidRedirectURI. handlePromptNone's errors.Is branch therefore
+// treats it as a "don't redirect to an unverified URL" case and renders an
+// inline 400 page rather than an error redirect. That is still safe — what
+// matters is that no usable code is issued.
+func TestPromptNoneWithoutPKCEDoesNotMintUsableCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+
+	q := url.Values{}
+	q.Set("client_id", testOAuthClientID)
+	q.Set("redirect_uri", testOAuthRedirectURI)
+	q.Set("response_type", "code")
+	q.Set("scope", "image_generation")
+	q.Set("state", "silent-state")
+	q.Set("prompt", "none")
+	// Deliberately NO code_challenge / code_challenge_method.
+
+	c, rec := newGinTestContext(http.MethodGet, "/oauth/authorize?"+q.Encode(), nil, "")
+	h.Authorize(c)
+
+	// The request must be rejected, not succeed.
+	require.NotEqual(t, http.StatusOK, rec.Code,
+		"prompt=none without code_challenge must not succeed, body=%s", rec.Body.String())
+
+	// Security property: no usable code may reach the RP, whether via an inline
+	// error page or an error redirect.
+	if loc := rec.Header().Get("Location"); loc != "" {
+		parsed, err := url.Parse(loc)
+		require.NoError(t, err)
+		require.Empty(t, parsed.Query().Get("code"),
+			"prompt=none without code_challenge MUST NOT emit a usable code, got %q", loc)
+	}
+	require.NotContains(t, rec.Body.String(), "code=",
+		"response body must not leak an authorization code")
+}
+
+// TestPromptNoneWithPKCEPassesValidationGate is the positive counterpart: a
+// prompt=none request that DOES carry a valid S256 challenge must clear the
+// PKCE gate. The harness wires no authService, so the flow then stops at
+// interaction_required (silent auth unavailable) rather than minting — proving
+// the request got past PKCE validation rather than being rejected by it.
+func TestPromptNoneWithPKCEPassesValidationGate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+	_, challenge := pkceVerifierAndChallengeForHandler(
+		"prompt-none-positive-path-verifier-0123456789ab")
+
+	q := url.Values{}
+	q.Set("client_id", testOAuthClientID)
+	q.Set("redirect_uri", testOAuthRedirectURI)
+	q.Set("response_type", "code")
+	q.Set("scope", "image_generation")
+	q.Set("state", "silent-state")
+	q.Set("prompt", "none")
+	q.Set("code_challenge", challenge)
+	q.Set("code_challenge_method", "S256")
+
+	c, rec := newGinTestContext(http.MethodGet, "/oauth/authorize?"+q.Encode(), nil, "")
+	h.Authorize(c)
+
+	require.Equal(t, http.StatusFound, rec.Code, "body=%s", rec.Body.String())
+	parsed, err := url.Parse(rec.Header().Get("Location"))
+	require.NoError(t, err)
+	rq := parsed.Query()
+	require.Empty(t, rq.Get("code"), "no authService wired → must not mint a code")
+	require.Equal(t, "interaction_required", rq.Get("error"),
+		"valid PKCE clears the gate; flow stops at interaction_required (authService nil)")
+}

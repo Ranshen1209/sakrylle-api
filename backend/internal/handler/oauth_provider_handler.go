@@ -1559,6 +1559,20 @@ func (h *OAuthProviderHandler) handlePromptNone(c *gin.Context, req *service.Aut
 	}
 	// Trusted first-party client — proceed with auto-approval.
 
+	// Defense-in-depth PKCE gate (mirrors ValidateAuthorizeRequest §10.1).
+	// ValidateAuthorizeRequest above already rejects an empty/non-S256
+	// code_challenge, but this function is long and mints a code directly
+	// without going back through the service validator. Re-assert PKCE here so
+	// a future reordering of this function can never issue a silent-auth code
+	// with an empty code_challenge — such a code can never be exchanged at the
+	// (strict) token endpoint, which would be a silent dead-end for the RP.
+	if req.CodeChallenge == "" || req.CodeChallengeMethod != "S256" {
+		slog.Info("oidc prompt=none: missing or non-S256 PKCE challenge",
+			"client_id", req.ClientID, "method", req.CodeChallengeMethod)
+		redirectError("invalid_request", "code_challenge with method S256 is required")
+		return
+	}
+
 	// Resolve group for this user
 	resolvedGroup, err := h.provider.ResolveOAuthGroup(c.Request.Context(), userID, client, nil)
 	if err != nil {
