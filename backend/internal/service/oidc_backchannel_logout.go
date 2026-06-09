@@ -43,6 +43,13 @@ func BuildLogoutToken(issuer, sub, clientID, sid string, now time.Time, ttl time
 	if sid != "" {
 		claims["sid"] = sid
 	}
+	// jti uniquely identifies this logout_token so RPs can detect and reject
+	// replays (OIDC Back-Channel Logout 1.0 §2.4).
+	if jti, err := GenerateOpaqueToken(16); err == nil {
+		claims["jti"] = jti
+	} else {
+		claims["jti"] = fmt.Sprintf("jti_%d", now.UnixNano())
+	}
 	return claims
 }
 
