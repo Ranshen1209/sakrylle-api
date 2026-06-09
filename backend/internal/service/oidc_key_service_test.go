@@ -1326,3 +1326,54 @@ func TestOIDCKeyService_DualKeyJWKS(t *testing.T) {
 		t.Errorf("expected exactly 1 EC key, got %d", ecCount)
 	}
 }
+
+// TestOIDCKeyService_DedupCurrentFromPrevious verifies the self-heal on load:
+// if a prior rotation left the current kid lingering in the previous-kids list
+// (pointer-flip failure), reloading the service must not surface that kid twice
+// in JWKS.
+func TestOIDCKeyService_DedupCurrentFromPrevious(t *testing.T) {
+	ctx := context.Background()
+	store := newMemKeyStore()
+
+	svc1 := NewOIDCKeyService(store, b64Encryptor{})
+	if err := svc1.EnsureKey(ctx); err != nil {
+		t.Fatalf("EnsureKey: %v", err)
+	}
+	curKID := svc1.CurrentKID()
+	if curKID == "" {
+		t.Fatal("CurrentKID empty after EnsureKey")
+	}
+
+	// Manufacture the dirty state: stuff the current kid into the previous-kids
+	// list as if a rotation's pointer flip had failed.
+	svc1.mu.Lock()
+	if err := svc1.appendPreviousKID(ctx, oidcPreviousKIDsKey, curKID); err != nil {
+		svc1.mu.Unlock()
+		t.Fatalf("appendPreviousKID: %v", err)
+	}
+	svc1.mu.Unlock()
+
+	// Reload from the same store: EnsureKey must drop the current kid from the
+	// in-memory previous slice.
+	svc2 := NewOIDCKeyService(store, b64Encryptor{})
+	if err := svc2.EnsureKey(ctx); err != nil {
+		t.Fatalf("EnsureKey reload: %v", err)
+	}
+	if svc2.CurrentKID() != curKID {
+		t.Fatalf("CurrentKID after reload = %q, want %q", svc2.CurrentKID(), curKID)
+	}
+
+	jwks, err := svc2.PublicJWKS(ctx)
+	if err != nil {
+		t.Fatalf("PublicJWKS: %v", err)
+	}
+	count := 0
+	for i := range jwks.Keys {
+		if jwks.Keys[i].Kid == curKID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("current kid %q appears %d times in JWKS, want 1", curKID, count)
+	}
+}
