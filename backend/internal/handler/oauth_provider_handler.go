@@ -167,11 +167,40 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 		}
 	}
 	if requestURIParam := formVal("request_uri"); requestURIParam != "" {
-		// request_uri is fetched by the service layer at validation time.
-		// For now, log that we received it but defer to the service.
-		slog.Info("oidc: request_uri parameter received", "request_uri", requestURIParam)
-		// The service layer validates the URI and fetches it.
-		// TODO: wire HTTP client for request_uri fetching.
+		issuer := h.discoveryIssuer(c)
+		// Look up the client to get its registered request_uris whitelist.
+		ruClient, lookupErr := h.provider.LookupClient(c.Request.Context(), req.ClientID)
+		if lookupErr != nil {
+			redirectOAuthProviderError(c, req.RedirectURI, req.State, lookupErr)
+			return
+		}
+		// Fetch via the SSRF-safe client; FetchRequestURI enforces https-only,
+		// the client's request_uris host whitelist, timeout and a 64KB cap.
+		rawObj, fetchErr := service.FetchRequestURI(requestURIParam, ruClient.RequestURIs)
+		if fetchErr != nil {
+			slog.Warn("oidc: request_uri fetch failed", "error", fetchErr)
+			redirectOAuthProviderError(c, req.RedirectURI, req.State, fetchErr)
+			return
+		}
+		// Verify the fetched request object exactly like the inline `request`
+		// param path (HS/client_secret or unsigned), then merge.
+		reqObj, parseErr := service.ParseRequestObjectJWT(rawObj, issuer, req.ClientID, "")
+		if parseErr != nil {
+			slog.Warn("oidc: request_uri object validation failed", "error", parseErr)
+			redirectOAuthProviderError(c, req.RedirectURI, req.State, parseErr)
+			return
+		}
+		req.RedirectURI = reqObj.RedirectURI
+		req.ResponseType = reqObj.ResponseType
+		req.Scopes = reqObj.Scopes
+		req.CodeChallenge = reqObj.CodeChallenge
+		req.CodeChallengeMethod = reqObj.CodeChallengeMethod
+		if reqObj.Claims != nil {
+			req.Claims = reqObj.Claims
+		}
+		if reqObj.Nonce != "" && req.Nonce == "" {
+			req.Nonce = reqObj.Nonce
+		}
 	}
 
 	// Handle prompt=none (OIDC Core §3.1.2.1): silent authentication.
@@ -851,7 +880,11 @@ func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 //
 // Fields intentionally omitted because they are not implemented:
 //   - userinfo_signing_alg_values_supported (UserInfo supports both unsigned JSON and signed JWT)
-//   - request_parameter_supported / request_uri_parameter_supported (not supported)
+//
+// request_parameter_supported and request_uri_parameter_supported are both
+// advertised true: the inline `request` param (ParseRequestObjectJWT) and the
+// `request_uri` param (FetchRequestURI via the SSRF-safe client + the same
+// verify/merge path) are implemented in the authorize handler.
 //
 // claims_parameter_supported is advertised because the server accepts, parses,
 // validates, and persists the §5.5 claims parameter (ParseClaimsParameter +
