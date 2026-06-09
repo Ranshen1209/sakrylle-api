@@ -284,16 +284,20 @@ func ParseRequestObjectJWT(rawJWT, issuer, clientID, clientSecret string) (*Auth
 		return nil, fmt.Errorf("request object iss %q != client_id %q", claims.Issuer, clientID)
 	}
 
-	// Validate aud contains the issuer.
-	audOK := false
-	for _, a := range claims.Audience {
-		if a == issuer {
-			audOK = true
-			break
+	// Validate aud contains the issuer (OIDC Core §6.1). When the issuer is
+	// known, the request object aud MUST contain it — reject both an empty aud
+	// and a non-empty aud that omits the issuer.
+	if issuer != "" {
+		audOK := false
+		for _, a := range claims.Audience {
+			if a == issuer {
+				audOK = true
+				break
+			}
 		}
-	}
-	if !audOK && len(claims.Audience) == 0 && issuer != "" {
-		return nil, fmt.Errorf("request object aud does not contain issuer %q", issuer)
+		if !audOK {
+			return nil, fmt.Errorf("request object aud does not contain issuer %q", issuer)
+		}
 	}
 
 	// Build AuthorizeRequest from the request object claims.
