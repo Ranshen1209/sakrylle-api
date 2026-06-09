@@ -533,8 +533,10 @@ func FetchRequestURI(rawURI string, allowedURIs []string) (string, error) {
 		return "", fmt.Errorf("request_uri fetch: no HTTP client configured")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), requestURITimeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(
-		context.Background(), // caller should use a proper context
+		ctx,
 		http.MethodGet,
 		rawURI,
 		nil,
