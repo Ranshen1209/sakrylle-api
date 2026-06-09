@@ -632,9 +632,14 @@ func (s *OIDCKeyService) CleanupExpiredKeys(ctx context.Context) (int, error) {
 	// the store; the lock is released before calling cleanupExpiredKeysFor
 	// (which acquires s.mu itself) to avoid a self-deadlock.
 	gracePeriodSec := defaultGracePeriodSec
-	s.mu.Lock()
-	ttlStr, found, err := s.store.Get(ctx, oidcGracePeriodTTLKey)
-	s.mu.Unlock()
+	var ttlStr string
+	var found bool
+	var err error
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		ttlStr, found, err = s.store.Get(ctx, oidcGracePeriodTTLKey)
+	}()
 	if err != nil {
 		return 0, fmt.Errorf("load grace period ttl: %w", err)
 	}
