@@ -97,9 +97,9 @@ func extractHost(raw string) (string, bool) {
 // ResolvePairwiseSub computes the pairwise sub for a given client+user
 // combination. It uses the client's SectorIdentifierURI if set; otherwise
 // derives the sector identifier from the client's redirect URIs.
-func ResolvePairwiseSub(issuer string, userID int64, subjectType string, sectorIdentifierURI *string, redirectURIs []string) string {
+func ResolvePairwiseSub(issuer string, userID int64, subjectType string, sectorIdentifierURI *string, redirectURIs []string) (string, error) {
 	if subjectType != "pairwise" {
-		return ""
+		return "", nil
 	}
 	var sectorID string
 	if sectorIdentifierURI != nil && *sectorIdentifierURI != "" {
@@ -108,20 +108,16 @@ func ResolvePairwiseSub(issuer string, userID int64, subjectType string, sectorI
 		// is derived from the hosts in the fetched document, not the URI itself.
 		fetchedURIs, err := FetchSectorIdentifierURI(*sectorIdentifierURI, redirectURIs)
 		if err != nil {
-			// Fallback: use the URI itself as sector identifier if fetch fails.
-			// This maintains backward compatibility and still prevents cross-RP
-			// correlation (different sector URIs produce different pairwise subs).
-			sectorID = *sectorIdentifierURI
-		} else {
-			sectorID = SectorIdentifierFromRedirectURIs(fetchedURIs)
+			// Fail closed: do NOT fall back to hashing the raw URI string, which
+			// would produce a sub on a different basis than the success path and
+			// silently rotate the user's pairwise identifier during an outage.
+			return "", fmt.Errorf("pairwise sub: sector_identifier_uri unresolved: %w", err)
 		}
+		sectorID = SectorIdentifierFromRedirectURIs(fetchedURIs)
 	} else {
 		sectorID = SectorIdentifierFromRedirectURIs(redirectURIs)
-		if sectorID == "" {
-			sectorID = ""
-		}
 	}
-	return ComputePairwiseSub(issuer, userID, sectorID)
+	return ComputePairwiseSub(issuer, userID, sectorID), nil
 }
 
 // sectorIDCache caches fetched sector_identifier_uri documents to avoid
@@ -146,7 +142,7 @@ const sectorIDCacheTTL = 1 * time.Hour
 //   - Only allows HTTPS URIs
 //   - Validates that all client redirect_uris appear in the fetched list
 //   - Caches results for 1 hour
-//   - Falls back to client redirect_uris on any error
+//   - Returns an error on any failure (callers fail closed)
 func FetchSectorIdentifierURI(sectorURI string, clientRedirectURIs []string) ([]string, error) {
 	// Check cache first.
 	sectorIDCacheMu.RLock()

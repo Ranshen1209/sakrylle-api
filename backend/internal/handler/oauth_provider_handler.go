@@ -1020,7 +1020,14 @@ func (h *OAuthProviderHandler) UserInfo(c *gin.Context) {
 		sub := strconv.FormatInt(user.ID, 10)
 		if client, lookupErr := h.provider.LookupClient(ctx, meta.ClientID); lookupErr == nil && client != nil && client.SubjectType == "pairwise" {
 			issuer := h.discoveryIssuer(c)
-			if pw := service.ResolvePairwiseSub(issuer, user.ID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs); pw != "" {
+			pw, pwErr := service.ResolvePairwiseSub(issuer, user.ID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs)
+			if pwErr != nil {
+				// Fail closed: do not emit a sub computed on an inconsistent
+				// basis when the sector_identifier_uri cannot be resolved.
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error", "error_description": "failed to resolve subject identifier"})
+				return
+			}
+			if pw != "" {
 				sub = pw
 			}
 		}
