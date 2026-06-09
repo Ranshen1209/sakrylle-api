@@ -627,9 +627,14 @@ func (s *OIDCKeyService) RotateECKey(ctx context.Context) error {
 // the grace period from the store and their previous-kids lists, and prunes the
 // matching in-memory previous-kid slices. Returns the total count of keys deleted.
 func (s *OIDCKeyService) CleanupExpiredKeys(ctx context.Context) (int, error) {
-	// Load grace period TTL from settings or use default
+	// Load grace period TTL from settings or use default. Read under s.mu so
+	// this store access is serialized with the rotation paths that also touch
+	// the store; the lock is released before calling cleanupExpiredKeysFor
+	// (which acquires s.mu itself) to avoid a self-deadlock.
 	gracePeriodSec := defaultGracePeriodSec
+	s.mu.Lock()
 	ttlStr, found, err := s.store.Get(ctx, oidcGracePeriodTTLKey)
+	s.mu.Unlock()
 	if err != nil {
 		return 0, fmt.Errorf("load grace period ttl: %w", err)
 	}
@@ -672,6 +677,15 @@ func (s *OIDCKeyService) cleanupExpiredKeysFor(
 	now time.Time,
 	memPrevKIDs *[]string,
 ) (int, error) {
+	// Hold s.mu across the entire Get->filter->Put on the shared previous-kids
+	// store list (and the in-memory prune below), not just the prune. This
+	// serializes with RotateKey/RotateECKey/appendPreviousKID — which mutate the
+	// same list under s.mu — closing the TOCTOU that could drop a freshly
+	// rotated kid. Safe from deadlock: the caller CleanupExpiredKeys does not
+	// hold s.mu, and rotation never calls back into cleanup.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	jsonStr, found, err := s.store.Get(ctx, prevKIDsStoreKey)
 	if err != nil {
 		return 0, fmt.Errorf("load previous kids: %w", err)
@@ -719,7 +733,6 @@ func (s *OIDCKeyService) cleanupExpiredKeysFor(
 	}
 
 	// Prune the in-memory previous-kid slice to the still-valid set.
-	s.mu.Lock()
 	validKIDSet := make(map[string]bool, len(validEntries))
 	for _, entry := range validEntries {
 		validKIDSet[entry.KID] = true
@@ -731,7 +744,6 @@ func (s *OIDCKeyService) cleanupExpiredKeysFor(
 		}
 	}
 	*memPrevKIDs = newPrevKIDs
-	s.mu.Unlock()
 
 	return deletedCount, nil
 }
