@@ -130,7 +130,12 @@ func (h *AccountInfoHandler) Me(c *gin.Context) {
 			return
 		}
 	}
-	c.JSON(http.StatusOK, h.assembleOAuthMe(c, apiKey, meta))
+	oauthMe, err := h.assembleOAuthMe(c, apiKey, meta)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "server_error", "message": "failed to resolve subject identifier"}})
+		return
+	}
+	c.JSON(http.StatusOK, oauthMe)
 }
 
 // assembleManualKeyMe returns the full account/group view for manual API
@@ -172,7 +177,7 @@ func (h *AccountInfoHandler) assembleManualKeyMe(apiKey *service.APIKey) gin.H {
 // `oauth` block is always included for OAuth tokens (client_id / app_type /
 // grant_id / device / expiry). Per §12.11 we never expose api_keys[],
 // billing records, admin fields, or full email without email:read.
-func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.APIKey, meta *service.OAuthAccessToken) gin.H {
+func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.APIKey, meta *service.OAuthAccessToken) (gin.H, error) {
 	user := apiKey.User
 
 	// Nil-safe scope extraction: legacy v1 tokens have no stored scopes.
@@ -238,7 +243,13 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 		if meta != nil && h.oauthService != nil {
 			if client, lookupErr := h.oauthService.LookupClient(c.Request.Context(), meta.ClientID); lookupErr == nil && client != nil && client.SubjectType == "pairwise" {
 				issuer := resolveIssuerFromRequest(c)
-				if pw := service.ResolvePairwiseSub(issuer, user.ID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs); pw != "" {
+				pw, pwErr := service.ResolvePairwiseSub(issuer, user.ID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs)
+				if pwErr != nil {
+					// Fail closed: refuse to emit a sub on an inconsistent basis
+					// when the sector_identifier_uri cannot be resolved.
+					return nil, pwErr
+				}
+				if pw != "" {
 					sub = pw
 				}
 			}
@@ -287,7 +298,7 @@ func (h *AccountInfoHandler) assembleOAuthMe(c *gin.Context, apiKey *service.API
 		resp["allowed_groups"] = h.allowedGroupsForUser(c, user.ID, apiKey.Group, oauthClient, scopes)
 	}
 
-	return resp
+	return resp, nil
 }
 
 // allowedGroupsForUser builds the §12.11 `allowed_groups` array. Returns an

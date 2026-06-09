@@ -359,7 +359,11 @@ func (s *OAuthProviderService) maybeSignIDToken(ctx context.Context, client *OAu
 	// Compute pairwise sub when the client requires it (OIDC Core §8).
 	var pairwiseSub string
 	if client != nil && client.SubjectType == "pairwise" {
-		pairwiseSub = ResolvePairwiseSub(issuer, userID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs)
+		ps, err := ResolvePairwiseSub(issuer, userID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs)
+		if err != nil {
+			return "", fmt.Errorf("oidc: resolve pairwise sub: %w", err)
+		}
+		pairwiseSub = ps
 	}
 	// Claim scopes drive which identity claims we promise. If we cannot load
 	// the user (MEDIUM-1), do NOT emit a token that advertises profile/email
