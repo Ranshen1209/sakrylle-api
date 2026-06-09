@@ -183,7 +183,26 @@ func (s *OIDCKeyService) EnsureKey(ctx context.Context) error {
 		}
 	}
 
+	// Self-heal: if a prior rotation's pointer flip failed, the current kid may
+	// also linger in the previous-kids list, which would surface it twice in
+	// JWKS. Drop it from the in-memory previous slices on load. Runs under
+	// s.mu (held for the whole EnsureKey body).
+	s.rsaPrevKIDs = dropKID(s.rsaPrevKIDs, s.rsaKID)
+	s.ecPrevKIDs = dropKID(s.ecPrevKIDs, s.ecKID)
+
 	return nil
+}
+
+// dropKID returns kids with every occurrence of drop removed. It reuses the
+// input's backing array (kids[:0]) since callers replace the slice in place.
+func dropKID(kids []string, drop string) []string {
+	out := kids[:0]
+	for _, k := range kids {
+		if k != drop {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 func (s *OIDCKeyService) loadRSAKey(ctx context.Context, kid string) (*rsa.PrivateKey, error) {
