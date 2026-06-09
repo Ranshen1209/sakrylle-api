@@ -98,6 +98,18 @@ func (s *OIDCKeyRotationScheduler) Stop() {
 	slog.Info("oidc key rotation scheduler stopped")
 }
 
+// runGuarded executes fn with its own panic recovery so a single iteration's
+// panic does not kill the scheduler goroutine. The outer loop's recover
+// remains as a last-resort backstop.
+func runGuarded(name string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("oidc key rotation: panic recovered in iteration", "stage", name, "panic", r)
+		}
+	}()
+	fn()
+}
+
 // rotationLoop is the main rotation goroutine. It rotates both RSA and EC
 // keys on a configurable interval, waits for the grace period, then cleans
 // up expired keys from the just-rotated set. Failures are logged but never
@@ -141,7 +153,7 @@ func (s *OIDCKeyRotationScheduler) rotationLoop(ctx context.Context) {
 			"grace_period_seconds", gracePeriodSec)
 
 		// Execute rotation.
-		s.rotateBoth(ctx)
+		runGuarded("rotate", func() { s.rotateBoth(ctx) })
 
 		// Wait for grace period so RPs can pick up the new keys from JWKS.
 		if gracePeriodSec > 0 {
@@ -155,7 +167,7 @@ func (s *OIDCKeyRotationScheduler) rotationLoop(ctx context.Context) {
 		}
 
 		// Clean up expired keys.
-		s.cleanupExpired(ctx, "rotation_cycle")
+		runGuarded("cleanup_after_rotate", func() { s.cleanupExpired(ctx, "rotation_cycle") })
 
 		// Sleep until next rotation interval.
 		interval := time.Duration(intervalHours) * time.Hour
@@ -205,7 +217,7 @@ func (s *OIDCKeyRotationScheduler) cleanupLoop(ctx context.Context) {
 		slog.Info("oidc cleanup cycle starting",
 			"interval_hours", intervalHours)
 
-		s.cleanupExpired(ctx, "independent")
+		runGuarded("cleanup", func() { s.cleanupExpired(ctx, "independent") })
 
 		slog.Info("oidc cleanup cycle complete; next cleanup scheduled",
 			"next_in_hours", intervalHours)
@@ -274,6 +286,9 @@ func (s *OIDCKeyRotationScheduler) isEnabled(ctx context.Context) bool {
 }
 
 func (s *OIDCKeyRotationScheduler) rotationIntervalHours(ctx context.Context) int {
+	if s.settingSvc == nil {
+		return DefaultOIDCKeyRotationIntervalHours
+	}
 	v, err := s.settingSvc.GetValue(ctx, "oidc_key_rotation_interval_hours")
 	if err != nil || v == "" {
 		return DefaultOIDCKeyRotationIntervalHours
@@ -288,6 +303,9 @@ func (s *OIDCKeyRotationScheduler) rotationIntervalHours(ctx context.Context) in
 }
 
 func (s *OIDCKeyRotationScheduler) gracePeriodSeconds(ctx context.Context) int {
+	if s.settingSvc == nil {
+		return defaultGracePeriodSec
+	}
 	v, err := s.settingSvc.GetValue(ctx, "oidc_grace_period_ttl_seconds")
 	if err != nil || v == "" {
 		return defaultGracePeriodSec
