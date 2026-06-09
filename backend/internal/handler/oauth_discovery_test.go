@@ -190,10 +190,8 @@ func TestOIDCDiscoverySpecificFields(t *testing.T) {
 		}
 	}
 
-	// Boolean OIDC-specific fields.
+	// Boolean OIDC-specific fields advertised true.
 	for _, field := range []string{
-		"request_parameter_supported",
-		"request_uri_parameter_supported",
 		"claims_parameter_supported",
 		"backchannel_logout_supported",
 		"backchannel_logout_session_supported",
@@ -206,6 +204,24 @@ func TestOIDCDiscoverySpecificFields(t *testing.T) {
 		b, ok := val.(bool)
 		if !ok || !b {
 			t.Errorf("field %q = %v, want true", field, val)
+		}
+	}
+
+	// request/request_uri are advertised false: fetch+merge is implemented but
+	// request-object signature verification is not yet wired for real clients
+	// (ParseRequestObjectJWT is called with an empty client_secret).
+	for _, field := range []string{
+		"request_parameter_supported",
+		"request_uri_parameter_supported",
+	} {
+		val, ok := doc[field]
+		if !ok {
+			t.Errorf("OIDC discovery missing field %q", field)
+			continue
+		}
+		b, ok := val.(bool)
+		if !ok || b {
+			t.Errorf("field %q = %v, want false", field, val)
 		}
 	}
 }
