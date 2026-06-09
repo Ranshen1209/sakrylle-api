@@ -1087,10 +1087,16 @@ func (h *OAuthProviderHandler) UserInfo(c *gin.Context) {
 			email := user.Email
 			// Gate email claim by scope: only include email when email scope was granted.
 			emailForJWT := ""
+			emailVerifiedForJWT := false
 			if service.HasScope(scopes, service.ScopeEmail) {
 				emailForJWT = email
+				emailVerifiedForJWT = user.EmailVerified
 			}
-			claims := service.BuildUserInfoJWTClaims(sub, username, emailForJWT, time.Now(), 0)
+			claims := service.BuildUserInfoJWTClaims(
+				h.discoveryIssuer(c), meta.ClientID,
+				sub, username, emailForJWT, emailVerifiedForJWT,
+				time.Now(), 0,
+			)
 			// Use client's signing algorithm; default to RS256 when unknown.
 			alg := service.SigningAlgRS256
 			if client, lookupErr := h.provider.LookupClient(ctx, meta.ClientID); lookupErr == nil && client != nil {
