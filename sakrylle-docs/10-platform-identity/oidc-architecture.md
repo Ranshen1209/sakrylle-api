@@ -141,7 +141,7 @@ last_verified: 2026-06-06
 
 **✅ 已实现设计**：
 - **算法**：✅ **RS256 为主 + ES256（P-256）为第二算法**。RS256 OIDC 互操作性最广（所有成熟 RP 库支持），ES256 提供更短密钥/签名。`jwks.json` **同时暴露两套 key、各自 kid**；discovery 的 `id_token_signing_alg_values_supported` 同时列出 `["RS256","ES256"]`。
-- **密钥基建**：✅ **复用现有 `security_secrets` 表**（`backend/internal/service/oidc_key_store_impl.go`）：每套密钥新增一行（命名如 `oidc_signing_key_rsa_<kid>` / `oidc_signing_key_ec_<kid>`，value 存私钥），私钥**使用 AES-256-GCM 加密 at-rest**，KEK 来自环境变量 `OIDC_KEY_ENCRYPTION_KEY`（64 hex = 32 bytes）。多副本天然共享、轮换写一行即可。
+- **密钥基建**：✅ **复用现有 `security_secrets` 表**（`backend/internal/service/oidc_key_store_impl.go`）：每套密钥新增一行（命名如 `oidc_signing_key_rsa_<kid>` / `oidc_signing_key_ec_<kid>`，value 存私钥），私钥**使用 AES-256-GCM 加密 at-rest**，KEK = **共享的 `TOTP_ENCRYPTION_KEY`**（`cfg.Totp.EncryptionKey`，64 hex = 32 bytes）。代码经 `repository.NewAESEncryptor` 解码此 env 得到 KEK，**不存在** `OIDC_KEY_ENCRYPTION_KEY` 变量；同一 KEK 还保护 TOTP / channel-monitor / backup secrets。多副本天然共享、轮换写一行即可（但**更换该 KEK 会同时作废上述所有密文**）。
 - **`kid`（key id）轮换**：✅ 已实现，**RSA 与 EC（ES256）完全对等**（EC 对称轮换于 2026-06-04 补齐）
   - JWKS 同时发布 **当前 + 上一个** 公钥（双 kid 并存），且 RSA + EC 两种算法**各自**同时发布 current + previous（dual-kid），保证轮换窗口内旧 id_token 跨两种算法仍可验签。
   - id_token header 带 `kid`，RP 按 kid 取公钥。
