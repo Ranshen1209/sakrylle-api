@@ -920,9 +920,14 @@ func TestExchangeAuthorizationCodeConfidentialClient(t *testing.T) {
 	const secret = "super-secret-confidential-client-token"
 	ctx := context.Background()
 
-	// Sanity: ValidateAuthorizeRequest accepts a request with an empty
-	// CodeChallenge for confidential clients (PKCERequired=false).
-	t.Run("validate_no_pkce_required", func(t *testing.T) {
+	// PKCE S256 is mandatory for ALL clients (incl. confidential), so the
+	// authorize request must carry a valid code_challenge and the token
+	// exchange a matching code_verifier.
+	verifier, challenge := pkceVerifierAndChallenge("verifier-confidential-pkce-aaaaaaaaaaaaaaaaaaaa")
+
+	// Sanity: ValidateAuthorizeRequest now REJECTS a confidential client that
+	// omits code_challenge (PKCERequired=false no longer exempts it).
+	t.Run("validate_pkce_required_even_for_confidential", func(t *testing.T) {
 		svc := newConfidentialServiceUnderTest(t, secret)
 		req := &AuthorizeRequest{
 			ClientID:     "confidential-client",
@@ -931,23 +936,21 @@ func TestExchangeAuthorizationCodeConfidentialClient(t *testing.T) {
 			Scopes:       []string{"image_generation"},
 			State:        "abc",
 		}
-		client, err := svc.ValidateAuthorizeRequest(ctx, req)
-		if err != nil {
-			t.Fatalf("validate confidential client: %v", err)
-		}
-		if client.ClientID != "confidential-client" {
-			t.Fatalf("got client_id=%q", client.ClientID)
+		if _, err := svc.ValidateAuthorizeRequest(ctx, req); !errors.Is(err, ErrOAuthMissingPKCE) {
+			t.Fatalf("confidential client without PKCE must be rejected; got err=%v, want ErrOAuthMissingPKCE", err)
 		}
 	})
 
 	t.Run("happy_path_correct_secret", func(t *testing.T) {
 		svc := newConfidentialServiceUnderTest(t, secret)
 		req := &AuthorizeRequest{
-			ClientID:     "confidential-client",
-			RedirectURI:  "https://confidential.example.com/cb",
-			ResponseType: "code",
-			Scopes:       []string{"image_generation"},
-			State:        "abc",
+			ClientID:            "confidential-client",
+			RedirectURI:         "https://confidential.example.com/cb",
+			ResponseType:        "code",
+			Scopes:              []string{"image_generation"},
+			State:               "abc",
+			CodeChallenge:       challenge,
+			CodeChallengeMethod: "S256",
 		}
 		client, err := svc.ValidateAuthorizeRequest(ctx, req)
 		if err != nil {
@@ -957,9 +960,9 @@ func TestExchangeAuthorizationCodeConfidentialClient(t *testing.T) {
 		if err != nil {
 			t.Fatalf("issue: %v", err)
 		}
-		// PKCERequired=false AND no challenge stored on the code → exchange
-		// must NOT require a verifier.
-		tok, err := svc.ExchangeAuthorizationCode(ctx, client.ClientID, secret, issued.Code, req.RedirectURI, "")
+		// Confidential client must present both a valid secret and a matching
+		// PKCE verifier.
+		tok, err := svc.ExchangeAuthorizationCode(ctx, client.ClientID, secret, issued.Code, req.RedirectURI, verifier)
 		if err != nil {
 			t.Fatalf("exchange: %v", err)
 		}
@@ -974,11 +977,13 @@ func TestExchangeAuthorizationCodeConfidentialClient(t *testing.T) {
 	t.Run("wrong_secret_does_not_consume_code", func(t *testing.T) {
 		svc := newConfidentialServiceUnderTest(t, secret)
 		req := &AuthorizeRequest{
-			ClientID:     "confidential-client",
-			RedirectURI:  "https://confidential.example.com/cb",
-			ResponseType: "code",
-			Scopes:       []string{"image_generation"},
-			State:        "abc",
+			ClientID:            "confidential-client",
+			RedirectURI:         "https://confidential.example.com/cb",
+			ResponseType:        "code",
+			Scopes:              []string{"image_generation"},
+			State:               "abc",
+			CodeChallenge:       challenge,
+			CodeChallengeMethod: "S256",
 		}
 		client, err := svc.ValidateAuthorizeRequest(ctx, req)
 		if err != nil {
@@ -989,12 +994,12 @@ func TestExchangeAuthorizationCodeConfidentialClient(t *testing.T) {
 			t.Fatalf("issue: %v", err)
 		}
 		// Wrong secret → ErrOAuthClientAuthFailed.
-		if _, err := svc.ExchangeAuthorizationCode(ctx, client.ClientID, "not-the-secret", issued.Code, req.RedirectURI, ""); !errors.Is(err, ErrOAuthClientAuthFailed) {
+		if _, err := svc.ExchangeAuthorizationCode(ctx, client.ClientID, "not-the-secret", issued.Code, req.RedirectURI, verifier); !errors.Is(err, ErrOAuthClientAuthFailed) {
 			t.Fatalf("wrong secret: got err=%v, want ErrOAuthClientAuthFailed", err)
 		}
 		// Critical invariant: client auth happens BEFORE code consumption,
 		// so a follow-up call with the correct secret must still succeed.
-		tok, err := svc.ExchangeAuthorizationCode(ctx, client.ClientID, secret, issued.Code, req.RedirectURI, "")
+		tok, err := svc.ExchangeAuthorizationCode(ctx, client.ClientID, secret, issued.Code, req.RedirectURI, verifier)
 		if err != nil {
 			t.Fatalf("retry with correct secret: %v (code was wrongly consumed by the failed auth attempt)", err)
 		}
@@ -1006,11 +1011,13 @@ func TestExchangeAuthorizationCodeConfidentialClient(t *testing.T) {
 	t.Run("empty_secret", func(t *testing.T) {
 		svc := newConfidentialServiceUnderTest(t, secret)
 		req := &AuthorizeRequest{
-			ClientID:     "confidential-client",
-			RedirectURI:  "https://confidential.example.com/cb",
-			ResponseType: "code",
-			Scopes:       []string{"image_generation"},
-			State:        "abc",
+			ClientID:            "confidential-client",
+			RedirectURI:         "https://confidential.example.com/cb",
+			ResponseType:        "code",
+			Scopes:              []string{"image_generation"},
+			State:               "abc",
+			CodeChallenge:       challenge,
+			CodeChallengeMethod: "S256",
 		}
 		client, err := svc.ValidateAuthorizeRequest(ctx, req)
 		if err != nil {
@@ -1020,7 +1027,7 @@ func TestExchangeAuthorizationCodeConfidentialClient(t *testing.T) {
 		if err != nil {
 			t.Fatalf("issue: %v", err)
 		}
-		if _, err := svc.ExchangeAuthorizationCode(ctx, client.ClientID, "", issued.Code, req.RedirectURI, ""); !errors.Is(err, ErrOAuthClientAuthFailed) {
+		if _, err := svc.ExchangeAuthorizationCode(ctx, client.ClientID, "", issued.Code, req.RedirectURI, verifier); !errors.Is(err, ErrOAuthClientAuthFailed) {
 			t.Fatalf("empty secret: got err=%v, want ErrOAuthClientAuthFailed", err)
 		}
 	})

@@ -521,6 +521,8 @@ func (s *OAuthProviderService) LookupClient(ctx context.Context, clientID string
 	if client.Disabled {
 		return nil, ErrOAuthClientDisabled
 	}
+	// Note: PKCE S256 is now enforced unconditionally at authorize/token
+	// endpoints regardless of this flag; this guard remains as defense in depth.
 	if !client.PKCERequired && client.ClientSecretHash == "" {
 		// Misconfigured client: would allow code → token exchange with no auth.
 		// Treat as INVALID_CLIENT so admins notice during onboarding.
@@ -652,16 +654,16 @@ func (s *OAuthProviderService) ValidateAuthorizeRequest(ctx context.Context, req
 	if !ScopeAllowed(client.AllowedScopes, requestedScopes) {
 		return nil, ErrOAuthInvalidScope
 	}
-	if client.PKCERequired {
-		if strings.TrimSpace(req.CodeChallenge) == "" {
-			return nil, ErrOAuthMissingPKCE
-		}
-		if req.CodeChallengeMethod != "S256" {
-			return nil, ErrOAuthUnsupportedChallenge
-		}
-		if !validatePKCEChallenge(req.CodeChallenge) {
-			return nil, ErrOAuthPKCEFormat
-		}
+	// PKCE S256 is mandatory for ALL clients (public and confidential).
+	// We no longer gate on client.PKCERequired.
+	if strings.TrimSpace(req.CodeChallenge) == "" {
+		return nil, ErrOAuthMissingPKCE
+	}
+	if req.CodeChallengeMethod != "S256" {
+		return nil, ErrOAuthUnsupportedChallenge
+	}
+	if !validatePKCEChallenge(req.CodeChallenge) {
+		return nil, ErrOAuthPKCEFormat
 	}
 	return client, nil
 }
@@ -1105,10 +1107,9 @@ func (s *OAuthProviderService) ExchangeAuthorizationCode(
 	if code.RedirectURI != redirectURI {
 		return nil, ErrOAuthRedirectMismatch
 	}
-	if client.PKCERequired || code.CodeChallenge != "" {
-		if !verifyPKCES256(code.CodeChallenge, codeVerifier) {
-			return nil, ErrOAuthPKCEFailed
-		}
+	// PKCE verification is mandatory for all clients.
+	if !verifyPKCES256(code.CodeChallenge, codeVerifier) {
+		return nil, ErrOAuthPKCEFailed
 	}
 	return s.mintTokensFromCode(ctx, client, code, codePlain)
 }
