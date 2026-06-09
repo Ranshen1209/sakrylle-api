@@ -1668,13 +1668,23 @@ func (h *OAuthProviderHandler) dispatchBackchannelLogout(c *gin.Context, clientI
 		return
 	}
 
-	// Broadcast to ALL clients with backchannel_logout_uri (OIDC Back-Channel
-	// Logout §15: the OP MUST notify all RPs where the user has an active session).
-	clients, err := h.provider.ListClientsWithBackchannelLogout(c.Request.Context())
-	if err != nil {
-		slog.Error("oidc backchannel logout: failed to list clients", "error", err)
+	// Notify ONLY the RP that initiated this logout. Broadcasting logout_token
+	// to every client with a backchannel_logout_uri over-notifies unrelated RPs
+	// and leaks this user's logout activity to them. The initiating client is
+	// the audience of the verified id_token_hint.
+	if clientID == "" {
 		return
 	}
+	client, err := h.provider.LookupClient(c.Request.Context(), clientID)
+	if err != nil || client == nil {
+		slog.Warn("oidc backchannel logout: initiating client not found",
+			"client_id", clientID, "error", err)
+		return
+	}
+	if client.BackchannelLogoutURI == nil || *client.BackchannelLogoutURI == "" {
+		return
+	}
+	clients := []*service.OAuthClient{client}
 
 	now := time.Now()
 	for _, client := range clients {
