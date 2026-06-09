@@ -300,7 +300,7 @@ OIDC 基座（03）先行
 
 | # | 动作 | 对象 | 触发 Phase | 状态 |
 |---|---|---|---|---|
-| A1 | RS256 私钥生成 + KEK(`OIDC_KEY_ENCRYPTION_KEY`) 注入 | 签名密钥 / `.env` | 1.A G3 | ✅ 已完成 2026-06-04 |
+| A1 | RS256 私钥生成 + KEK(共享 `TOTP_ENCRYPTION_KEY`，非 `OIDC_KEY_ENCRYPTION_KEY`) 注入 | 签名密钥 / `.env` | 1.A G3 | ✅ 已完成 2026-06-04 |
 | A2 | issuer 只读核对（**只读，不改**） | `settings.oauth_issuer` | 0.A Q-03 | ✅ 已完成 2026-06-03 |
 | A3 | image client `allowed_scopes` 加 `openid profile email` | `oauth_clients` | 1.B | ✅ 已完成 2026-06-05（migration 150，生产已确认） |
 | A4 | consent 品牌化随发布上线 + 5 RP client 注册（替换 144/148 seed） | `oauth_clients` | 2.A | ⏳ 待执行 |

@@ -9,7 +9,7 @@ Sakrylle acts as an OpenID Connect (OIDC) provider, issuing `id_token` JWTs to a
 - **Discovery**: RFC 8414 `.well-known/openid-configuration` metadata
 - **JWKS**: Public key rotation with grace period
 - **Signing algorithms**: RS256 (RSA-2048) and ES256 (NIST P-256)
-- **Encrypted key storage**: AES-256-GCM with 256-bit KEK
+- **Encrypted key storage**: AES-256-GCM with a 256-bit KEK. The KEK is the **shared `TOTP_ENCRYPTION_KEY`** (`cfg.Totp.EncryptionKey`), not a dedicated OIDC key — see the warning under "Generate KEK" below.
 - **Standard scopes**: `openid`, `profile`, `email`
 
 ## Prerequisites
@@ -48,8 +48,12 @@ POSTGRES_USER=sub2api
 POSTGRES_PASSWORD=<secure-password>
 POSTGRES_DB=sub2api
 
-# OIDC Key Encryption Key (generate once, never rotate)
-OIDC_KEY_ENCRYPTION_KEY=<64-hex-char-string>
+# Key Encryption Key (KEK) for OIDC signing keys.
+# IMPORTANT: the code reads this as TOTP_ENCRYPTION_KEY (cfg.Totp.EncryptionKey).
+# There is NO separate OIDC_KEY_ENCRYPTION_KEY — that name is not consumed by the
+# application. This single key also protects TOTP secrets, channel-monitor
+# credentials, and backup secrets. Generate once, never rotate.
+TOTP_ENCRYPTION_KEY=<64-hex-char-string>
 
 # Admin API token (for key generation API calls)
 ADMIN_TOKEN=<jwt-token-from-login>
@@ -72,18 +76,32 @@ API_BASE_URL=https://api.sakrylle.com
 
 The Key Encryption Key (KEK) encrypts signing keys in the database. **Generate once and never rotate.**
 
+> **Critical — the KEK is the shared `TOTP_ENCRYPTION_KEY`, not a dedicated OIDC key.**
+> The application reads `cfg.Totp.EncryptionKey` (env `TOTP_ENCRYPTION_KEY`) and uses it as
+> the KEK for OIDC signing keys *and* for TOTP secrets, channel-monitor credentials, and
+> backup secrets. **There is no `OIDC_KEY_ENCRYPTION_KEY` variable in the code** — setting it
+> has no effect.
+>
+> - If `TOTP_ENCRYPTION_KEY` is unset, the app **auto-generates an ephemeral key at startup**
+>   (logged as a warning). An ephemeral key changes on every restart, which makes all stored
+>   OIDC/TOTP/monitor/backup ciphertext undecryptable after a restart — always pin a fixed key
+>   in production.
+> - **Rotating or changing this key breaks every secret it protects at once** (OIDC signing
+>   keys, TOTP, channel-monitor, backups), not just OIDC. Treat it as a single shared root
+>   secret, never as an independently-rotatable OIDC key.
+
 ```bash
 # Generate 256-bit KEK
 openssl rand -hex 32
 
 # Add to .env (example)
-echo "OIDC_KEY_ENCRYPTION_KEY=a3f8d9e2c4b7a1f6e8d3c9b2a5f7e1d4c8b3a6f9e2d5c1b8a4f7e3d6c2b9a5f8" >> .env
+echo "TOTP_ENCRYPTION_KEY=a3f8d9e2c4b7a1f6e8d3c9b2a5f7e1d4c8b3a6f9e2d5c1b8a4f7e3d6c2b9a5f8" >> .env
 ```
 
 **Security requirements:**
 - Exactly 64 hexadecimal characters (32 bytes)
 - Store in `.env` with mode `0600`
-- Back up securely (losing KEK = losing all signing keys)
+- Back up securely (losing this key = losing all OIDC signing keys *and* TOTP/monitor/backup secrets)
 - **Never** commit to version control
 
 #### 1.2. Verify Database State
@@ -117,6 +135,13 @@ cd /opt/sub2api/backend
 6. Validates discovery and JWKS endpoints
 
 **Expected output:**
+
+> **Note:** `oidc-setup.sh` / `oidc-verify.sh` still validate a variable named
+> `OIDC_KEY_ENCRYPTION_KEY`, but the application does **not** read that name — it uses
+> `TOTP_ENCRYPTION_KEY`. The scripts are out of sync with the code (see KEK note above).
+> Until the scripts are fixed, set **both** names to the *same* value so the scripts pass
+> and the app gets a usable key.
+
 ```
 [INFO] OIDC Setup Script
 [SUCCESS] OIDC_KEY_ENCRYPTION_KEY already set (64 chars)
@@ -148,7 +173,7 @@ For production, pre-set all variables in `/opt/stack/sub2api/.env`:
 
 ```bash
 # Add to .env
-OIDC_KEY_ENCRYPTION_KEY=<your-64-hex-kek>
+TOTP_ENCRYPTION_KEY=<your-64-hex-kek>   # shared KEK; see note in section 1.1
 OIDC_ISSUER=https://api.sakrylle.com
 ```
 
@@ -474,8 +499,8 @@ ERROR Failed to load OIDC signing key kid=<kid>: cipher: message authentication 
 ```
 
 **Cause:**
-- `OIDC_KEY_ENCRYPTION_KEY` changed
-- Database key encrypted with different KEK
+- `TOTP_ENCRYPTION_KEY` (the shared KEK) changed or was auto-generated on restart
+- Database key encrypted with a different KEK
 - Corrupted encrypted key data
 
 **Fix (if KEK lost):**

@@ -50,7 +50,7 @@ last_verified: 2026-06-06
 
 5. ✅ **Scope enforcement 已开启（2026-06-05）**：`oauth_scope_enforcement_enabled` 已从 `false` 切为 `true`，sub2api 已重启。`sk_oauth_` token 现在严格按 scope 矩阵校验。新 RP 需确保 `allowed_scopes` 覆盖所有需调用的端点。
 
-6. ✅ **`security_secrets` 表存储 OIDC 签名密钥**（migration 053）：RS256 和 ES256 私钥使用 AES-256-GCM 加密存储，KEK 来自环境变量 `OIDC_KEY_ENCRYPTION_KEY`。
+6. ✅ **`security_secrets` 表存储 OIDC 签名密钥**（migration 053）：RS256 和 ES256 私钥使用 AES-256-GCM 加密存储，KEK = **共享的 `TOTP_ENCRYPTION_KEY`**（`cfg.Totp.EncryptionKey`）；代码经 `repository.NewAESEncryptor` 解码此 env，**不读** `OIDC_KEY_ENCRYPTION_KEY`。该 KEK 同时保护 TOTP / channel-monitor / backup secrets，未设则启动自动生成（重启即失效）。
 
 ---
 
@@ -419,7 +419,7 @@ account:read              → account + current_group + allowed_groups + capabil
 
 | 风险 | 当前状态 | 优先级 |
 |---|---|---|
-| RS256/ES256 私钥泄漏 = 可伪造任意用户 id_token | 已缓解：AES-256-GCM 加密存 `security_secrets`，KEK 走 `OIDC_KEY_ENCRYPTION_KEY` env；RSA + EC 对称 kid 轮换 + grace-period 清理（含自动调度器） | 高（结构性，持续关注） |
+| RS256/ES256 私钥泄漏 = 可伪造任意用户 id_token | 已缓解：AES-256-GCM 加密存 `security_secrets`，KEK = 共享 `TOTP_ENCRYPTION_KEY`（非 `OIDC_KEY_ENCRYPTION_KEY`，代码不读后者）；RSA + EC 对称 kid 轮换 + grace-period 清理（含自动调度器） | 高（结构性，持续关注） |
 | `oauth_scope_enforcement_enabled = false` | **开放（过渡态）**：默认 `false`，`sk_oauth_` token 当前无 scope 粒度限制。开启是**生产决策，需审批**——开启后会开始拒绝 scope 不足的 token，须先全量验证各 RP scope 覆盖 | 中 |
 | HS256 session secret 泄漏 = 全量会话失陷 | 对称 secret 单点，与 id_token 的 RS256/ES256 独立；轮换 `JWT_SECRET` 须强制全量重登（`TokenVersion` 递增） | 中 |
 | Replay 保护依赖 `FOR UPDATE` 行锁 | 单节点部署，当前可接受 | 低 |

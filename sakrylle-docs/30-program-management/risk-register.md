@@ -32,7 +32,7 @@ last_verified: 2026-06-06
 | **影响** | 极高——全量用户身份被冒充，波及所有接入 OIDC 的产品 |
 | **概率** | 中——私钥存储方案若不当（明文文件、弱权限）则概率升高 |
 | **综合优先级** | **P0** |
-| **缓解措施** | 私钥 AES-256-GCM 加密存 DB（`security_secrets` 表，KEK 来自 `OIDC_KEY_ENCRYPTION_KEY` env，≥32 字节，与 `TOTP_ENCRYPTION_KEY` 同款保护模式）；进程内缓存、最小读权限；kid 轮换："先发布后签发"，双 kid 并存 90 天轮换窗口，**RSA 与 EC（ES256）轮换 + grace-period 清理已对等实现（2026-06-04）**；私钥绝不出现在日志/debug output；泄露应急：生成新密钥→更新 JWKS→所有旧 id_token 失效（RP 端重新授权）；**密钥注入生产需额外审批**。**自动调度器**（2026-06-05）：`OIDCKeyRotationScheduler` 双 goroutine（rotation + cleanup），配置项 `oidc_auto_rotation_enabled`/`oidc_key_rotation_interval_hours`/`oidc_key_cleanup_interval_hours`；手动触发接口仍保留 |
+| **缓解措施** | 私钥 AES-256-GCM 加密存 DB（`security_secrets` 表，KEK = **共享的 `TOTP_ENCRYPTION_KEY`**（`cfg.Totp.EncryptionKey`），≥32 字节；代码**不读** `OIDC_KEY_ENCRYPTION_KEY`，该 env 名无效；同一 KEK 还保护 TOTP / channel-monitor / backup secrets，**轮换即同时作废以上所有密文**，故视作单一共享根密钥、不可单独轮换；未设则启动时自动生成临时密钥，重启即失效，生产必须固定）；进程内缓存、最小读权限；kid 轮换："先发布后签发"，双 kid 并存 90 天轮换窗口，**RSA 与 EC（ES256）轮换 + grace-period 清理已对等实现（2026-06-04）**；私钥绝不出现在日志/debug output；泄露应急：生成新密钥→更新 JWKS→所有旧 id_token 失效（RP 端重新授权）；**密钥注入生产需额外审批**。**自动调度器**（2026-06-05）：`OIDCKeyRotationScheduler` 双 goroutine（rotation + cleanup），配置项 `oidc_auto_rotation_enabled`/`oidc_key_rotation_interval_hours`/`oidc_key_cleanup_interval_hours`；手动触发接口仍保留 |
 | **负责产品** | Sakrylle API |
 | **相关文件** | `backend/internal/service/auth_service.go:1172`（HS256 参考）；`backend/migrations/`（确认 security_secrets 表，见 `92` Q-01）；`backend/internal/config/config.go:1195` |
 
@@ -108,7 +108,7 @@ last_verified: 2026-06-06
 | **影响** | 高——全量用户会话被伪造 |
 | **概率** | 低——`.env` 严格保护则概率低 |
 | **综合优先级** | **P1** |
-| **缓解措施** | `JWT_SECRET` ≥ 32 字节，仅存 `/opt/stack/sub2api/.env`（mode 600，gitignore）；绝不出现在日志；泄露应急：轮换 JWT_SECRET → 强制全量用户重新登录（`TokenVersion` 递增）；与 RS256 私钥 KEK（`OIDC_KEY_ENCRYPTION_KEY`）分开存储，分开轮换 |
+| **缓解措施** | `JWT_SECRET` ≥ 32 字节，仅存 `/opt/stack/sub2api/.env`（mode 600，gitignore）；绝不出现在日志；泄露应急：轮换 JWT_SECRET → 强制全量用户重新登录（`TokenVersion` 递增）；与 RS256 私钥 KEK（**共享的 `TOTP_ENCRYPTION_KEY`**，非 `OIDC_KEY_ENCRYPTION_KEY`——后者代码不读）分开存储，分开轮换 |
 | **负责产品** | Sakrylle API |
 | **相关文件** | `backend/internal/service/auth_service.go:1172`；`/opt/stack/sub2api/.env` |
 
