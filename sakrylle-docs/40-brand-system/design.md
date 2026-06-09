@@ -538,13 +538,16 @@ border: 1px solid rgba(51,65,85,0.5);
 <div class="stat-card">
   <div class="stat-icon stat-icon-primary">图标</div>
   <div>
-    <div class="stat-value">¥128.50</div>
+    <div class="stat-value">￥128.50</div>
     <div class="stat-label">余额</div>
   </div>
 </div>
 ```
 
-> 货币显示统一使用 `￥`（全角日元符号，display-only，存储数值不转换）。
+> **货币符号约定（有意区分，非品牌漂移）：**
+> - **全角 `￥`（U+FFE5）** 用于 display-only 的内部余额/额度展示（如余额卡片、用量页）。这是显示符号，**底层数值不做 FX 换算**（`users.balance` 等列仍是 USD 命名，见 CLAUDE.md Currency policy）。
+> - **半角 `¥`（U+00A5）** 仅用于真实 CNY 支付网关金额（如订单、支付组件里向第三方网关提交/展示的实付人民币）。
+> 二者刻意分开：display 一律全角 `￥`，真实 CNY 支付一律半角 `¥`。回归排查：`grep -rEn '￥\{[a-zA-Z_]'` 命中多为被破坏的 JS 插值。
 
 ---
 
