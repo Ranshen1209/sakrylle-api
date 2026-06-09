@@ -174,6 +174,35 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
     window.location.href = "/auth/login?next=" + next;
   }
 
+  // Build a group <label> via DOM APIs (createElement + textContent) instead of
+  // innerHTML string concatenation, so admin-configured group names/badges can
+  // never inject markup. Defense in depth on top of the nonce-based CSP.
+  function buildGroupItem(id, name, badge) {
+    var item = document.createElement("label");
+    item.className = "group-item";
+
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.name = "group_ids";
+    cb.value = String(id);
+    cb.checked = true;
+
+    var nameSpan = document.createElement("span");
+    nameSpan.className = "g-name";
+    nameSpan.textContent = name;
+
+    item.appendChild(cb);
+    item.appendChild(nameSpan);
+
+    if (badge) {
+      var badgeSpan = document.createElement("span");
+      badgeSpan.className = "g-badge";
+      badgeSpan.textContent = badge;
+      item.appendChild(badgeSpan);
+    }
+    return item;
+  }
+
   // Step 1: open the transaction. Runs on page load so the consent UI is
   // backed by a real server-side row before the user clicks anything; if
   // /begin fails (expired client, scope rejected, etc.) we surface the
@@ -226,13 +255,7 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
           var g = imageGroups[i];
           var id = g.id || g;
           var name = g.name || String(id);
-          var badge = "Image";
-          var item = document.createElement("label");
-          item.className = "group-item";
-          item.innerHTML = '<input type="checkbox" name="group_ids" value="' + id + '" checked>' +
-            '<span class="g-name">' + name + '</span>' +
-            '<span class="g-badge">' + badge + '</span>';
-          $imageList.appendChild(item);
+          $imageList.appendChild(buildGroupItem(id, name, "Image"));
         }
         $imageWrap.style.display = "block";
       }
@@ -249,13 +272,9 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
           var g = responsesGroups[i];
           var id = g.id || g;
           var name = g.name || String(id);
-          var badge = g.rate_multiplier ? g.rate_multiplier + "x" : "";
-          var item = document.createElement("label");
-          item.className = "group-item";
-          item.innerHTML = '<input type="checkbox" name="group_ids" value="' + id + '" checked>' +
-            '<span class="g-name">' + name + '</span>' +
-            (badge ? '<span class="g-badge">' + badge + '</span>' : '');
-          $responsesList.appendChild(item);
+          var mult = Number(g.rate_multiplier);
+          var badge = (isFinite(mult) && mult > 0) ? mult + "x" : "";
+          $responsesList.appendChild(buildGroupItem(id, name, badge));
         }
         $responsesWrap.style.display = "block";
       }
