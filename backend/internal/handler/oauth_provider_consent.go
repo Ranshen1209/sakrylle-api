@@ -68,7 +68,7 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>授权 ` + html.EscapeString(clientName) + ` · Sakrylle API</title>
 <style>
-  :root { color-scheme: light dark; --primary:#9181bd; --primary-dim:#7c6ba8; --bg:#faf9fc; --fg:#1f1b2e; --card:#ffffff; --muted:#6b6481; --border:#e5e1ed; }
+  :root { color-scheme: light dark; --primary:#9181bd; --primary-dim:#7b6aab; --bg:#faf9fc; --fg:#1f1b2e; --card:#ffffff; --muted:#6b6481; --border:#e5e1ed; }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#13111c; --fg:#ece9f5; --card:#1c1828; --muted:#a39bbf; --border:#2a2438; }
   }
@@ -87,8 +87,8 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   .actions { display:flex; gap:12px; max-width:480px; margin-left:auto; margin-right:auto; }
   button { flex:1; padding:12px 16px; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; border:none; transition:all .15s; }
   button:disabled { opacity:.5; cursor:not-allowed; }
-  .approve { background:var(--primary); color:#fff; }
-  .approve:hover:not(:disabled) { background:var(--primary-dim); }
+  .approve { background:#6b5b95; color:#fff; }
+  .approve:hover:not(:disabled) { background:#584b7a; }
   .deny { background:transparent; color:var(--fg); border:1px solid var(--border); }
   .deny:hover:not(:disabled) { background:var(--border); }
   .status { margin-top:16px; padding:12px; border-radius:8px; font-size:13px; display:none; }
