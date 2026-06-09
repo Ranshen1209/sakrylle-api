@@ -26,23 +26,15 @@ type OIDCUserClaims struct {
 	EmailVerified bool
 }
 
-// forbiddenIDTokenClaims are claim names that must never appear in an id_token
-// because they expose mutable commercial state or permissions. This is a
-// defense-in-depth allowlist guard: the builder only ever sets standard OIDC
-// claims, but assertNoForbiddenClaims fails closed if that ever regresses.
-var forbiddenIDTokenClaims = map[string]struct{}{
-	"balance":         {},
-	"group":           {},
-	"group_id":        {},
-	"rate_multiplier": {},
-	"quota":           {},
-	"quota_used":      {},
-	"daily_limit_usd": {},
-	"model_mapping":   {},
-	"models":          {},
-	"restrict_models": {},
-	"capabilities":    {},
-	"allowed_groups":  {},
+// allowedIDTokenClaims is the exhaustive set of claim names permitted in an
+// id_token (the OIDC claim set this OP issues). assertNoForbiddenClaims fails
+// closed on ANY claim outside this set, so a future regression that adds a
+// sensitive claim (phone_number, address, role, balance, group, ...) is caught.
+var allowedIDTokenClaims = map[string]struct{}{
+	"iss": {}, "sub": {}, "aud": {}, "exp": {}, "iat": {},
+	"nonce": {}, "auth_time": {}, "sid": {},
+	"name": {}, "preferred_username": {}, "email": {}, "email_verified": {},
+	"at_hash": {}, "c_hash": {},
 }
 
 // computeHashClaim implements the OIDC hash algorithm used for at_hash and c_hash:
@@ -175,11 +167,13 @@ func BuildIDTokenClaims(
 	return claims, nil
 }
 
-// assertNoForbiddenClaims fails closed if any business/PII claim is present.
+// assertNoForbiddenClaims fails closed if any claim outside the standard OIDC
+// allowlist is present (defense in depth against a builder regression leaking
+// business/PII state into the id_token).
 func assertNoForbiddenClaims(claims map[string]any) error {
 	for k := range claims {
-		if _, bad := forbiddenIDTokenClaims[k]; bad {
-			return fmt.Errorf("oidc: forbidden business claim %q must not appear in id_token", k)
+		if _, ok := allowedIDTokenClaims[k]; !ok {
+			return fmt.Errorf("oidc: claim %q is not in the id_token allowlist", k)
 		}
 	}
 	return nil
