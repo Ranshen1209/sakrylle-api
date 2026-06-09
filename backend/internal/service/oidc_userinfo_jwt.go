@@ -20,14 +20,25 @@ const DefaultUserInfoJWTTTL = 5 * time.Minute
 // clients, or the pairwise pseudonym for pairwise clients. Callers are
 // responsible for computing the correct sub value.
 //
+// iss is set to the OP issuer and aud to [clientID] so that a signed UserInfo
+// JWT minted for one client cannot be replayed against another client that
+// shares the same signing key (the audience binds it to a single RP).
+//
 // Claims emitted:
+//   - iss (always, the OP issuer)
+//   - aud (always, single-element [clientID])
 //   - sub (always, required by OIDC)
-//   - name, preferred_username (when sub is set and username is non-empty)
-//   - email, email_verified (when email is non-empty)
+//   - iat, exp (always)
+//   - name, preferred_username (when username is non-empty)
+//   - email, email_verified (when email is non-empty; email_verified reflects
+//     the caller-supplied real verification flag, never a hardcoded value)
 func BuildUserInfoJWTClaims(
+	issuer string,
+	clientID string,
 	sub string,
 	username string,
 	email string,
+	emailVerified bool,
 	now time.Time,
 	ttl time.Duration,
 ) jwt.MapClaims {
@@ -35,6 +46,8 @@ func BuildUserInfoJWTClaims(
 		ttl = DefaultUserInfoJWTTTL
 	}
 	claims := jwt.MapClaims{
+		"iss": issuer,
+		"aud": []string{clientID},
 		"sub": sub,
 		"iat": now.Unix(),
 		"exp": now.Add(ttl).Unix(),
@@ -45,7 +58,7 @@ func BuildUserInfoJWTClaims(
 	}
 	if email != "" {
 		claims["email"] = email
-		claims["email_verified"] = false
+		claims["email_verified"] = emailVerified
 	}
 	return claims
 }
