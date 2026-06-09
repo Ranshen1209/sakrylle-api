@@ -81,6 +81,30 @@ func TestSecurity_PKCEPlainRejected(t *testing.T) {
 	}
 }
 
+// TestValidateAuthorizeRequest_PKCERequiredForConfidentialClient verifies that
+// PKCE S256 is mandatory even for confidential clients (those with a
+// client_secret_hash and pkce_required=false). After Task B3 the authorize
+// endpoint enforces PKCE unconditionally for every client, so a confidential
+// client that omits code_challenge must be rejected with ErrOAuthMissingPKCE.
+func TestValidateAuthorizeRequest_PKCERequiredForConfidentialClient(t *testing.T) {
+	const secret = "super-secret-confidential-client-token"
+	svc := newConfidentialServiceUnderTest(t, secret)
+	ctx := context.Background()
+
+	// Otherwise-valid authorize request (response_type=code, non-empty state,
+	// allow-listed redirect_uri, allowed scope) but with NO code_challenge.
+	req := &AuthorizeRequest{
+		ClientID:     "confidential-client",
+		RedirectURI:  "https://confidential.example.com/cb",
+		ResponseType: "code",
+		Scopes:       []string{"image_generation"},
+		State:        "abc",
+	}
+	if _, err := svc.ValidateAuthorizeRequest(ctx, req); !errors.Is(err, ErrOAuthMissingPKCE) {
+		t.Fatalf("confidential client without PKCE must be rejected; got err=%v, want ErrOAuthMissingPKCE", err)
+	}
+}
+
 // TestSecurity_PKCES256Mismatch verifies the code is consumed even when the
 // verifier doesn't match — replaying the code with a corrected verifier must
 // fail with ErrOAuthCodeAlreadyUsed.

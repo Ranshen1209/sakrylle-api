@@ -1121,25 +1121,30 @@ func newGinTestContextWithBasicAuth(form url.Values, basicUser, basicPass string
 func TestTokenBasicAuthCredentials(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	mintCode := func(t *testing.T, svc *service.OAuthProviderService) string {
+	mintCode := func(t *testing.T, svc *service.OAuthProviderService) (code string, verifier string) {
 		t.Helper()
+		// PKCE S256 is mandatory for ALL clients (incl. confidential), so the
+		// authorize request must carry a valid code_challenge.
+		v, challenge := pkceVerifierAndChallengeForHandler("verifier-confidential-basicauth-aaaaaaaaaaaa")
 		authReq := &service.AuthorizeRequest{
-			ClientID:     testConfidentialClientID,
-			RedirectURI:  testConfidentialRedirectURI,
-			ResponseType: "code",
-			Scopes:       []string{"image_generation"},
-			State:        "abc",
+			ClientID:            testConfidentialClientID,
+			RedirectURI:         testConfidentialRedirectURI,
+			ResponseType:        "code",
+			Scopes:              []string{"image_generation"},
+			State:               "abc",
+			CodeChallenge:       challenge,
+			CodeChallengeMethod: "S256",
 		}
 		client, err := svc.ValidateAuthorizeRequest(context.Background(), authReq)
 		require.NoError(t, err)
 		issued, err := svc.IssueAuthorizationCode(context.Background(), client, 42, authReq)
 		require.NoError(t, err)
-		return issued.Code
+		return issued.Code, v
 	}
 
 	t.Run("basic_auth_happy_path", func(t *testing.T) {
 		h, svc := newConfidentialHandlerHarness(t)
-		code := mintCode(t, svc)
+		code, verifier := mintCode(t, svc)
 
 		// Form body has grant_type/code/redirect_uri but NO client credentials —
 		// they live in the Authorization: Basic header.
@@ -1147,6 +1152,7 @@ func TestTokenBasicAuthCredentials(t *testing.T) {
 		form.Set("grant_type", "authorization_code")
 		form.Set("redirect_uri", testConfidentialRedirectURI)
 		form.Set("code", code)
+		form.Set("code_verifier", verifier)
 
 		c, rec := newGinTestContextWithBasicAuth(form, testConfidentialClientID, testConfidentialClientSecret)
 		h.Token(c)
@@ -1165,12 +1171,13 @@ func TestTokenBasicAuthCredentials(t *testing.T) {
 		// header is wrong. extractClientCredentials returns Basic credentials
 		// when present, so authentication must fail (401).
 		h, svc := newConfidentialHandlerHarness(t)
-		code := mintCode(t, svc)
+		code, verifier := mintCode(t, svc)
 
 		form := url.Values{}
 		form.Set("grant_type", "authorization_code")
 		form.Set("redirect_uri", testConfidentialRedirectURI)
 		form.Set("code", code)
+		form.Set("code_verifier", verifier)
 		form.Set("client_id", testConfidentialClientID)
 		form.Set("client_secret", testConfidentialClientSecret)
 
