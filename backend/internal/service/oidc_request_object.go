@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,9 +33,41 @@ const (
 var DefaultHTTPClient *http.Client
 
 func init() {
-	// Provide a sensible default with timeout and size limits.
-	DefaultHTTPClient = &http.Client{
+	DefaultHTTPClient = buildOIDCHTTPClient()
+}
+
+// buildOIDCHTTPClient builds the HTTP client used for request_uri /
+// sector_identifier_uri fetches, with SSRF protection at the dial layer and
+// per-hop redirect re-validation.
+func buildOIDCHTTPClient() *http.Client {
+	return buildOIDCHTTPClientWithDialGuard(safeDialContext)
+}
+
+// buildOIDCHTTPClientWithDialGuard allows tests to inject a dial guard that
+// permits loopback (so httptest servers are reachable) while still exercising
+// the redirect re-validation path.
+func buildOIDCHTTPClientWithDialGuard(dial func(ctx context.Context, network, address string) (net.Conn, error)) *http.Client {
+	return &http.Client{
 		Timeout: requestURITimeout,
+		Transport: &http.Transport{
+			DialContext: dial,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 {
+				return fmt.Errorf("oidc fetch: too many redirects (%d)", len(via))
+			}
+			if req.URL.Scheme != "https" {
+				return fmt.Errorf("oidc fetch: redirect to non-https scheme %q rejected", req.URL.Scheme)
+			}
+			blocked, err := isPrivateOrLoopbackHost(req.Context(), req.URL.Hostname())
+			if err != nil {
+				return fmt.Errorf("oidc fetch: redirect host resolution failed: %w", err)
+			}
+			if blocked {
+				return fmt.Errorf("oidc fetch: redirect to internal host %q blocked", req.URL.Hostname())
+			}
+			return nil
+		},
 	}
 }
 
