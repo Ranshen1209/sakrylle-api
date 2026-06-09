@@ -852,7 +852,13 @@ func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 // Fields intentionally omitted because they are not implemented:
 //   - userinfo_signing_alg_values_supported (UserInfo supports both unsigned JSON and signed JWT)
 //   - request_parameter_supported / request_uri_parameter_supported (not supported)
-//   - claims_parameter_supported (not supported)
+//
+// claims_parameter_supported is advertised because the server accepts, parses,
+// validates, and persists the §5.5 claims parameter (ParseClaimsParameter +
+// oauth_authorize_transactions.claims) and can enforce it via
+// service.ApplyClaimsConstraints. Note: UserInfo-side filtering is not yet
+// active because claims are not propagated onto the access token; see
+// ApplyClaimsConstraints doc. The parameter is honored without error.
 func (h *OAuthProviderHandler) OpenIDConfiguration(c *gin.Context) {
 	// Return 404 when OIDC signing is not wired — prevents advertising
 	// capabilities the server cannot honor (JWKS would 503, id_token empty).
