@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -763,6 +765,64 @@ func TestOIDCKeyService_ConcurrentRotation(t *testing.T) {
 	}
 	if len(prevKIDs) == 0 {
 		t.Error("expected at least 1 previous KID after concurrent rotations")
+	}
+}
+
+// TestOIDCKeyService_ConcurrentRotateAndCleanup exercises rotation and cleanup
+// running concurrently to surface the TOCTOU/data race on the shared
+// previous-kids store list (Get->filter->Put in cleanupExpiredKeysFor vs the
+// append in RotateKey). With -race this fails if the full store RMW is not
+// serialized under s.mu. Regression guard for fix #5.
+func TestOIDCKeyService_ConcurrentRotateAndCleanup(t *testing.T) {
+	ctx := context.Background()
+	store := newMemKeyStore()
+	svc := NewOIDCKeyService(store, b64Encryptor{})
+	if err := svc.EnsureKey(ctx); err != nil {
+		t.Fatalf("EnsureKey: %v", err)
+	}
+	// Grace period 0 makes every cleanup actively rewrite/delete the shared
+	// previous-kids store list, maximizing overlap with rotation's append on
+	// that same key so the unserialized Get->filter->Put race surfaces.
+	if err := store.Put(ctx, oidcGracePeriodTTLKey, "0"); err != nil {
+		t.Fatalf("seed grace period ttl: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	var done int32
+	start := make(chan struct{})
+
+	// Rotation writers: each performs several rotations, appending to the
+	// shared previous-kids store list under s.mu.
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for j := 0; j < 25; j++ {
+				_ = svc.RotateKey(ctx)
+			}
+			atomic.StoreInt32(&done, 1)
+		}()
+	}
+	// Cleanup readers/writers: hammer the same store list (Get->filter->Put)
+	// without s.mu until rotations finish, maximizing overlap so the
+	// unserialized RMW surfaces as a data race under -race.
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for atomic.LoadInt32(&done) == 0 {
+				_, _ = svc.CleanupExpiredKeys(ctx)
+			}
+		}()
+	}
+	close(start) // release all goroutines together to maximize overlap
+	wg.Wait()
+
+	// JWKS must still load cleanly after the concurrent churn.
+	if _, err := svc.PublicJWKS(ctx); err != nil {
+		t.Fatalf("JWKS after concurrent rotate/cleanup: %v", err)
 	}
 }
 
