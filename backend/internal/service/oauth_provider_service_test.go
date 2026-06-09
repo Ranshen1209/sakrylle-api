@@ -49,6 +49,16 @@ func (s *stubClientRepo) ListClientsWithFrontchannelLogout(_ context.Context) ([
 	return out, nil
 }
 
+func (s *stubClientRepo) ListClientsWithBackchannelLogout(_ context.Context) ([]*OAuthClient, error) {
+	var out []*OAuthClient
+	for _, c := range s.clients {
+		if !c.Disabled && c.BackchannelLogoutURI != nil && *c.BackchannelLogoutURI != "" {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
 type stubCodeRepo struct {
 	mu    sync.Mutex
 	codes map[string]*OAuthCode
@@ -308,7 +318,8 @@ func (s *stubAPIKeyRepo) GetByKey(_ context.Context, _ string) (*APIKey, error) 
 func (s *stubAPIKeyRepo) GetByKeyForAuth(_ context.Context, _ string) (*APIKey, error) {
 	return nil, ErrAPIKeyNotFound
 }
-func (s *stubAPIKeyRepo) Delete(_ context.Context, _ int64) error { return nil }
+func (s *stubAPIKeyRepo) Delete(_ context.Context, _ int64) error          { return nil }
+func (s *stubAPIKeyRepo) DeleteWithAudit(_ context.Context, _ int64) error { return nil }
 func (s *stubAPIKeyRepo) ListByUserID(_ context.Context, _ int64, _ pagination.PaginationParams, _ APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
@@ -1529,5 +1540,86 @@ func TestAllowedClientOrigins_EmptyRepoReturnsEmpty(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("expected empty slice, got %v", got)
+	}
+}
+
+// keyLookupAPIKeyRepo wraps stubAPIKeyRepo so GetByKey resolves the seeded
+// row by its plaintext Key (the base stub always returns NotFound). Used by
+// the introspection audience-scoping test.
+type keyLookupAPIKeyRepo struct {
+	*stubAPIKeyRepo
+}
+
+func (s *keyLookupAPIKeyRepo) GetByKey(_ context.Context, key string) (*APIKey, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range s.rows {
+		if r.Key == key {
+			cp := *r
+			return &cp, nil
+		}
+	}
+	return nil, ErrAPIKeyNotFound
+}
+
+// TestIntrospectToken_RejectsCrossClient verifies RFC 7662 audience scoping:
+// a confidential client may only introspect tokens it owns. A caller passing
+// a different client_id than the token's owning client must get active:false.
+func TestIntrospectToken_RejectsCrossClient(t *testing.T) {
+	baseAPIKeyRepo := newStubAPIKeyRepo()
+	apiKeyRepo := &keyLookupAPIKeyRepo{stubAPIKeyRepo: baseAPIKeyRepo}
+	accessRepo := newStubAccessRepo()
+	settingRepo := &stubSettingRepo{values: map[string]string{
+		"oauth_provider_enabled":          "true",
+		"oauth_scope_enforcement_enabled": "true",
+		"oauth_issuer":                    "https://sub.sakrylle.example",
+	}}
+	svc := NewOAuthProviderService(
+		&stubClientRepo{clients: map[string]*OAuthClient{}},
+		newStubCodeRepo(),
+		newStubRefreshRepo(),
+		accessRepo,
+		nil, // deviceRepo
+		nil, // authzTxRepo
+		oauthAPIKeyOrAdapter(apiKeyRepo, nil),
+		nil, // groupRepo
+		nil, // groupAccess
+		settingRepo,
+		nil,
+	)
+
+	const tokenA = "sk-oauth-token-a"
+	apiKey := &APIKey{Key: tokenA, Status: StatusAPIKeyActive, UserID: 42}
+	if err := apiKeyRepo.Create(context.Background(), apiKey); err != nil {
+		t.Fatalf("seed api key: %v", err)
+	}
+	now := time.Now()
+	if err := accessRepo.CreateAccessToken(context.Background(), &OAuthAccessToken{
+		APIKeyID:  apiKey.ID,
+		ClientID:  "client-A",
+		UserID:    42,
+		Scopes:    []string{"profile:read"},
+		IssuedAt:  now,
+		ExpiresAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("seed access metadata: %v", err)
+	}
+
+	// Owning client sees the token as active.
+	respOwner, err := svc.IntrospectToken(context.Background(), "client-A", tokenA)
+	if err != nil {
+		t.Fatalf("introspect (owner): %v", err)
+	}
+	if !respOwner.Active {
+		t.Fatalf("owning client expected active:true, got active:false")
+	}
+
+	// A different client must NOT be able to introspect the token.
+	respOther, err := svc.IntrospectToken(context.Background(), "client-B", tokenA)
+	if err != nil {
+		t.Fatalf("introspect (cross-client): %v", err)
+	}
+	if respOther.Active {
+		t.Fatalf("cross-client introspection leaked: expected active:false, got active:true")
 	}
 }

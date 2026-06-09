@@ -576,6 +576,13 @@ func (s *OAuthProviderService) IntrospectToken(ctx context.Context, clientID str
 		return &IntrospectionResponse{Active: false}, nil
 	}
 
+	// Audience scoping: a client may only introspect tokens it owns.
+	// Mirrors the revoke path's cross-client check; without this any
+	// confidential client could introspect any other client's token.
+	if meta.ClientID != clientID {
+		return &IntrospectionResponse{Active: false}, nil
+	}
+
 	issuer := ""
 	if s.oidcIssuer != nil {
 		issuer = s.oidcIssuer(ctx)
