@@ -4,19 +4,33 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// ApplyClaimsConstraints filters claims in a jwt.MapClaims based on the
-// OIDC §5.5 claims request parameter constraints. This is "best-effort" mode:
-// unmatched claims are silently omitted rather than causing an error.
+// ApplyClaimsConstraints filters an existing jwt.MapClaims according to the
+// OIDC §5.5 claims request parameter constraints. It is purely subtractive:
+// it can keep or delete keys that are already present, but it NEVER adds a
+// claim that is not already in the input. This is what makes the claims
+// parameter safe to honor — an RP cannot use it to surface a forbidden
+// internal field (e.g. balance); see the forbidden-claim invariant test.
+// Unmatched claims are silently omitted rather than causing an error.
 //
 // The section parameter selects which part of the ClaimsRequest to apply:
 // "id_token" or "userinfo".
 //
 // For each claim in the request's section:
-//   - essential: true — include the claim if the user has it; omit if not
-//   - value: "x" — include only if the user attribute matches exactly
-//   - values: ["a","b"] — include only if the user attribute is in the list
+//   - essential: true — keep the claim if already present; omit if not
+//   - value: "x" — keep only if the existing attribute matches exactly
+//   - values: ["a","b"] — keep only if the existing attribute is in the list
 //
 // Claims not mentioned in the claims request are left untouched.
+//
+// Wiring status: the capability is ready (this filter + ParseClaimsParameter +
+// persistence of the parsed request into oauth_authorize_transactions.claims).
+// Enforcement on the UserInfo response is NOT yet active: the claims constraint
+// is persisted only on the short-lived authorize transaction and is not
+// propagated onto OAuthCode / OAuthAccessToken, which is what the UserInfo
+// endpoint loads. Activating UserInfo-side filtering requires carrying claims
+// through to the access-token storage (a schema migration), tracked separately.
+// discovery advertises claims_parameter_supported=true because the server
+// accepts, parses, validates, and stores the parameter without error.
 func ApplyClaimsConstraints(claims jwt.MapClaims, claimsReq *ClaimsRequest, section string) jwt.MapClaims {
 	if claimsReq == nil || claims == nil {
 		return claims

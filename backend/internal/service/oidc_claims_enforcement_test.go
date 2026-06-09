@@ -104,6 +104,25 @@ func TestApplyClaimsConstraints_SectionSelection(t *testing.T) {
 	assert.False(t, hasEmail)
 }
 
+func TestApplyClaimsConstraints_CannotInjectForbiddenClaim(t *testing.T) {
+	// The claims parameter must never be able to ADD a claim the subject does
+	// not already have. Even if an RP points its claims request at a forbidden
+	// internal field (e.g. balance), ApplyClaimsConstraints can only delete or
+	// keep existing keys — never introduce a new one. This preserves the
+	// id_token / UserInfo fail-closed forbidden-claim invariant.
+	claims := jwt.MapClaims{"sub": "42", "email": "a@b.com"}
+	req := &ClaimsRequest{UserInfo: map[string]ClaimRequestDetail{
+		"balance": {Essential: boolPtr(true)},
+	}}
+	out := ApplyClaimsConstraints(claims, req, "userinfo")
+	if _, exists := out["balance"]; exists {
+		t.Fatal("ApplyClaimsConstraints must never add a claim not already present")
+	}
+	// Pre-existing claims untouched (nothing in the request narrows them).
+	require.Equal(t, "42", out["sub"])
+	require.Equal(t, "a@b.com", out["email"])
+}
+
 func TestApplyClaimsConstraints_UnmentionedClaimsUntouched(t *testing.T) {
 	claims := jwt.MapClaims{"sub": "123", "email": "a@b.c", "name": "alice"}
 
