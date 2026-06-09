@@ -268,6 +268,7 @@ func ParseRequestObjectJWT(rawJWT, issuer, clientID, clientSecret string) (*Auth
 	token, err := jwt.ParseWithClaims(rawJWT, &RequestObjectClaims{},
 		func(t *jwt.Token) (any, error) { return verifyKey, nil },
 		jwt.WithLeeway(30*time.Second),
+		jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("verify request object signature: %w", err)
@@ -383,8 +384,8 @@ func ParseRequestObjectJWTWithJWKS(rawJWT, issuer, clientID, clientSecret string
 	token, err := jwt.ParseWithClaims(rawJWT, &RequestObjectClaims{},
 		func(t *jwt.Token) (any, error) { return verifyKey, nil },
 		jwt.WithLeeway(30*time.Second),
-		jwt.WithIssuer(issuer),
 		jwt.WithAudience(issuer),
+		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512", "HS256", "HS384", "HS512"}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("verify request object: %w", err)
