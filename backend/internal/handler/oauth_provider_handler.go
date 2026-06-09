@@ -142,8 +142,12 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 	// even when a request object is used.
 	if requestParam := formVal("request"); requestParam != "" {
 		issuer := h.discoveryIssuer(c)
-		// Parse the request object JWT. For public clients with no secret,
-		// we accept unsigned or client_secret-signed JWTs.
+		// Parse the request object JWT. ParseRequestObjectJWT is currently
+		// called with an empty client_secret, so it only passes when the
+		// client supplies its own verifiable material; unsigned (none) and
+		// empty-secret JWTs are rejected. Real verification wiring
+		// (client_secret for HS, client JWKS for RS/ES) is deferred — until
+		// then discovery advertises request/request_uri as unsupported.
 		reqObj, err := service.ParseRequestObjectJWT(requestParam, issuer, req.ClientID, "")
 		if err != nil {
 			slog.Warn("oidc: request object validation failed", "error", err)
@@ -882,9 +886,15 @@ func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 //   - userinfo_signing_alg_values_supported (UserInfo supports both unsigned JSON and signed JWT)
 //
 // request_parameter_supported and request_uri_parameter_supported are both
-// advertised true: the inline `request` param (ParseRequestObjectJWT) and the
-// `request_uri` param (FetchRequestURI via the SSRF-safe client + the same
-// verify/merge path) are implemented in the authorize handler.
+// advertised false: while the inline `request` param (ParseRequestObjectJWT)
+// and the `request_uri` param (FetchRequestURI via the SSRF-safe client + the
+// same verify/merge path) have their fetch+merge logic implemented, request
+// object signature verification is not yet wired for real clients. Both paths
+// call ParseRequestObjectJWT with an empty client_secret, which rejects every
+// real client: HS algs need a non-empty client_secret, RS/ES need a client
+// JWKS (not stored on oauth_clients), and none is refused. Until verification
+// is wired (needs a client JWKS column / migration), we do not advertise
+// support so RPs are not misled.
 //
 // claims_parameter_supported is advertised because the server accepts, parses,
 // validates, and persists the §5.5 claims parameter (ParseClaimsParameter +
@@ -905,8 +915,8 @@ func (h *OAuthProviderHandler) OpenIDConfiguration(c *gin.Context) {
 	resp["subject_types_supported"] = []string{"public", "pairwise"}
 	resp["id_token_signing_alg_values_supported"] = []string{"RS256", "ES256"}
 	resp["userinfo_signing_alg_values_supported"] = []string{"RS256", "ES256"}
-	resp["request_parameter_supported"] = true
-	resp["request_uri_parameter_supported"] = true
+	resp["request_parameter_supported"] = false
+	resp["request_uri_parameter_supported"] = false
 	resp["claims_parameter_supported"] = true
 	resp["backchannel_logout_supported"] = true
 	resp["backchannel_logout_session_supported"] = true
