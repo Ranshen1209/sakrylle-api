@@ -71,12 +71,18 @@ func BuildUserInfoJWTClaims(
 //   - client: the OAuth client (nil means use public sub)
 //   - issuer: the OP issuer URL (needed for pairwise computation)
 //
-// Returns the sub string to use in UserInfo responses and signed JWTs.
-func UserInfoSubForOAuthToken(userID int64, client *OAuthClient, issuer string) string {
+// Returns the sub string to use in UserInfo responses and signed JWTs, or an
+// error if a pairwise sub could not be resolved (callers must fail closed
+// rather than emit a sub on an inconsistent basis).
+func UserInfoSubForOAuthToken(userID int64, client *OAuthClient, issuer string) (string, error) {
 	if client != nil && client.SubjectType == "pairwise" {
-		if pw := ResolvePairwiseSub(issuer, userID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs); pw != "" {
-			return pw
+		pw, err := ResolvePairwiseSub(issuer, userID, client.SubjectType, client.SectorIdentifierURI, client.RedirectURIs)
+		if err != nil {
+			return "", err
+		}
+		if pw != "" {
+			return pw, nil
 		}
 	}
-	return strconv.FormatInt(userID, 10)
+	return strconv.FormatInt(userID, 10), nil
 }
