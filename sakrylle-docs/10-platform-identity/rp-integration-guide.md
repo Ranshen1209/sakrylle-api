@@ -2,7 +2,7 @@
 title: 06 · OIDC RP 接入指南
 status: canonical
 scope: platform
-last_verified: 2026-06-06
+last_verified: 2026-06-10
 ---
 
 # 06 · OIDC RP 接入指南
@@ -713,7 +713,7 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 | CLI | `sakrylle-cli` | public | + `http://127.0.0.1`（任意端口 `/callback`） | + `openid profile email` |
 | Studio | 首发复用 CLI 凭据 | — | — | — |
 | Web | `sakrylle-web` | **confidential** | `https://chat.sakrylle.com/oauth/oidc/login/callback` | `openid profile email models:read ...` |
-| Chat | `sakrylle-chat` | public | `sakrylle-chat://oauth/callback`, `http://127.0.0.1` | `openid profile email models:read ...` |
+| Chat | `sakrylle-chat` | public | `sakrylle-chat://oauth/callback`（Android/iOS/macOS 自定义 scheme）；`http://127.0.0.1`（Windows/Linux loopback，端口运行时动态分配，须按 RFC 8252 §7.3 做端口无关匹配） | `openid profile email models:read chat.completions:create offline_access` |
 
 ---
 
@@ -771,8 +771,8 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 | client_id | `sakrylle-chat` |
 | client_type | public |
 | grant_type | `authorization_code` + `refresh_token` |
-| redirect_uri | `sakrylle-chat://oauth/callback`（自定义 scheme）+ `http://127.0.0.1`（桌面 loopback） |
-| scope | `openid profile email models:read offline_access ...` |
+| redirect_uri | `sakrylle-chat://oauth/callback`（Android/iOS/macOS 自定义 scheme）；`http://127.0.0.1`（Windows/Linux loopback，端口运行时动态分配，须 RFC 8252 §7.3 端口无关匹配） |
+| scope | `openid profile email models:read chat.completions:create offline_access` |
 | 签名算法 | RS256 |
 | 特殊注意 | 需 `flutter_web_auth_2`；iOS/Android/macOS 需注册自定义 URL scheme；token 存 `flutter_secure_storage` |
 
