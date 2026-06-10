@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strconv"
 	"strings"
 )
@@ -33,3 +35,41 @@ func (a *Account) AsyncPollIntervalMs() int { return a.asyncIntCredential("poll_
 
 // AsyncMaxWaitMs is the max total poll wait in ms (default 240000).
 func (a *Account) AsyncMaxWaitMs() int { return a.asyncIntCredential("max_wait_ms", 240000) }
+
+// asyncDataURI returns a data URI for the given content type and raw bytes.
+func asyncDataURI(contentType string, data []byte) string {
+	ct := strings.TrimSpace(contentType)
+	if ct == "" {
+		ct = "image/png"
+	}
+	return "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+// buildAsyncSubmitBody translates a parsed OpenAI images request into a 12ai
+// task-submit payload: {"model":..., "input":{prompt,size,quality,n,images,mask}}.
+func buildAsyncSubmitBody(model string, parsed *OpenAIImagesRequest) ([]byte, error) {
+	n := parsed.N
+	if n <= 0 {
+		n = 1
+	}
+	input := map[string]any{
+		"prompt":  parsed.Prompt,
+		"size":    parsed.Size,
+		"quality": normalizeAsyncQuality(parsed.Quality),
+		"n":       n,
+	}
+	images := make([]string, 0, len(parsed.Uploads)+len(parsed.InputImageURLs))
+	for _, up := range parsed.Uploads {
+		images = append(images, asyncDataURI(up.ContentType, up.Data))
+	}
+	images = append(images, parsed.InputImageURLs...)
+	if len(images) > 0 {
+		input["images"] = images
+	}
+	if parsed.MaskUpload != nil {
+		input["mask"] = asyncDataURI(parsed.MaskUpload.ContentType, parsed.MaskUpload.Data)
+	} else if strings.TrimSpace(parsed.MaskImageURL) != "" {
+		input["mask"] = parsed.MaskImageURL
+	}
+	return json.Marshal(map[string]any{"model": model, "input": input})
+}
