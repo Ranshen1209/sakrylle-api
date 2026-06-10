@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -32,6 +34,9 @@ type AvailableChannel struct {
 	RestrictModels     bool
 	Groups             []AvailableGroupRef
 	SupportedModels    []SupportedModel
+	// ImageInputRatio 图片输入计费倍率，来自渠道 FeaturesConfig["image_input_ratio"]。
+	// 仅异步图片渠道设置此值；未配置时为 nil（序列化为 JSON null）。
+	ImageInputRatio *float64
 }
 
 // ListAvailable 返回所有渠道的可用视图：每个渠道附带关联分组信息与支持模型列表。
@@ -84,6 +89,11 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		supported := ch.SupportedModels()
 		s.fillGlobalPricingFallback(supported)
 
+		var imageInputRatio *float64
+		if v, ok := featuresConfigFloatPos(ch.FeaturesConfig, "image_input_ratio"); ok {
+			imageInputRatio = &v
+		}
+
 		out = append(out, AvailableChannel{
 			ID:                 ch.ID,
 			Name:               ch.Name,
@@ -93,6 +103,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			RestrictModels:     ch.RestrictModels,
 			Groups:             groups,
 			SupportedModels:    supported,
+			ImageInputRatio:    imageInputRatio,
 		})
 	}
 
@@ -194,4 +205,40 @@ func nonZeroPtr(v float64) *float64 {
 		return nil
 	}
 	return &v
+}
+
+// featuresConfigFloatPos 从 FeaturesConfig 中读取正浮点数。
+// 支持 float64（JSON 直接解析结果）、json.Number 和 string 三种存储类型。
+// 值 ≤ 0 或类型无法转换时返回 (0, false)；调用方按 false 视为未设置。
+func featuresConfigFloatPos(cfg map[string]any, key string) (float64, bool) {
+	if cfg == nil {
+		return 0, false
+	}
+	raw, exists := cfg[key]
+	if !exists {
+		return 0, false
+	}
+	var v float64
+	switch t := raw.(type) {
+	case float64:
+		v = t
+	case json.Number:
+		parsed, err := t.Float64()
+		if err != nil {
+			return 0, false
+		}
+		v = parsed
+	case string:
+		parsed, err := strconv.ParseFloat(t, 64)
+		if err != nil {
+			return 0, false
+		}
+		v = parsed
+	default:
+		return 0, false
+	}
+	if v <= 0 {
+		return 0, false
+	}
+	return v, true
 }
