@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // IsAsyncImage reports whether this account routes image requests through the
@@ -72,4 +73,16 @@ func buildAsyncSubmitBody(model string, parsed *OpenAIImagesRequest) ([]byte, er
 		input["mask"] = parsed.MaskImageURL
 	}
 	return json.Marshal(map[string]any{"model": model, "input": input})
+}
+
+// buildOpenAIImagesResponse builds an OpenAI images response body from base64 images.
+func buildOpenAIImagesResponse(b64s []string) ([]byte, error) {
+	data := make([]map[string]any, 0, len(b64s))
+	for _, b := range b64s {
+		data = append(data, map[string]any{"b64_json": b})
+	}
+	return json.Marshal(map[string]any{
+		"created": time.Now().Unix(),
+		"data":    data,
+	})
 }

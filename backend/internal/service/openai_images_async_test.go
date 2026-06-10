@@ -71,3 +71,22 @@ func TestBuildAsyncSubmitBody_EditWithUpload(t *testing.T) {
 		t.Fatalf("mask = %v", in["mask"])
 	}
 }
+
+func TestBuildOpenAIImagesResponse(t *testing.T) {
+	b, err := buildOpenAIImagesResponse([]string{"AAA", "BBB"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	data := m["data"].([]any)
+	if len(data) != 2 {
+		t.Fatalf("data len = %d", len(data))
+	}
+	if data[0].(map[string]any)["b64_json"] != "AAA" {
+		t.Fatalf("b64_json[0] = %v", data[0])
+	}
+	if _, ok := m["created"]; !ok {
+		t.Fatal("missing created")
+	}
+}
