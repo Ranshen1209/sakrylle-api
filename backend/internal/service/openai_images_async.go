@@ -209,3 +209,28 @@ func (cl *AsyncImageClient) Poll(ctx context.Context, taskID string, interval, m
 		}
 	}
 }
+
+// FetchAsB64 downloads each URL and returns the base64-encoded contents.
+func (cl *AsyncImageClient) FetchAsB64(ctx context.Context, urls []string) ([]string, error) {
+	out := make([]string, 0, len(urls))
+	for _, u := range urls {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := cl.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		b, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("download %s status %d", u, resp.StatusCode)
+		}
+		out = append(out, base64.StdEncoding.EncodeToString(b))
+	}
+	return out, nil
+}
