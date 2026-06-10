@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestAccountAsyncConfig(t *testing.T) {
@@ -189,5 +191,54 @@ func TestAsyncClientFetchAsB64(t *testing.T) {
 	out, err := cl.FetchAsB64(context.Background(), []string{srv.URL + "/a.png"})
 	if err != nil || len(out) != 1 || out[0] != "3q0=" { // base64(0xDEAD)
 		t.Fatalf("out=%v err=%v", out, err)
+	}
+}
+
+func TestForwardImagesAsync_EndToEnd(t *testing.T) {
+	var base string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/task/submit":
+			_, _ = w.Write([]byte(`{"id":"task_1","status":"queued"}`))
+		case strings.HasPrefix(r.URL.Path, "/v1/task/"):
+			_, _ = w.Write([]byte(`{"status":"completed","outputs":["` + base + `/img.png"]}`))
+		default: // /img.png download
+			_, _ = w.Write([]byte{0x01, 0x02})
+		}
+	}))
+	defer srv.Close()
+	base = srv.URL
+
+	account := &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"async_enabled":  "true",
+			"async_base_url": srv.URL,
+			"api_key":        "sk-x",
+			"async_image_synth": map[string]any{
+				"output_token_table": map[string]any{"1K": map[string]any{"high": float64(7023)}},
+			},
+		},
+	}
+	parsed := &OpenAIImagesRequest{Model: "gpt-image-2", Prompt: "x", Size: "1024x1024", SizeTier: "1K", Quality: "high", N: 1}
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/v1/images/edits", nil)
+
+	s := &OpenAIGatewayService{}
+	result, err := s.ForwardImagesAsync(context.Background(), c, account, parsed, "gpt-image-2", "gpt-image-2", time.Now())
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if result.Usage.OutputTokens != 7023 {
+		t.Fatalf("synth output tokens = %d, want 7023", result.Usage.OutputTokens)
+	}
+	if result.ImageCount != 1 {
+		t.Fatalf("image count = %d", result.ImageCount)
+	}
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"b64_json"`) {
+		t.Fatalf("client response not written: %d %s", w.Code, w.Body.String())
 	}
 }
