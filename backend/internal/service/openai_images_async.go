@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
+
+// maxAsyncImageBytes is the download size limit per image (32 MiB).
+const maxAsyncImageBytes = 32 << 20
 
 // IsAsyncImage reports whether this account routes image requests through the
 // async task bridge (12ai cdn task API) instead of the synchronous endpoint.
@@ -98,9 +102,10 @@ func buildOpenAIImagesResponse(b64s []string) ([]byte, error) {
 
 // AsyncImageClient is an HTTP client for the 12ai async task bridge.
 type AsyncImageClient struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
+	httpClient        *http.Client
+	baseURL           string
+	apiKey            string
+	allowedHostSuffix string
 }
 
 type asyncSubmitResp struct {
@@ -152,7 +157,7 @@ type asyncTaskResp struct {
 }
 
 func (cl *AsyncImageClient) getTask(ctx context.Context, taskID string) (*asyncTaskResp, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cl.baseURL+"/v1/task/"+taskID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cl.baseURL+"/v1/task/"+url.PathEscape(taskID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +222,9 @@ func (cl *AsyncImageClient) Poll(ctx context.Context, taskID string, interval, m
 func (cl *AsyncImageClient) FetchAsB64(ctx context.Context, urls []string) ([]string, error) {
 	out := make([]string, 0, len(urls))
 	for _, u := range urls {
+		if err := validateAsyncImageURL(u, cl.allowedHostSuffix); err != nil {
+			return nil, err
+		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
 			return nil, err
@@ -225,24 +233,49 @@ func (cl *AsyncImageClient) FetchAsB64(ctx context.Context, urls []string) ([]st
 		if err != nil {
 			return nil, err
 		}
-		b, err := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("image download failed with status %d", resp.StatusCode)
+		}
+		b, err := io.ReadAll(io.LimitReader(resp.Body, maxAsyncImageBytes+1))
 		_ = resp.Body.Close()
 		if err != nil {
 			return nil, err
 		}
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("download %s status %d", u, resp.StatusCode)
+		if len(b) > maxAsyncImageBytes {
+			return nil, fmt.Errorf("downloaded image exceeds size limit")
 		}
 		out = append(out, base64.StdEncoding.EncodeToString(b))
 	}
 	return out, nil
 }
 
+// validateAsyncImageURL checks that the URL uses an allowed scheme (http/https)
+// and, when allowedHostSuffix is non-empty, that the host matches or is a
+// subdomain of that suffix. Default empty allowedHostSuffix disables host check.
+func validateAsyncImageURL(raw, allowedHostSuffix string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid image url")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported image url scheme")
+	}
+	if allowedHostSuffix != "" {
+		host := u.Hostname()
+		if host != allowedHostSuffix && !strings.HasSuffix(host, "."+allowedHostSuffix) {
+			return fmt.Errorf("image url host not allowed")
+		}
+	}
+	return nil
+}
+
 func (s *OpenAIGatewayService) newAsyncImageClient(account *Account) *AsyncImageClient {
 	return &AsyncImageClient{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    account.AsyncImageBaseURL(),
-		apiKey:     account.GetOpenAIApiKey(),
+		httpClient:        &http.Client{Timeout: 30 * time.Second},
+		baseURL:           account.AsyncImageBaseURL(),
+		apiKey:            account.GetOpenAIApiKey(),
+		allowedHostSuffix: account.GetCredential("async_image_host_suffix"),
 	}
 }
 
@@ -318,12 +351,9 @@ func (s *OpenAIGatewayService) ForwardImagesAsync(
 	}
 	delivered := len(b64s)
 
-	respJSON, err := buildOpenAIImagesResponse(b64s)
-	if err != nil {
-		return nil, asyncFail(c, http.StatusInternalServerError, err.Error())
-	}
-	c.Data(http.StatusOK, "application/json", respJSON)
-
+	// FIX A: synthesize billing BEFORE delivering the response.
+	// If usage.OutputTokens == 0 the billing table is misconfigured; fail closed
+	// so we never serve a free image.
 	synthCfg, _ := ParseAsyncSynthConfig(account.Credentials)
 	usage, exact := SynthesizeAsyncImageUsage(AsyncSynthInput{
 		Size:      parsed.Size,
@@ -332,11 +362,23 @@ func (s *OpenAIGatewayService) ForwardImagesAsync(
 		Prompt:    parsed.Prompt,
 		RefImages: parsed.Uploads,
 	}, synthCfg)
-	if !exact || usage.OutputTokens == 0 {
+	if usage.OutputTokens == 0 {
 		logger.LegacyPrintf("service.openai_gateway",
-			"[OpenAI] async image usage synth WARNING account=%d size=%s quality=%s exact=%v output_tokens=%d (output_tokens=0 means billing-table gap → near-free image; calibrate output_token_table)",
-			account.ID, parsed.Size, parsed.Quality, exact, usage.OutputTokens)
+			"[OpenAI] async image billing gap account=%d size=%s quality=%s exact=%v output_tokens=0 — refusing delivery (calibrate output_token_table)",
+			account.ID, parsed.Size, parsed.Quality, exact)
+		return nil, asyncFail(c, http.StatusInternalServerError, "image billing not configured for this size/quality")
 	}
+	if !exact {
+		logger.LegacyPrintf("service.openai_gateway",
+			"[OpenAI] async image usage synth WARNING account=%d size=%s quality=%s exact=false output_tokens=%d (approximate billing; calibrate output_token_table)",
+			account.ID, parsed.Size, parsed.Quality, usage.OutputTokens)
+	}
+
+	respJSON, err := buildOpenAIImagesResponse(b64s)
+	if err != nil {
+		return nil, asyncFail(c, http.StatusInternalServerError, err.Error())
+	}
+	c.Data(http.StatusOK, "application/json", respJSON)
 
 	return &OpenAIForwardResult{
 		Usage:          usage,

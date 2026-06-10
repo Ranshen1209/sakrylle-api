@@ -201,6 +201,65 @@ func TestIsAsyncImageDisabledByDefault(t *testing.T) {
 	}
 }
 
+func TestFetchAsB64RejectsBadScheme(t *testing.T) {
+	cl := &AsyncImageClient{httpClient: http.DefaultClient, baseURL: "x", apiKey: "k"}
+	if _, err := cl.FetchAsB64(context.Background(), []string{"file:///etc/passwd"}); err == nil {
+		t.Fatal("expected scheme rejection")
+	}
+}
+
+func TestFetchAsB64HostSuffixAllowlist(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte{1}) }))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "k", allowedHostSuffix: "12ai.org"}
+	if _, err := cl.FetchAsB64(context.Background(), []string{srv.URL + "/x.png"}); err == nil {
+		t.Fatal("expected host-not-allowed rejection (127.0.0.1 not under 12ai.org)")
+	}
+}
+
+func TestFetchAsB64ErrorOmitsURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "k"}
+	_, err := cl.FetchAsB64(context.Background(), []string{srv.URL + "/secret.png?sig=TOPSECRET"})
+	if err == nil || strings.Contains(err.Error(), "TOPSECRET") || strings.Contains(err.Error(), srv.URL) {
+		t.Fatalf("error must not leak url/token: %v", err)
+	}
+}
+
+func TestForwardImagesAsync_FailsClosedWhenUnbilled(t *testing.T) {
+	var base string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/task/submit":
+			_, _ = w.Write([]byte(`{"id":"task_1","status":"queued"}`))
+		case strings.HasPrefix(r.URL.Path, "/v1/task/"):
+			_, _ = w.Write([]byte(`{"status":"completed","outputs":["` + base + `/img.png"]}`))
+		default:
+			_, _ = w.Write([]byte{0x01})
+		}
+	}))
+	defer srv.Close()
+	base = srv.URL
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"async_enabled": "true", "async_base_url": srv.URL, "api_key": "sk-x",
+		// NOTE: no async_image_synth → synth yields 0 output tokens
+	}}
+	parsed := &OpenAIImagesRequest{Model: "gpt-image-2", Prompt: "x", Size: "1024x1024", SizeTier: "1K", Quality: "high", N: 1}
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/v1/images/edits", nil)
+	s := &OpenAIGatewayService{}
+	result, err := s.ForwardImagesAsync(context.Background(), c, account, parsed, "gpt-image-2", "gpt-image-2", time.Now())
+	if err == nil || result != nil {
+		t.Fatalf("expected fail-closed error, got result=%v err=%v", result, err)
+	}
+	if strings.Contains(w.Body.String(), `"b64_json"`) {
+		t.Fatal("must NOT deliver an unbilled image")
+	}
+}
+
 func TestForwardImagesAsync_EndToEnd(t *testing.T) {
 	var base string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
