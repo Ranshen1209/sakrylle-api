@@ -3,10 +3,13 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestAccountAsyncConfig(t *testing.T) {
@@ -118,5 +121,61 @@ func TestAsyncClientSubmitNoID(t *testing.T) {
 	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "sk-x"}
 	if _, err := cl.Submit(context.Background(), []byte(`{}`)); err == nil {
 		t.Fatal("expected error for missing id")
+	}
+}
+
+func TestAsyncClientPollCompletes(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&calls, 1)
+		if n < 2 {
+			_, _ = w.Write([]byte(`{"status":"in_progress"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"completed","outputs":["https://img/x.png"]}`))
+	}))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "sk-x"}
+	pr, err := cl.Poll(context.Background(), "task_1", 5*time.Millisecond, 2*time.Second)
+	if err != nil || len(pr.Outputs) != 1 {
+		t.Fatalf("pr=%+v err=%v", pr, err)
+	}
+}
+
+func TestAsyncClientPollFailed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"failed","error":"nsfw"}`))
+	}))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "sk-x"}
+	pr, err := cl.Poll(context.Background(), "t", 5*time.Millisecond, time.Second)
+	if err != nil || !pr.Failed || pr.ErrMsg != "nsfw" {
+		t.Fatalf("pr=%+v err=%v", pr, err)
+	}
+}
+
+func TestAsyncClientPollTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"in_progress"}`))
+	}))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "sk-x"}
+	_, err := cl.Poll(context.Background(), "t", 5*time.Millisecond, 30*time.Millisecond)
+	if !errors.Is(err, errAsyncTimeout) {
+		t.Fatalf("want timeout, got %v", err)
+	}
+}
+
+func TestAsyncClientPollCancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"in_progress"}`))
+	}))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "sk-x"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := cl.Poll(ctx, "t", 5*time.Millisecond, time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want canceled, got %v", err)
 	}
 }

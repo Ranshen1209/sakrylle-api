@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -129,4 +130,82 @@ func (cl *AsyncImageClient) Submit(ctx context.Context, body []byte) (string, er
 		return "", fmt.Errorf("submit returned no task id")
 	}
 	return sr.ID, nil
+}
+
+var errAsyncTimeout = errors.New("async image task timed out")
+
+// AsyncPollResult holds the outcome of a completed async task poll.
+type AsyncPollResult struct {
+	Outputs []string
+	Failed  bool
+	ErrMsg  string
+}
+
+type asyncTaskResp struct {
+	ID      string   `json:"id"`
+	Status  string   `json:"status"`
+	Outputs []string `json:"outputs"`
+	Error   string   `json:"error"`
+}
+
+func (cl *AsyncImageClient) getTask(ctx context.Context, taskID string) (*asyncTaskResp, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cl.baseURL+"/v1/task/"+taskID, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cl.apiKey)
+	resp, err := cl.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("poll status %d: %s", resp.StatusCode, strings.TrimSpace(string(rb)))
+	}
+	var tr asyncTaskResp
+	if err := json.Unmarshal(rb, &tr); err != nil {
+		return nil, fmt.Errorf("poll parse: %w", err)
+	}
+	return &tr, nil
+}
+
+// Poll polls the task until terminal status, ctx cancel, or maxWait. Up to 3
+// consecutive transient poll errors are tolerated before aborting.
+func (cl *AsyncImageClient) Poll(ctx context.Context, taskID string, interval, maxWait time.Duration) (*AsyncPollResult, error) {
+	deadline := time.Now().Add(maxWait)
+	consecFail := 0
+	for {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if time.Now().After(deadline) {
+			return nil, errAsyncTimeout
+		}
+		tr, err := cl.getTask(ctx, taskID)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			consecFail++
+			if consecFail >= 3 {
+				return nil, err
+			}
+		} else {
+			consecFail = 0
+			switch strings.ToLower(tr.Status) {
+			case "completed":
+				return &AsyncPollResult{Outputs: tr.Outputs}, nil
+			case "partial_completed":
+				return &AsyncPollResult{Outputs: tr.Outputs, ErrMsg: tr.Error}, nil
+			case "failed":
+				return &AsyncPollResult{Failed: true, ErrMsg: tr.Error}, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
 }
