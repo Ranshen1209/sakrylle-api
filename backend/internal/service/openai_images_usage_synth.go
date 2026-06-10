@@ -13,7 +13,14 @@ import (
 type AsyncSynthConfig struct {
 	OutputTokenTable map[string]map[string]int // tier ("1K"/"2K"/"4K") -> quality -> output tokens
 	RefImageTokens   map[string]int            // tier -> image-input tokens per reference image
+	// ImageInputRatio = image-input price ÷ text-input price (e.g. ¥12.8 / ¥8 = 1.6).
+	// Reference-image tokens are multiplied by this before billing at input_price,
+	// since channel pricing has no dedicated image-input field. 0 → defaultImageInputRatio.
+	ImageInputRatio float64
 }
+
+// defaultImageInputRatio is ¥12.8 image-input ÷ ¥8 text-input.
+const defaultImageInputRatio = 1.6
 
 // AsyncSynthInput is the request information needed to synthesize usage.
 type AsyncSynthInput struct {
@@ -39,6 +46,24 @@ func asyncToInt(v any) int {
 	case string:
 		i, _ := strconv.Atoi(strings.TrimSpace(n))
 		return i
+	}
+	return 0
+}
+
+func asyncToFloat(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case json.Number:
+		f, _ := n.Float64()
+		return f
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case string:
+		f, _ := strconv.ParseFloat(strings.TrimSpace(n), 64)
+		return f
 	}
 	return 0
 }
@@ -74,6 +99,10 @@ func ParseAsyncSynthConfig(m map[string]any) (AsyncSynthConfig, bool) {
 		for tier, val := range rt {
 			cfg.RefImageTokens[strings.ToUpper(tier)] = asyncToInt(val)
 		}
+	}
+	cfg.ImageInputRatio = asyncToFloat(raw["image_input_ratio"])
+	if cfg.ImageInputRatio <= 0 {
+		cfg.ImageInputRatio = defaultImageInputRatio
 	}
 	return cfg, true
 }
@@ -147,7 +176,11 @@ func SynthesizeAsyncImageUsage(in AsyncSynthInput, cfg AsyncSynthConfig) (OpenAI
 	for _, rt := range in.RefURLTiers {
 		refTok += cfg.RefImageTokens[strings.ToUpper(rt)]
 	}
-	imageInAdjusted := int(math.Round(float64(refTok) * 1.6)) // 1.6 = 12.8/8
+	ratio := cfg.ImageInputRatio
+	if ratio <= 0 {
+		ratio = defaultImageInputRatio
+	}
+	imageInAdjusted := int(math.Round(float64(refTok) * ratio)) // ratio = image-input ÷ text-input price
 
 	return OpenAIUsage{
 		InputTokens:  estimateTextTokens(in.Prompt) + imageInAdjusted,

@@ -141,6 +141,34 @@ History: `ai.centos.hk` → 95 OAuth accounts (2026-05-31) → **single apikey a
 
 `gpt-5.3-codex` removed 2026-06-01 (OpenAI retired).
 
+## Async Image Bridge (group 21 / channel 13 / account 1131 → 12ai)
+
+Fixes the gpt-image-2 **524** (upstream sync render >100s hits its Cloudflare origin timeout). For accounts flagged async, the gateway submits to **12ai's async task API** (`cdn.12ai.org` `POST /v1/task/submit` → poll `GET /v1/task/{id}` → download `outputs[]` → return `b64_json`), so no hop stays open >100s. Client protocol unchanged. Code: `backend/internal/service/openai_images_async.go` + `openai_images_usage_synth.go`; branch in `openai_images.go` `forwardOpenAIImagesAPIKey` on `account.IsAsyncImage()`.
+
+**Billing**: the async API returns **no token usage**, so the gateway **synthesizes** an `OpenAIUsage` from `(size, quality, reference images, prompt)` and feeds the existing **token** billing path. Config lives in **`accounts.credentials`** (NOT channel features_config — the account, not the channel, is threaded into `ForwardImages`):
+
+```jsonc
+// account 1131 credentials
+"async_enabled": "true",               // STRING "true" (GetCredential ignores JSON bools)
+"async_base_url": "https://cdn.12ai.org",
+"api_key": "<async-task-permission key>",   // submit+poll both use this
+"async_image_host_suffix": "12ai.org", // SSRF allowlist for downloaded image URLs
+"async_image_synth": {
+  "output_token_table": { "1K": {"low":196,"medium":1756,"high":7023},
+                          "2K": {"low":397,"medium":3571,"high":14281},
+                          "4K": {"low":367,"medium":3299,"high":13195} },
+  "ref_image_tokens":   { "1K":1024, "2K":1521, "4K":1508 },
+  "image_input_ratio":  1.6            // = image-input ¥12.8 ÷ text-input ¥8; default 1.6 if absent
+}
+```
+
+**Pricing — to change rates, NO code change needed**:
+- Text-input ¥8 / output ¥48 → `channel_model_pricing` (channel 13, `billing_mode=token`, input `8e-6` / output `48e-6`). Synthesized image-output tokens go in `OutputTokens` (billed at output_price); leave `image_output_price=0`.
+- Image-input ¥12.8 has **no dedicated pricing field**, so it's billed via `image_input_ratio` (ref tokens × ratio into `InputTokens` at ¥8 ⇒ effective ¥12.8). If upstream changes ¥8 or ¥12.8, update `image_input_ratio = image_input_price ÷ input_price` in account creds (default 1.6).
+- Margin → group 21 `rate_multiplier` (1.5). Final = synth tokens × channel price × group multiplier.
+
+**Quality**: `auto`/missing → forced to `medium` (upstream submit + billing). Group users must request model **`gpt-image-2`** (12ai async only serves that; `gpt-image-2-4k` → upstream error). `output_token_table` calibration: run async generations, read net charge from the 12ai dashboard (`net ÷ ¥48/1M = effective output tokens`). Missing table cell → conservative row-max + warn; `OutputTokens==0` (table gap) → **fail-closed**, image not delivered. Any account/credential/pricing change needs `docker compose restart sub2api` (gotcha #3).
+
 ## Notification Email Templates
 
 24 templates (12 events × 2 locales) in `settings` table, key `notification_email_template:<event>:<locale>`. Design: Monet purple header, inline-styled, dark mode support. Generator: `/tmp/sakrylle_email_templates.py` (one-off).
