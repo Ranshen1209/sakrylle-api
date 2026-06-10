@@ -1,7 +1,10 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -88,5 +91,32 @@ func TestBuildOpenAIImagesResponse(t *testing.T) {
 	}
 	if _, ok := m["created"]; !ok {
 		t.Fatal("missing created")
+	}
+}
+
+func TestAsyncClientSubmit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/task/submit" || r.Header.Get("Authorization") != "Bearer sk-x" {
+			w.WriteHeader(400)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"task_123","status":"queued"}`))
+	}))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "sk-x"}
+	id, err := cl.Submit(context.Background(), []byte(`{}`))
+	if err != nil || id != "task_123" {
+		t.Fatalf("id=%q err=%v", id, err)
+	}
+}
+
+func TestAsyncClientSubmitNoID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"queued"}`))
+	}))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "sk-x"}
+	if _, err := cl.Submit(context.Background(), []byte(`{}`)); err == nil {
+		t.Fatal("expected error for missing id")
 	}
 }

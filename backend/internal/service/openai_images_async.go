@@ -1,8 +1,13 @@
 package service
 
 import (
+	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -85,4 +90,43 @@ func buildOpenAIImagesResponse(b64s []string) ([]byte, error) {
 		"created": time.Now().Unix(),
 		"data":    data,
 	})
+}
+
+// AsyncImageClient is an HTTP client for the 12ai async task bridge.
+type AsyncImageClient struct {
+	httpClient *http.Client
+	baseURL    string
+	apiKey     string
+}
+
+type asyncSubmitResp struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+// Submit POSTs body to /v1/task/submit and returns the task ID.
+func (cl *AsyncImageClient) Submit(ctx context.Context, body []byte) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cl.baseURL+"/v1/task/submit", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+cl.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := cl.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("submit status %d: %s", resp.StatusCode, strings.TrimSpace(string(rb)))
+	}
+	var sr asyncSubmitResp
+	if err := json.Unmarshal(rb, &sr); err != nil {
+		return "", fmt.Errorf("submit parse: %w", err)
+	}
+	if strings.TrimSpace(sr.ID) == "" {
+		return "", fmt.Errorf("submit returned no task id")
+	}
+	return sr.ID, nil
 }
