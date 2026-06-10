@@ -79,3 +79,45 @@ func TestParseAsyncSynthConfig(t *testing.T) {
 		t.Fatalf("parse failed: %+v ok=%v", cfg, ok)
 	}
 }
+
+func TestSynthesizeUsesConfiguredImageInputRatio(t *testing.T) {
+	cfg := AsyncSynthConfig{
+		OutputTokenTable: map[string]map[string]int{"1K": {"medium": 1756}},
+		RefImageTokens:   map[string]int{"1K": 1000},
+		ImageInputRatio:  2.0,
+	}
+	u, _ := SynthesizeAsyncImageUsage(AsyncSynthInput{
+		Size: "1024x1024", Quality: "medium", N: 1,
+		RefImages: []OpenAIImagesUpload{{Width: 1024, Height: 1024}},
+	}, cfg)
+	if u.InputTokens < 2000 || u.InputTokens > 2010 { // 1000 * 2.0 = 2000 (+ tiny text)
+		t.Fatalf("expected ~2000 input tokens (ratio 2.0), got %d", u.InputTokens)
+	}
+}
+
+func TestSynthesizeDefaultsRatioWhenUnset(t *testing.T) {
+	cfg := AsyncSynthConfig{ // no ImageInputRatio → default 1.6
+		OutputTokenTable: map[string]map[string]int{"1K": {"medium": 1756}},
+		RefImageTokens:   map[string]int{"1K": 1000},
+	}
+	u, _ := SynthesizeAsyncImageUsage(AsyncSynthInput{
+		Size: "1024x1024", Quality: "medium", N: 1,
+		RefImages: []OpenAIImagesUpload{{Width: 1024, Height: 1024}},
+	}, cfg)
+	if u.InputTokens < 1600 || u.InputTokens > 1610 { // 1000 * 1.6 = 1600 (+ tiny text)
+		t.Fatalf("expected ~1600 input tokens (default 1.6), got %d", u.InputTokens)
+	}
+}
+
+func TestParseAsyncSynthConfigImageInputRatio(t *testing.T) {
+	withRatio := map[string]any{"async_image_synth": map[string]any{"image_input_ratio": float64(2.0)}}
+	cfg, _ := ParseAsyncSynthConfig(withRatio)
+	if cfg.ImageInputRatio != 2.0 {
+		t.Fatalf("ratio = %v, want 2.0", cfg.ImageInputRatio)
+	}
+	without := map[string]any{"async_image_synth": map[string]any{}}
+	cfg2, _ := ParseAsyncSynthConfig(without)
+	if cfg2.ImageInputRatio != 1.6 {
+		t.Fatalf("default ratio = %v, want 1.6", cfg2.ImageInputRatio)
+	}
+}
