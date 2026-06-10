@@ -12,6 +12,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/gin-gonic/gin"
 )
 
 // IsAsyncImage reports whether this account routes image requests through the
@@ -233,4 +236,115 @@ func (cl *AsyncImageClient) FetchAsB64(ctx context.Context, urls []string) ([]st
 		out = append(out, base64.StdEncoding.EncodeToString(b))
 	}
 	return out, nil
+}
+
+func (s *OpenAIGatewayService) newAsyncImageClient(account *Account) *AsyncImageClient {
+	return &AsyncImageClient{
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+		baseURL:    account.AsyncImageBaseURL(),
+		apiKey:     account.GetOpenAIApiKey(),
+	}
+}
+
+// asyncFail writes a clean client error and returns a typed error that the
+// handler maps to a non-failover, non-billed error response.
+func asyncFail(c *gin.Context, status int, msg string) error {
+	e := &OpenAIImagesUpstreamError{
+		StatusCode: status,
+		ErrorType:  "image_generation_user_error",
+		Message:    sanitizeUpstreamErrorMessage(msg),
+	}
+	if c != nil {
+		writeOpenAIImagesUpstreamErrorResponse(c, e)
+	}
+	return e
+}
+
+// ForwardImagesAsync submits to the async task upstream, polls to completion,
+// writes a b64_json response, and returns a result whose Usage is synthesized
+// for token billing. ctx must be cancelable so client disconnects stop polling.
+func (s *OpenAIGatewayService) ForwardImagesAsync(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	parsed *OpenAIImagesRequest,
+	requestModel, upstreamModel string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	cl := s.newAsyncImageClient(account)
+
+	body, err := buildAsyncSubmitBody(upstreamModel, parsed)
+	if err != nil {
+		return nil, asyncFail(c, http.StatusBadRequest, "build async request: "+err.Error())
+	}
+
+	submitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	taskID, err := cl.Submit(submitCtx, body)
+	cancel()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, asyncFail(c, http.StatusBadGateway, "async submit failed: "+err.Error())
+	}
+
+	interval := time.Duration(account.AsyncPollIntervalMs()) * time.Millisecond
+	maxWait := time.Duration(account.AsyncMaxWaitMs()) * time.Millisecond
+	pr, err := cl.Poll(ctx, taskID, interval, maxWait)
+	if err != nil {
+		switch {
+		case ctx.Err() != nil:
+			return nil, ctx.Err() // client disconnect: no response, no billing
+		case errors.Is(err, errAsyncTimeout):
+			return nil, asyncFail(c, http.StatusGatewayTimeout, "image task timed out")
+		default:
+			return nil, asyncFail(c, http.StatusBadGateway, err.Error())
+		}
+	}
+	if pr.Failed || len(pr.Outputs) == 0 {
+		msg := "image task failed"
+		if pr.ErrMsg != "" {
+			msg += ": " + pr.ErrMsg
+		}
+		return nil, asyncFail(c, http.StatusBadGateway, msg)
+	}
+
+	b64s, err := cl.FetchAsB64(ctx, pr.Outputs)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, asyncFail(c, http.StatusBadGateway, "image download failed: "+err.Error())
+	}
+	delivered := len(b64s)
+
+	respJSON, err := buildOpenAIImagesResponse(b64s)
+	if err != nil {
+		return nil, asyncFail(c, http.StatusInternalServerError, err.Error())
+	}
+	c.Data(http.StatusOK, "application/json", respJSON)
+
+	synthCfg, _ := ParseAsyncSynthConfig(account.Credentials)
+	usage, exact := SynthesizeAsyncImageUsage(AsyncSynthInput{
+		Size:      parsed.Size,
+		Quality:   parsed.Quality,
+		N:         delivered,
+		Prompt:    parsed.Prompt,
+		RefImages: parsed.Uploads,
+	}, synthCfg)
+	if !exact || usage.OutputTokens == 0 {
+		logger.LegacyPrintf("service.openai_gateway",
+			"[OpenAI] async image usage synth WARNING account=%d size=%s quality=%s exact=%v output_tokens=%d (output_tokens=0 means billing-table gap → near-free image; calibrate output_token_table)",
+			account.ID, parsed.Size, parsed.Quality, exact, usage.OutputTokens)
+	}
+
+	return &OpenAIForwardResult{
+		Usage:          usage,
+		Model:          requestModel,
+		UpstreamModel:  upstreamModel,
+		Duration:       time.Since(startTime),
+		ImageCount:     delivered,
+		ImageSize:      parsed.SizeTier,
+		ImageInputSize: parsed.Size,
+	}, nil
 }

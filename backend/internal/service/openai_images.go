@@ -576,6 +576,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
 		return nil, err
 	}
+	if account.IsAsyncImage() {
+		return s.ForwardImagesAsync(ctx, c, account, parsed, requestModel, upstreamModel, startTime)
+	}
 	logger.LegacyPrintf(
 		"service.openai_gateway",
 		"[OpenAI] Images request routing request_model=%s upstream_model=%s endpoint=%s account_type=%s",
