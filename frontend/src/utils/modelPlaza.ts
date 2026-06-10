@@ -64,18 +64,18 @@ export function applyRate(value: number | null, rate: number): number | null {
 }
 
 interface ModelAggregate {
-  pricing: UserSupportedModelPricing | null
   channels: string[]
-  groupsById: Map<number, PlazaGroupAccess>
+  // group id → that group's access path + the pricing of the channel serving it
+  groups: Map<number, { access: PlazaGroupAccess; pricing: UserSupportedModelPricing | null }>
 }
 
 /**
  * Flatten a channel-centric API response into a model-centric plaza view.
  *
- * Every (platform, model, group) combination becomes one entry. Pricing is
- * taken from the first channel that defines pricing for that model — pricing
- * is normally shared across channels (it's stored on `channel_model_pricing`
- * as the official upstream rate), so first-wins is stable in practice.
+ * Every (platform, model, group) becomes one entry. Pricing is taken PER GROUP
+ * from the channel that actually serves that group — NOT first-channel-wins —
+ * so a model name carried by two channels with different billing (e.g. one
+ * per-image, one token) shows the correct price for each access path.
  */
 export function flattenChannelsToPlaza(
   channels: UserAvailableChannel[],
@@ -88,27 +88,30 @@ export function flattenChannelsToPlaza(
       for (const model of section.supported_models) {
         const platform = inferDisplayPlatform(model.name, model.platform || section.platform)
         const modelKey = `${platform}::${model.name}`
-        const agg = aggregates.get(modelKey) ?? {
-          pricing: null,
-          channels: [],
-          groupsById: new Map<number, PlazaGroupAccess>(),
-        }
+        const agg = aggregates.get(modelKey) ?? { channels: [] as string[], groups: new Map<number, { access: PlazaGroupAccess; pricing: UserSupportedModelPricing | null }>() }
         if (!agg.channels.includes(ch.name)) agg.channels.push(ch.name)
-        if (agg.pricing == null && model.pricing != null) agg.pricing = model.pricing
         for (const g of section.groups) {
-          if (agg.groupsById.has(g.id)) continue
+          const existing = agg.groups.get(g.id)
+          if (existing) {
+            // group already seen via another channel; fill pricing only if missing
+            if (existing.pricing == null && model.pricing != null) existing.pricing = model.pricing
+            continue
+          }
           const userRate = Object.prototype.hasOwnProperty.call(userGroupRates, g.id)
             ? userGroupRates[g.id]
             : null
-          agg.groupsById.set(g.id, {
-            id: g.id,
-            name: g.name,
-            platform: inferDisplayPlatform(model.name, g.platform),
-            subscriptionType: g.subscription_type || 'standard',
-            isExclusive: g.is_exclusive,
-            defaultRate: g.rate_multiplier,
-            userRate,
-            effectiveRate: userRate ?? g.rate_multiplier,
+          agg.groups.set(g.id, {
+            access: {
+              id: g.id,
+              name: g.name,
+              platform: inferDisplayPlatform(model.name, g.platform),
+              subscriptionType: g.subscription_type || 'standard',
+              isExclusive: g.is_exclusive,
+              defaultRate: g.rate_multiplier,
+              userRate,
+              effectiveRate: userRate ?? g.rate_multiplier,
+            },
+            pricing: model.pricing ?? null,
           })
         }
         aggregates.set(modelKey, agg)
@@ -119,14 +122,14 @@ export function flattenChannelsToPlaza(
   const out: PlazaModel[] = []
   for (const [modelKey, agg] of aggregates) {
     const [platform, name] = splitModelKey(modelKey)
-    for (const group of agg.groupsById.values()) {
+    for (const { access, pricing } of agg.groups.values()) {
       out.push({
-        id: `${modelKey}::${group.id}`,
+        id: `${modelKey}::${access.id}`,
         name,
         platform,
-        pricing: agg.pricing,
+        pricing,
         channels: [...agg.channels],
-        group,
+        group: access,
       })
     }
   }

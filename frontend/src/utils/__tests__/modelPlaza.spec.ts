@@ -44,6 +44,7 @@ function model(name: string, platform: string, input?: number, output?: number) 
             cache_write_price: null,
             cache_read_price: null,
             image_output_price: null,
+            image_input_ratio: null,
             per_request_price: null,
             intervals: [],
           }
@@ -162,9 +163,51 @@ describe('flattenChannelsToPlaza', () => {
     ]
 
     const result = flattenChannelsToPlaza(channels, {})
-    // Both rows share the same model and therefore the same pricing record.
-    expect(result.every((m) => m.pricing?.input_price === 0.0000005)).toBe(true)
+    // Per-group pricing: group 3 is served by NoPricing channel → null pricing;
+    // group 4 is served by WithPricing channel → has the real pricing.
+    const pro = result.find((m) => m.group.id === 3)
+    const plus = result.find((m) => m.group.id === 4)
+    expect(pro?.pricing).toBeNull()
+    expect(plus?.pricing?.input_price).toBe(0.0000005)
   })
+
+  it('uses per-group pricing: two channels with the same model name but different pricing yield distinct prices per group', () => {
+    // Scenario mirrors gpt-image-2 on two channels: one per-image (ch11), one token (ch13).
+    // Each group should see the pricing from the channel that actually serves it.
+    const channels: UserAvailableChannel[] = [
+      {
+        name: 'ImageChannel',
+        description: '',
+        platforms: [
+          {
+            platform: 'openai',
+            groups: [group(5, 'GPT-Image', 'openai', 1.0)],
+            supported_models: [model('gpt-image-2', 'openai', 0.0001)],
+          },
+        ],
+      },
+      {
+        name: 'TokenChannel',
+        description: '',
+        platforms: [
+          {
+            platform: 'openai',
+            groups: [group(11, 'GPT-Image-4K', 'openai', 1.0)],
+            supported_models: [model('gpt-image-2', 'openai', 0.0005)],
+          },
+        ],
+      },
+    ]
+
+    const result = flattenChannelsToPlaza(channels, {})
+    expect(result).toHaveLength(2)
+    const imageRow = result.find((m) => m.group.id === 5)
+    const tokenRow = result.find((m) => m.group.id === 11)
+    // Each group sees its own channel's pricing, NOT the first-channel's pricing.
+    expect(imageRow?.pricing?.input_price).toBe(0.0001)
+    expect(tokenRow?.pricing?.input_price).toBe(0.0005)
+  })
+
 
   it('sorts entries by platform, then model name, then ascending rate', () => {
     const channels: UserAvailableChannel[] = [

@@ -51,6 +51,15 @@
           :show-original="showOriginal"
         />
         <PlazaPriceRow
+          v-if="model.pricing.image_input_ratio != null && model.pricing.input_price != null"
+          :label="t('plaza.pricing.imageInput')"
+          :value="imageInputPrice"
+          :rate="effectiveRate"
+          :scale="perMillionScale"
+          :unit="t('plaza.pricing.unitPerMillion')"
+          :show-original="showOriginal"
+        />
+        <PlazaPriceRow
           :label="t('plaza.pricing.output')"
           :value="model.pricing.output_price"
           :rate="effectiveRate"
@@ -150,6 +159,12 @@ const props = withDefaults(
 const { t } = useI18n()
 const perMillionScale = 1_000_000
 const effectiveRate = computed(() => props.model.group.effectiveRate)
+
+const imageInputPrice = computed(() => {
+  const pricing = props.model.pricing
+  if (pricing == null || pricing.input_price == null || pricing.image_input_ratio == null) return null
+  return pricing.input_price * pricing.image_input_ratio
+})
 
 const billingMode = computed(() => props.model.pricing?.billing_mode ?? BILLING_MODE_TOKEN)
 const isToken = computed(() => billingMode.value === BILLING_MODE_TOKEN)

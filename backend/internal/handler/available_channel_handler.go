@@ -70,6 +70,7 @@ type userSupportedModelPricing struct {
 	CacheReadPrice   *float64                 `json:"cache_read_price"`
 	ImageOutputPrice *float64                 `json:"image_output_price"`
 	PerRequestPrice  *float64                 `json:"per_request_price"`
+	ImageInputRatio  *float64                 `json:"image_input_ratio"`
 	Intervals        []userPricingIntervalDTO `json:"intervals"`
 }
 
@@ -196,7 +197,7 @@ func buildPlatformSections(
 		sections = append(sections, userChannelPlatformSection{
 			Platform:        platform,
 			Groups:          groupsByPlatform[platform],
-			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet),
+			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet, ch.ImageInputRatio),
 		})
 	}
 	return sections
@@ -227,9 +228,11 @@ func filterUserVisibleGroups(
 // toUserSupportedModels 将 service 层支持模型转换为用户 DTO（字段白名单）。
 // 仅保留平台在 allowedPlatforms 中的条目，防止跨平台模型信息泄漏。
 // allowedPlatforms 为 nil 时不做平台过滤（保留全部，供测试或明确无过滤场景使用）。
+// imageInputRatio 来自渠道级 FeaturesConfig，统一戳到该渠道所有模型的 pricing DTO 上。
 func toUserSupportedModels(
 	src []service.SupportedModel,
 	allowedPlatforms map[string]struct{},
+	imageInputRatio *float64,
 ) []userSupportedModel {
 	out := make([]userSupportedModel, 0, len(src))
 	for i := range src {
@@ -242,14 +245,21 @@ func toUserSupportedModels(
 		out = append(out, userSupportedModel{
 			Name:     m.Name,
 			Platform: m.Platform,
-			Pricing:  toUserPricing(m.Pricing),
+			Pricing:  toUserPricingWithRatio(m.Pricing, imageInputRatio),
 		})
 	}
 	return out
 }
 
 // toUserPricing 将 service 层定价转换为用户 DTO；入参为 nil 时返回 nil。
+// 不带 image_input_ratio（无渠道级别 ratio 可用时使用）。
 func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
+	return toUserPricingWithRatio(p, nil)
+}
+
+// toUserPricingWithRatio 将 service 层定价转换为用户 DTO，并将渠道级 imageInputRatio
+// 戳入 DTO 的 ImageInputRatio 字段。入参 p 为 nil 时返回 nil。
+func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *float64) *userSupportedModelPricing {
 	if p == nil {
 		return nil
 	}
@@ -278,6 +288,7 @@ func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 		CacheReadPrice:   p.CacheReadPrice,
 		ImageOutputPrice: p.ImageOutputPrice,
 		PerRequestPrice:  p.PerRequestPrice,
+		ImageInputRatio:  imageInputRatio,
 		Intervals:        intervals,
 	}
 }

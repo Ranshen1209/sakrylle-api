@@ -49,7 +49,7 @@ func TestToUserSupportedModels_FiltersByAllowedPlatforms(t *testing.T) {
 		{Name: "gpt-4o", Platform: "openai", Pricing: nil},
 	}
 	allowed := map[string]struct{}{"anthropic": {}}
-	out := toUserSupportedModels(src, allowed)
+	out := toUserSupportedModels(src, allowed, nil)
 	require.Len(t, out, 1)
 	require.Equal(t, "claude-sonnet-4-6", out[0].Name)
 }
@@ -60,7 +60,7 @@ func TestToUserSupportedModels_NilAllowedPlatformsKeepsAll(t *testing.T) {
 		{Name: "a", Platform: "anthropic"},
 		{Name: "b", Platform: "openai"},
 	}
-	require.Len(t, toUserSupportedModels(src, nil), 2)
+	require.Len(t, toUserSupportedModels(src, nil, nil), 2)
 }
 
 func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
@@ -154,4 +154,46 @@ func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	require.Equal(t, int64(2), sections[0].Groups[0].ID)
 	require.Len(t, sections[0].SupportedModels, 1)
 	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
+}
+
+func TestToUserPricing_ImageInputRatioPropagated(t *testing.T) {
+	// toUserPricing が image_input_ratio を DTO に引き継ぐことを確認。
+	ratio := 1.6
+	p := &service.ChannelModelPricing{BillingMode: service.BillingModeImage}
+	dto := toUserPricingWithRatio(p, &ratio)
+	require.NotNil(t, dto)
+	require.NotNil(t, dto.ImageInputRatio)
+	require.InDelta(t, 1.6, *dto.ImageInputRatio, 1e-9)
+}
+
+func TestToUserPricing_ImageInputRatioNilWhenNotSet(t *testing.T) {
+	// channel に image_input_ratio なし → DTO.ImageInputRatio = nil。
+	p := &service.ChannelModelPricing{BillingMode: service.BillingModeToken}
+	dto := toUserPricingWithRatio(p, nil)
+	require.NotNil(t, dto)
+	require.Nil(t, dto.ImageInputRatio)
+}
+
+func TestBuildPlatformSections_ImageInputRatioStampedOnModels(t *testing.T) {
+	// AvailableChannel.ImageInputRatio が全モデルの DTO に転写される。
+	ratio := 1.6
+	ch := service.AvailableChannel{
+		Name:            "img-ch",
+		ImageInputRatio: &ratio,
+		SupportedModels: []service.SupportedModel{
+			{Name: "gpt-image-2", Platform: "openai", Pricing: &service.ChannelModelPricing{
+				BillingMode: service.BillingModeImage,
+			}},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "g-img", Platform: "openai"},
+	}
+	sections := buildPlatformSections(ch, visible)
+	require.Len(t, sections, 1)
+	require.Len(t, sections[0].SupportedModels, 1)
+	pricing := sections[0].SupportedModels[0].Pricing
+	require.NotNil(t, pricing)
+	require.NotNil(t, pricing.ImageInputRatio)
+	require.InDelta(t, 1.6, *pricing.ImageInputRatio, 1e-9)
 }
