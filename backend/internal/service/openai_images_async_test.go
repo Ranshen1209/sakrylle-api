@@ -179,3 +179,15 @@ func TestAsyncClientPollCancel(t *testing.T) {
 		t.Fatalf("want canceled, got %v", err)
 	}
 }
+
+func TestAsyncClientFetchAsB64(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte{0xDE, 0xAD})
+	}))
+	defer srv.Close()
+	cl := &AsyncImageClient{httpClient: srv.Client(), baseURL: srv.URL, apiKey: "sk-x"}
+	out, err := cl.FetchAsB64(context.Background(), []string{srv.URL + "/a.png"})
+	if err != nil || len(out) != 1 || out[0] != "3q0=" { // base64(0xDEAD)
+		t.Fatalf("out=%v err=%v", out, err)
+	}
+}
