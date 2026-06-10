@@ -194,6 +194,13 @@ func TestAsyncClientFetchAsB64(t *testing.T) {
 	}
 }
 
+func TestIsAsyncImageDisabledByDefault(t *testing.T) {
+	a := &Account{Credentials: map[string]any{"api_key": "sk-x", "base_url": "https://new.12ai.org/v1"}}
+	if a.IsAsyncImage() {
+		t.Fatal("account without async_enabled must not be async (sync path unchanged)")
+	}
+}
+
 func TestForwardImagesAsync_EndToEnd(t *testing.T) {
 	var base string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
