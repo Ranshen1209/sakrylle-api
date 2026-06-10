@@ -1261,6 +1261,7 @@ export default {
     pricing: {
       input: 'Input',
       output: 'Output',
+      imageInput: 'Image input',
       cacheRead: 'Cache Read',
       cacheWrite: 'Cache Write',
       perRequest: 'Per Request',

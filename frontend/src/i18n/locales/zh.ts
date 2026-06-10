@@ -1267,6 +1267,7 @@ export default {
     pricing: {
       input: '输入',
       output: '输出',
+      imageInput: '图片输入',
       cacheRead: '缓存读取',
       cacheWrite: '缓存写入',
       perRequest: '每次',
