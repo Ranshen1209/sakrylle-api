@@ -691,29 +691,35 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 
 ## 14. Client 注册参考
 
-### 当前已注册 Client
+### 当前已注册 Client（2026-06-11 更新）
 
-| 字段 | sakrylle-image-playground | sakrylle-cli | sakrylle-desktop | sakrylle-image-playground-v2 |
+> **2026-06-11 客户端清理**：生产 OIDC 仅保留 `sakrylle-image-playground` 与 `sakrylle-web`。`sakrylle-cli` / `sakrylle-desktop` / `sakrylle-chat` / `sakrylle-image-playground-v2` 的注册（及其历史 access/refresh/code token）已删除，待对应产品实际开发时按下方「未来待注册」形状重建。
+
+| 字段 | sakrylle-image-playground | sakrylle-web |
+|---|---|---|
+| **client_type** | public | **confidential** |
+| **app_type** | image | web |
+| **pkce_required** | true | true（机密 client 仍强制 PKCE S256） |
+| **client_confidential** | false | true |
+| **trusted_first_party** | true | true |
+| **device_flow_enabled** | false | false |
+| **redirect_uris** | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+ `/oauth/oidc/callback`)；`http://localhost:3080/...`（两变体，遗留）；`http://localhost:8080/oauth/oidc/login/callback` |
+| **allowed_scopes** | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `offline_access` |
+| **logout_redirect_uris** | — | `https://chat.sakrylle.com/` |
+| **signing_algorithm** | RS256 | RS256 |
+| **subject_type** | public | public |
+
+> `sakrylle-web` 已注册并启用：机密 client，token endpoint auth `client_secret_post`（`client_secret_basic` 亦可），PKCE S256 强制。client_secret 于 2026-06-11 轮换，明文仅交付部署方、不入库/不入仓库。RP 接入形状见 §15「Sakrylle Web」。
+
+### 未来待注册 Client（产品开发期重建，需审批）
+
+> 2026-06-11 清理后已删除，待对应产品开发时按此形状重新注册：
+
+| 产品 | client_id | 类型 | redirect_uris | scope |
 |---|---|---|---|---|
-| **client_type** | public | public | public | public |
-| **app_type** | image | cli | desktop | image |
-| **pkce_required** | true | true | true | true |
-| **device_flow_enabled** | false | true | false | false |
-| **trusted_first_party** | true | true | true | true |
-| **redirect_uris** | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `[]`（Device Flow） | `127.0.0.1`, `[::1]`, `localhost` loopback | `https://image.sakrylle.com/oauth/callback` |
-| **allowed_scopes** | `images:create`, `account:balance:read`, `models:read`, `offline_access` | `profile:read`, `account:read`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access` | `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `offline_access` | 同 v1 |
-| **signing_algorithm** | RS256 | RS256 | RS256 | RS256 |
-| **subject_type** | public | public | public | public |
-
-### 目标 Client 配置（需审批）
-
-| 产品 | client_id | 类型 | redirect_uris | 额外 scope |
-|---|---|---|---|---|
-| Image | `sakrylle-image-playground`（沿用） | public | 不变 | + `openid profile email` |
-| CLI | `sakrylle-cli` | public | + `http://127.0.0.1`（任意端口 `/callback`） | + `openid profile email` |
+| CLI | `sakrylle-cli` | public | `http://127.0.0.1`（任意端口 `/callback`）+ Device Flow | `openid profile email models:read responses:create messages:create usage:read offline_access` |
 | Studio | 首发复用 CLI 凭据 | — | — | — |
-| Web | `sakrylle-web` | **confidential** | `https://chat.sakrylle.com/oauth/oidc/login/callback` | `openid profile email models:read ...` |
-| Chat | `sakrylle-chat` | public | `sakrylle-chat://oauth/callback`（Android/iOS/macOS 自定义 scheme）；`http://127.0.0.1`（Windows/Linux loopback，端口运行时动态分配，须按 RFC 8252 §7.3 做端口无关匹配） | `openid profile email models:read chat.completions:create offline_access` |
+| Chat | `sakrylle-chat` | public | `sakrylle-chat://oauth/callback`（自定义 scheme）；`http://127.0.0.1`（loopback，RFC 8252 §7.3 端口无关匹配） | `openid profile email models:read chat.completions:create offline_access` |
 
 ---
 

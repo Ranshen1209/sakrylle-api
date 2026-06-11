@@ -210,12 +210,12 @@ id_token      = ✅ **RS256 或 ES256 签名的 JWT**（2026-06-04）
 
 ### 4.4 已注册的 Sakrylle 第一方 Client
 
+> **2026-06-11 客户端清理**：生产仅保留 `sakrylle-image-playground` + `sakrylle-web`。`sakrylle-cli` / `sakrylle-desktop` / `sakrylle-chat` / `sakrylle-image-playground-v2` 注册及历史 token 已删除，待产品开发期重建。
+
 | client_id | app_type | client_type | PKCE | Device Flow | redirect_uris | 关键 scope |
 |---|---|---|---|---|---|---|
 | `sakrylle-image-playground` | `image` | `public` | 强制 | 否 | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access`（`chat.completions:create` 见 migration 162） |
-| `sakrylle-image-playground-v2` | `image` | `public` | 强制 | 否 | `https://image.sakrylle.com/oauth/callback` | `images:create`, `account:balance:read`, `models:read`, `offline_access` |
-| `sakrylle-cli` | `cli` | `public` | 强制 | 是 | `[]`（Device Flow） | `profile:read`, `account:read`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access` |
-| `sakrylle-desktop` | `desktop` | `public` | 强制 | 否 | `http://127.0.0.1/oauth/callback`, `http://[::1]/oauth/callback`, `http://localhost/oauth/callback`（loopback） | `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `offline_access` |
+| `sakrylle-web` | `web` | `confidential` | 强制 | 否 | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+`/oauth/oidc/callback`), `http://localhost:3080/...`（遗留）, `http://localhost:8080/oauth/oidc/login/callback` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `offline_access`（`client_confidential=true`；secret 于 2026-06-11 轮换） |
 
 > `default_group_id = NULL` for all clients — 由运营在 admin UI 或直接 SQL 按部署设置。
 
