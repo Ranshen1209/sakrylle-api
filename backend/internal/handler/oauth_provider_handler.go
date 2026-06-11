@@ -835,6 +835,12 @@ func (h *OAuthProviderHandler) commonDiscoveryMetadata(issuer string) gin.H {
 		"userinfo_endpoint":                     issuer + "/userinfo",
 		"jwks_uri":                              issuer + "/.well-known/jwks.json",
 		"end_session_endpoint":                  issuer + "/oauth/logout",
+		// device_authorization_endpoint (RFC 8628 §4) is shared between both
+		// discovery documents: OIDC clients that read only
+		// /.well-known/openid-configuration (e.g. the Sakrylle CLI with
+		// --device-auth) must be able to discover it, and grant_types_supported
+		// below already advertises the device_code grant in both docs.
+		"device_authorization_endpoint":         issuer + "/oauth/device/code",
 		"response_types_supported":              []string{"code"},
 		"response_modes_supported":              []string{"query"},
 		"grant_types_supported":                 []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"},
@@ -865,7 +871,8 @@ func (h *OAuthProviderHandler) Metadata(c *gin.Context) {
 	issuer := h.discoveryIssuer(c)
 	resp := h.commonDiscoveryMetadata(issuer)
 	resp["revocation_endpoint"] = issuer + "/oauth/revoke"
-	resp["device_authorization_endpoint"] = issuer + "/oauth/device/code"
+	// device_authorization_endpoint now comes from commonDiscoveryMetadata so
+	// both discovery documents advertise it consistently.
 	resp["ui_locales_supported"] = []string{"zh-CN", "en"}
 	resp["revocation_endpoint_auth_methods_supported"] = []string{"none", "client_secret_basic", "client_secret_post"}
 	c.Header("Content-Type", "application/json")

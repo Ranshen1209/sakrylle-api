@@ -210,14 +210,17 @@ id_token      = ✅ **RS256 或 ES256 签名的 JWT**（2026-06-04）
 
 ### 4.4 已注册的 Sakrylle 第一方 Client
 
-> **2026-06-11 客户端清理**：生产仅保留 `sakrylle-image-playground` + `sakrylle-web`。`sakrylle-cli` / `sakrylle-desktop` / `sakrylle-chat` / `sakrylle-image-playground-v2` 注册及历史 token 已删除，待产品开发期重建。
+> **2026-06-11 客户端清理**：生产曾仅保留 `sakrylle-image-playground` + `sakrylle-web`。`sakrylle-cli` / `sakrylle-desktop` / `sakrylle-chat` / `sakrylle-image-playground-v2` 注册及历史 token 已删除，待产品开发期重建。
+>
+> **2026-06-12 重建 `sakrylle-cli`**：CLI 进入开发，按下表重新注册（public + PKCE + Device Flow + loopback 任意端口 `/callback`、`/auth/callback`），`default_group_id=3`（GPT-Pro）。
 
 | client_id | app_type | client_type | PKCE | Device Flow | redirect_uris | 关键 scope |
 |---|---|---|---|---|---|---|
 | `sakrylle-image-playground` | `image` | `public` | 强制 | 否 | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access`（`chat.completions:create` 见 migration 162） |
 | `sakrylle-web` | `web` | `confidential` | 强制 | 否 | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+`/oauth/oidc/callback`), `http://localhost:3080/...`（遗留）, `http://localhost:8080/oauth/oidc/login/callback` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `offline_access`（`client_confidential=true`；secret 于 2026-06-11 轮换） |
+| `sakrylle-cli` | `cli` | `public` | 强制 | **是** | `http://127.0.0.1/callback`, `http://127.0.0.1/auth/callback`（RFC 8252 任意端口） | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access`（`trusted_first_party=true`；`default_group_id=3`） |
 
-> `default_group_id = NULL` for all clients — 由运营在 admin UI 或直接 SQL 按部署设置。
+> `default_group_id`：`sakrylle-image-playground=5`、`sakrylle-web=NULL`（消费侧选组）、`sakrylle-cli=3`（GPT-Pro）。v2 OAuth 不消费全局 `oauth_default_group_id`，非订阅消费型 client 必须自带默认组，否则登录 `invalid_group` 失败闭合。
 
 ### 4.5 Scope 体系
 

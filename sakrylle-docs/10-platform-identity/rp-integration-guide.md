@@ -691,33 +691,35 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 
 ## 14. Client 注册参考
 
-### 当前已注册 Client（2026-06-11 更新）
+### 当前已注册 Client（2026-06-12 更新）
 
-> **2026-06-11 客户端清理**：生产 OIDC 仅保留 `sakrylle-image-playground` 与 `sakrylle-web`。`sakrylle-cli` / `sakrylle-desktop` / `sakrylle-chat` / `sakrylle-image-playground-v2` 的注册（及其历史 access/refresh/code token）已删除，待对应产品实际开发时按下方「未来待注册」形状重建。
+> **2026-06-11 客户端清理**：生产 OIDC 曾仅保留 `sakrylle-image-playground` 与 `sakrylle-web`。`sakrylle-cli` / `sakrylle-desktop` / `sakrylle-chat` / `sakrylle-image-playground-v2` 的注册（及其历史 access/refresh/code token）已删除，待对应产品实际开发时按「未来待注册」形状重建。
+>
+> **2026-06-12 重建 `sakrylle-cli`**：CLI 进入开发，按下表重新注册（public + PKCE S256 + Device Flow + loopback 任意端口）。绑定 `default_group_id=3`（GPT-Pro）——v2 OAuth **不消费**全局 `oauth_default_group_id`，client 必须自带默认组，否则登录因 `invalid_group` 失败闭合。
 
-| 字段 | sakrylle-image-playground | sakrylle-web |
-|---|---|---|
-| **client_type** | public | **confidential** |
-| **app_type** | image | web |
-| **pkce_required** | true | true（机密 client 仍强制 PKCE S256） |
-| **client_confidential** | false | true |
-| **trusted_first_party** | true | true |
-| **device_flow_enabled** | false | false |
-| **redirect_uris** | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+ `/oauth/oidc/callback`)；`http://localhost:3080/...`（两变体，遗留）；`http://localhost:8080/oauth/oidc/login/callback` |
-| **allowed_scopes** | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `offline_access` |
-| **logout_redirect_uris** | — | `https://chat.sakrylle.com/` |
-| **signing_algorithm** | RS256 | RS256 |
-| **subject_type** | public | public |
+| 字段 | sakrylle-image-playground | sakrylle-web | sakrylle-cli |
+|---|---|---|---|
+| **client_type** | public | **confidential** | public |
+| **app_type** | image | web | cli |
+| **pkce_required** | true | true（机密 client 仍强制 PKCE S256） | true |
+| **client_confidential** | false | true | false |
+| **trusted_first_party** | true | true | true |
+| **device_flow_enabled** | false | false | **true** |
+| **default_group_id** | 5（GPT-Image） | NULL（消费侧选组） | **3（GPT-Pro）** |
+| **redirect_uris** | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+ `/oauth/oidc/callback`)；`http://localhost:3080/...`（两变体，遗留）；`http://localhost:8080/oauth/oidc/login/callback` | `http://127.0.0.1/callback`, `http://127.0.0.1/auth/callback`（RFC 8252 §7.3 任意端口） |
+| **allowed_scopes** | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `offline_access` | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access` |
+| **logout_redirect_uris** | — | `https://chat.sakrylle.com/` | — |
+| **signing_algorithm** | RS256 | RS256 | RS256 |
+| **subject_type** | public | public | public |
 
 > `sakrylle-web` 已注册并启用：机密 client，token endpoint auth `client_secret_post`（`client_secret_basic` 亦可），PKCE S256 强制。client_secret 于 2026-06-11 轮换，明文仅交付部署方、不入库/不入仓库。RP 接入形状见 §15「Sakrylle Web」。
 
 ### 未来待注册 Client（产品开发期重建，需审批）
 
-> 2026-06-11 清理后已删除，待对应产品开发时按此形状重新注册：
+> 2026-06-11 清理后已删除，待对应产品开发时按此形状重新注册（`sakrylle-cli` 已于 2026-06-12 重建，见上表）：
 
 | 产品 | client_id | 类型 | redirect_uris | scope |
 |---|---|---|---|---|
-| CLI | `sakrylle-cli` | public | `http://127.0.0.1`（任意端口 `/callback`）+ Device Flow | `openid profile email models:read responses:create messages:create usage:read offline_access` |
 | Studio | 首发复用 CLI 凭据 | — | — | — |
 | Chat | `sakrylle-chat` | public | `sakrylle-chat://oauth/callback`（自定义 scheme）；`http://127.0.0.1`（loopback，RFC 8252 §7.3 端口无关匹配） | `openid profile email models:read chat.completions:create offline_access` |
 
@@ -745,10 +747,11 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 | client_id | `sakrylle-cli` |
 | client_type | public |
 | grant_type | `authorization_code`（loopback 主）+ `device_code`（降级）+ `refresh_token` |
-| redirect_uri | `http://127.0.0.1:{random_port}/callback`（通配 loopback） |
+| redirect_uri | `http://127.0.0.1:{random_port}/callback` 及 `/auth/callback`（通配 loopback；两路径均已注册） |
 | scope | `openid profile email models:read responses:create messages:create usage:read offline_access` |
 | 签名算法 | RS256（默认） |
-| 特殊注意 | Device Flow 端点路径与上游 codex 不兼容，需改；`requireGroupAnthropic` 限制 `/v1/responses` 需 Anthropic group key |
+| default_group_id | 3（GPT-Pro）——登录默认绑定该组；v2 OAuth 不消费全局 `oauth_default_group_id` |
+| 特殊注意 | Device Flow 端点为 `POST /oauth/device/code`（与上游 codex 路径不同，CLI 须从 discovery 的 `device_authorization_endpoint` 取值）。`/v1/responses` 经 `RequireGroupAssignment`（错误以 Anthropic 风格返回，**非**限定 Anthropic 平台）——只要 token 绑定了有效 group 即可，默认即 GPT-Pro。`device_authorization_endpoint` 现已同时出现在 OIDC discovery（`/.well-known/openid-configuration`）与 RFC 8414 metadata 中（2026-06-12 修复 discovery drift）。 |
 
 ### Sakrylle Studio（Tauri 桌面，首发复用 CLI 凭据）
 
