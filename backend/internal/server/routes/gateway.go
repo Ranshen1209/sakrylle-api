@@ -66,6 +66,14 @@ func RegisterGatewayRoutes(
 	rejectOAuthUnlisted := middleware.RejectOAuthTokensForUnlistedResource(oauthProviderService)
 	loadOAuthMetadata := middleware.LoadOAuthMetadata(oauthProviderService)
 
+	// Per-request group selection for backend-proxy RPs (single OAuth token):
+	// "<group_id>:<model>" rebinds routing+billing to that allowed group, and
+	// GET /v1/models?groups=all aggregates the token's allowed groups. Runs
+	// right after API-key auth so subsequent group-aware middleware/handlers see
+	// the overridden group. No-op for manual API keys. See
+	// service.ResolveGroupOverride / sakrylle-docs rp-integration-guide §18.
+	groupOverride := middleware.NewGroupOverrideMiddleware(oauthProviderService)
+
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)
@@ -73,6 +81,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(opsErrorLogger)
 	gateway.Use(endpointNorm)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
+	gateway.Use(groupOverride)
 	gateway.Use(requireGroupAnthropic)
 	gateway.Use(requireOAuthScope)
 	{

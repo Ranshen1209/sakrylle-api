@@ -766,8 +766,9 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 | client_type | **confidential**（有后端，可安全存储 client_secret） |
 | grant_type | `authorization_code` + `refresh_token` |
 | redirect_uri | `https://chat.sakrylle.com/oauth/oidc/login/callback` |
-| scope | `openid profile email models:read offline_access ...` |
+| scope | `openid profile email models:read chat.completions:create responses:create messages:create usage:read account:read offline_access` |
 | 签名算法 | RS256 |
+| 分组消费 | 单 token / 后端代理模式：列模型用 `GET /v1/models?groups=all`，选组用 `model: "<group_id>:<model>"` 前缀，按所选组 `rate_multiplier` 计费——**后端零改动**。完整契约见 §18 |
 | 特殊注意 | open-webui authlib 用 `server_metadata_url` 做 discovery；email/username claim 需 flat `get('email')` 匹配 |
 
 ### Sakrylle Chat（Flutter 移动/桌面）
@@ -876,6 +877,103 @@ curl -X POST https://sub.sakrylle.com/oauth/revoke \
   -d "token=rt_xxx" \
   -d "client_id=sakrylle-image-playground"
 ```
+
+---
+
+## 18. 单 token 客户端的分组消费（后端代理 RP）
+
+> 适用对象：在**服务端**为每个用户只持有**一份** OAuth access_token、并转发标准 OpenAI 兼容请求的 RP（典型是 **Sakrylle Web** / open-webui 的 `system_oauth` 模式）。这类客户端不像 Image SPA 那样能在浏览器里为每个 group 各铸一个 token。本节定义它如何在「单 token + 标准请求体」下完成**分组列模型 + 分组选择 + 按组计费**。
+
+### 18.1 背景：分组绑定在 token 上
+
+- 网关的「当前 group」绑定在 **access_token 所在的 `api_keys` 行**上（`api_keys.group_id`），`/v1/models` 默认只返回该组模型，推理请求默认按该组路由+计费。
+- 一个 `authorization_code` 换出的 token，其 `allowed_groups` 快照在**授权同意时**确定（与 refresh-grant 切组用的是**同一份快照**，见 §6.2）。单 token 客户端可在该快照范围内**按请求**选组——**不能越权**。
+
+### 18.2 列模型：`GET /v1/models?groups=all`（聚合 + 分组标记）
+
+不带参数时行为不变（仅当前组、`id` 无前缀、无 `group` 字段）。带 `?groups=all` 且为 `sk_oauth_` token 时，返回该 token **allowed_groups 快照内所有可选组**的模型并集，每个模型对象：
+
+- `id` = **`"<group_id>:<model>"`**（带前缀的路由 id，可原样回传，见 §18.3）；
+- 新增 `group` 对象：`{ "id", "name", "rate_multiplier" }`；
+- `display_name` 为不带前缀的原始模型名；OpenAI 平台组的条目仍带 `allow_image_generation`。
+
+```jsonc
+GET /v1/models?groups=all
+Authorization: Bearer sk_oauth_xxx
+
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "12:claude-opus-4-6",
+      "object": "model",
+      "owned_by": "anthropic",
+      "display_name": "claude-opus-4-6",
+      "group": { "id": 12, "name": "Claude-Max", "rate_multiplier": 2.0 }
+    },
+    {
+      "id": "7:claude-opus-4-6",
+      "object": "model",
+      "owned_by": "anthropic",
+      "display_name": "claude-opus-4-6",
+      "group": { "id": 7, "name": "Claude-Code", "rate_multiplier": 0.6 }
+    }
+  ]
+}
+```
+
+> 仅列出**激活、非订阅**的可选组（订阅制分组不在本契约内，见 §18.5）。manual API key 或关闭 scope enforcement 时，`?groups=all` 静默回退为单组行为。RP 前端按 `group` 字段分组展示即可。
+
+### 18.3 选组：在 `model` 上加 `<group_id>:` 前缀
+
+转发标准 `/v1/chat/completions`（及 `/v1/responses`、`/v1/messages`、`/v1/embeddings`、`/v1/images/*`）时，把请求体 `model` 写成 **`"<group_id>:<model>"`**：
+
+```jsonc
+POST /v1/chat/completions
+Authorization: Bearer sk_oauth_xxx
+{ "model": "12:claude-opus-4-6", "messages": [...] }
+```
+
+网关行为（仅对 `sk_oauth_` token 生效）：
+
+1. 解析首段 `"<group_id>:"`；
+2. 校验 `group_id ∈` 本 token 的 `allowed_groups` 快照（与 refresh 切组同一套校验，**不能扩权**）；
+3. 把该请求的**有效组**改写为目标组——**路由与计费一并切换**；
+4. **剥掉前缀**后再转上游（上游 / 计费看到的是干净的 `claude-opus-4-6`，因此 `billing_model_source=requested` 的计费名、模型广场显示等均不受影响）。
+
+无前缀 = 走 token 绑定组（即原有行为）。`open-webui` 原样转发 `model`，**Web 后端零改动**。
+
+> **保留语法**：本契约保留 `^<digits>:` 形态的 model id 作为分组选择器。当前部署的所有模型名均不含该前缀，故无歧义。前缀只对 `sk_oauth_` token 解释；manual API key 的请求体原样透传。
+
+### 18.4 计费语义
+
+按 §18.3 选中的组发起的请求，**按该组的 `rate_multiplier` 计费/路由**，而非永远走绑定组。最终成本 = `tokens × channel 单价 × 选中组的 rate_multiplier`（与该组用户级 `rpm_override` 叠加规则不变）。前缀必须在 token 的 `allowed_groups` 快照内。
+
+### 18.5 约束与错误
+
+- **仅 OAuth token**：manual API key 不参与按请求选组。
+- **仅非订阅（余额计费）组**：订阅制分组不支持按请求切换（鉴权阶段已按绑定组校验过订阅限额）。Sakrylle 现网全部为余额计费组，无实际限制。
+- 错误（OAuth 错误外壳 `{"error":{"code","message"}}`）：
+
+| 场景 | HTTP | code |
+|---|---|---|
+| 前缀组不在 allowed_groups 快照内 / 无 OAuth 元数据 | 403 | `GROUP_NOT_ALLOWED` |
+| 目标组被停用/删除/不存在 | 400 | `GROUP_UNAVAILABLE` |
+| 目标组或绑定组为订阅制 | 409 | `GROUP_OVERRIDE_UNSUPPORTED` |
+
+### 18.6 分组列表来源
+
+用 `GET /v1/me`（`account:read`）的 `allowed_groups` 列出用户可选组（每项含 `id`/`name`/`rate_multiplier`/`allow_image_generation`/`is_default`）。**组内模型清单 `/v1/me` 不提供**，由 `/v1/models?groups=all`（§18.2）给出。
+
+### 18.7 退一步：per-group token（重方案）
+
+若 RP 不走前缀法，仍可用「每组一个 token」：
+
+- `authorization_code` 换 token 时，若用户有多组，响应已带 `additional_tokens[]`（每项 `{access_token, expires_in, group:{id,name}}`，各自绑定到对应组）——**首批无需自己 refresh 重铸**；
+- 之后可用标准 `refresh_token` grant 带 `group_id=N`（§6.2）铸/续目标组 token，`group_id` 必须在 `allowed_groups` 快照内（不能扩权），refresh 为 family-anchored（续期不延长整体会话）。
+- 代价：`open-webui` 的 authlib 核心只存一份 token，消费 `additional_tokens` 需改其令牌存储逻辑。**前缀法（§18.3）正是为规避此改动而设。**
+
+> 代码参考：`backend/internal/server/middleware/group_override.go`、`backend/internal/service/oauth_provider_group_select.go`（`ResolveGroupOverride` / `SelectableGroupsForAPIKey`），挂载于 `routes/gateway.go` 的 `/v1` 链（`apiKeyAuth` 之后）。
 
 ---
 
