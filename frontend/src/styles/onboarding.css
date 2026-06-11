@@ -193,6 +193,9 @@
   border: 1px solid transparent !important;
   line-height: 1.2 !important;
   white-space: nowrap !important; /* Force no wrap */
+  /* driver.css sets `text-shadow: 1px 1px 0 #fff` on footer buttons, which
+   * renders as a white ghost behind our white-on-purple text (重影). Kill it. */
+  text-shadow: none !important;
 }
 
 .theme-tour-popover .driver-popover-next-btn {
@@ -226,3 +229,24 @@
 .dark .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: #1e293b !important; }
 .dark .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: #1e293b !important; }
 .dark .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: #1e293b !important; }
+
+/* 6. Per-step button visibility
+ * The base `.theme-tour-popover button { display: inline-flex !important }` rule
+ * overrides driver.js's own inline `display:none` for buttons not in a step's
+ * `showButtons`, which leaked 返回/下一步 onto interactive (close-only) steps.
+ * onPopoverRender toggles this class to re-assert the intended visibility; the
+ * higher specificity (two classes) beats the base rule despite both !important. */
+.theme-tour-popover button.tour-btn-hidden { display: none !important; }
+
+/* 7. Dark mode for description tip boxes
+ * The step descriptions (from i18n) hardcode light pastel backgrounds with no
+ * text color, so in dark mode the inherited (light) text rendered light-on-light
+ * and was unreadable. Re-tint each box to a translucent dark wash, keeping its
+ * saturated left-border accent; inherited description text (#cbd5e1) stays
+ * readable. Matched by the inline background hex, so it covers both locales. */
+.dark .theme-tour-popover .driver-popover-description [style*="#f0fdf4"] { background: rgba(16, 185, 129, 0.12) !important; }
+.dark .theme-tour-popover .driver-popover-description [style*="#eff6ff"] { background: rgba(59, 130, 246, 0.14) !important; }
+.dark .theme-tour-popover .driver-popover-description [style*="#fef3c7"] { background: rgba(245, 158, 11, 0.14) !important; }
+.dark .theme-tour-popover .driver-popover-description [style*="#fee2e2"] { background: rgba(239, 68, 68, 0.14) !important; }
+/* Muted hint paragraphs (inline color: #6b7280) need lifting on the dark popover. */
+.dark .theme-tour-popover .driver-popover-description [style*="#6b7280"] { color: #94a3b8 !important; }
