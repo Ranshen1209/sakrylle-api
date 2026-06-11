@@ -84,6 +84,12 @@ func TestDiscoverySharedFields(t *testing.T) {
 		"claims_supported",
 		"prompt_values_supported",
 		"service_documentation",
+		// device_authorization_endpoint is shared so OIDC clients that read only
+		// /.well-known/openid-configuration (e.g. sakrylle-cli --device-auth) can
+		// discover the RFC 8628 endpoint. Both docs already advertise the
+		// device_code grant type, so omitting the endpoint from OIDC was a
+		// self-inconsistent drift.
+		"device_authorization_endpoint",
 	}
 
 	for _, field := range sharedFields {
@@ -150,9 +156,10 @@ func TestRFC8414MetadataNewFields(t *testing.T) {
 	}
 
 	// Also verify RFC 8414-specific fields that predate this change are still present.
+	// (device_authorization_endpoint is now shared via commonDiscoveryMetadata and
+	// is asserted in TestDiscoverySharedFields instead.)
 	for _, field := range []string{
 		"revocation_endpoint",
-		"device_authorization_endpoint",
 		"ui_locales_supported",
 		"revocation_endpoint_auth_methods_supported",
 	} {
