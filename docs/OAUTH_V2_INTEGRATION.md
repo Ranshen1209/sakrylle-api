@@ -270,6 +270,61 @@ current group.
 
 ---
 
+## 7A. Group selection for single-token / backend-proxy clients
+
+A backend-proxy RP (e.g. open-webui's `system_oauth` mode) stores **one**
+access token per user and forwards standard OpenAI-compatible requests. It
+can pick a Sakrylle group **per request** without minting a per-group token,
+bounded by the token's `allowed_groups` snapshot (same set the refresh-grant
+group switch uses — a token can never widen its grant).
+
+**List models across groups — `GET /v1/models?groups=all`.** For an
+`sk_oauth_` token, returns the union of models across the token's selectable
+(active, non-subscription) allowed groups. Each entry's `id` is
+`"<group_id>:<model>"` and carries a `group` object:
+
+```jsonc
+{ "id": "12:claude-opus-4-6", "owned_by": "anthropic",
+  "display_name": "claude-opus-4-6",
+  "group": { "id": 12, "name": "Claude-Max", "rate_multiplier": 2.0 } }
+```
+
+Without `?groups=all` the response is unchanged (current group only, plain
+`id`, no `group`). Manual API keys ignore the flag.
+
+**Select a group per request — model-id prefix.** Send the prefixed id in the
+standard body; the gateway validates `<group_id>` against the token's
+`allowed_groups`, rebinds **routing and billing** to that group, and strips
+the prefix before forwarding upstream:
+
+```jsonc
+POST /v1/chat/completions
+{ "model": "12:claude-opus-4-6", "messages": [...] }
+```
+
+No prefix → the token's bound group (legacy behavior). Billing uses the
+**selected group's `rate_multiplier`**. Applies to `/v1/chat/completions`,
+`/v1/responses`, `/v1/messages`, `/v1/embeddings`, `/v1/images/*`.
+
+**Constraints & errors** (OAuth error envelope):
+
+| Condition | HTTP | code |
+|---|---|---|
+| group not in the token's `allowed_groups` / no OAuth metadata | 403 | `GROUP_NOT_ALLOWED` |
+| group disabled / deleted / missing | 400 | `GROUP_UNAVAILABLE` |
+| selected or bound group is subscription-billed | 409 | `GROUP_OVERRIDE_UNSUPPORTED` |
+
+Only `sk_oauth_` tokens and non-subscription (balance-billed) groups
+participate. The `^<digits>:` model-id shape is reserved for this selector;
+current model names contain no such prefix.
+
+Enumerate the user's groups via `/v1/me` `allowed_groups`; get each group's
+models via `/v1/models?groups=all`. The heavy alternative (per-group tokens
+via `additional_tokens` at code exchange, or `refresh_token` + `group_id`, see
+§5) remains available but requires changing the proxy's token storage.
+
+---
+
 ## 8. Errors
 
 OAuth endpoints return `application/json` errors with the RFC vocabulary in
