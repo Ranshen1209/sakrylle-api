@@ -979,6 +979,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 func (h *GatewayHandler) Models(c *gin.Context) {
 	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
 
+	// Backend-proxy RP contract: GET /v1/models?groups=all returns the union of
+	// models across the OAuth token's allowed groups, each tagged with its
+	// group and a "<group_id>:<model>" routing id. The group-override middleware
+	// stashes the selectable groups; absent it (manual key, single-group token),
+	// fall through to the standard single-group listing below.
+	if groups, ok := middleware2.GetSelectableGroupsFromContext(c); ok && len(groups) > 0 {
+		h.writeAggregatedModels(c, groups)
+		return
+	}
+
 	var groupID *int64
 	var platform string
 
@@ -1050,6 +1060,50 @@ func writeModelsList(c *gin.Context, modelIDs []string, ownedBy string, emitImag
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
 		"data":   models,
+	})
+}
+
+// writeAggregatedModels emits a flat, group-tagged model list spanning several
+// groups (GET /v1/models?groups=all). Each entry's id is "<group_id>:<model>"
+// so a backend-proxy RP can forward it verbatim and have the gateway route +
+// bill to that group. Mixed platforms are normalized into one uniform shape.
+func (h *GatewayHandler) writeAggregatedModels(c *gin.Context, groups []*service.Group) {
+	data := make([]gin.H, 0)
+	for _, g := range groups {
+		if g == nil {
+			continue
+		}
+		platform := g.Platform
+		models := h.gatewayService.GetAvailableModels(c.Request.Context(), &g.ID, platform)
+		if g.CustomModelsListEnabled() {
+			models = filterModelsByCustomList(models, defaultModelIDsForPlatform(platform), g.ModelsListConfig.Models)
+		}
+		ownedBy := platformOwnedBy(platform)
+		emitImageFlag := platform == service.PlatformOpenAI
+		for _, m := range models {
+			entry := gin.H{
+				"id":           fmt.Sprintf("%d:%s", g.ID, m),
+				"object":       "model",
+				"type":         "model",
+				"display_name": m,
+				"owned_by":     ownedBy,
+				"created":      defaultModelCreatedAtUnix,
+				"created_at":   defaultModelCreatedAtRFC3339,
+				"group": gin.H{
+					"id":              g.ID,
+					"name":            g.Name,
+					"rate_multiplier": g.RateMultiplier,
+				},
+			}
+			if emitImageFlag {
+				entry["allow_image_generation"] = g.AllowImageGeneration
+			}
+			data = append(data, entry)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   data,
 	})
 }
 
