@@ -201,10 +201,10 @@ Phase 4（测试/发布/回滚）
   - 验收标准：`curl -sS https://chat.sakrylle.com/health` 返回正常
 
 - [ ] **P1-7：DNS 记录（`chat.sakrylle.com`）**（生产操作，需审批）
-  - 目标：`chat.sakrylle.com` A 记录指向 `64.83.47.108`
+  - 目标：`chat.sakrylle.com` A 记录指向 `154.36.159.42`
   - 实施说明：沿用 Cloudflare DNS API（`/opt/stack/secrets/cloudflare.ini`），格式参见 `CLAUDE.md §Cloudflare DNS`；**DNS-only（不代理）**，与其他 sakrylle.com 子域名一致
   - **生产 gating**：此任务需审批后执行
-  - 验收标准：`dig chat.sakrylle.com A` 返回 `64.83.47.108`
+  - 验收标准：`dig chat.sakrylle.com A` 返回 `154.36.159.42`
 
 - [ ] **P1-8：GHA 构建流程（`.github/workflows/build-image.yml`）**
   - 目标：Push `theme/sakrylle` 分支触发构建，产出 `ghcr.io/ranshen1209/sakrylle-web:latest`（及 `:theme-sakrylle`）

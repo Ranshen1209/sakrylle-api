@@ -255,7 +255,7 @@ last_verified: 2026-06-06
 - **确认方式**：用户决策
 - **阻塞任务**：Phase 2 Web `oauth_clients` 注册；Nginx 配置；Cloudflare DNS
 - **优先级**：P1（Phase 2 Web 开始前需锁定）
-- **状态**：✅ RESOLVED — **Sakrylle Web 域名 = `chat.sakrylle.com`**（用户拍板）。redirect_uri = `https://chat.sakrylle.com/oauth/oidc/callback`（路径待 Q-17 实现期核实）；Nginx conf + Cloudflare A 记录 → `64.83.47.108` 按此域名配置。（确认于 2026-06-03）
+- **状态**：✅ RESOLVED — **Sakrylle Web 域名 = `chat.sakrylle.com`**（用户拍板）。redirect_uri = `https://chat.sakrylle.com/oauth/oidc/callback`（路径待 Q-17 实现期核实）；Nginx conf + Cloudflare A 记录 → `154.36.159.42` 按此域名配置。（确认于 2026-06-03）
 
 ### Q-26：Sakrylle Chat 是否需要 iOS Live Activity（`GenerationActivityExtension`）功能？
 - **来源**：Q-20 前置问题
