@@ -39,7 +39,7 @@ last_verified: 2026-06-06
 | 技术栈 | Go 1.23 / Gin / ent ORM / PostgreSQL 18 / Redis 8 / Vue 3 / Vite |
 | 上线状态 | **已上线生产** |
 | 生产域名 | `sub.sakrylle.com`（主站）、`api.sakrylle.com`（API 网关）、`doc.sakrylle.com`（文档）、`status.sakrylle.com`（监控） |
-| 服务器 | `cliproxyapi-jp`（64.83.47.108，SSH alias `ssh-tokyo`） |
+| 服务器 | `cliproxyapi-jp`（154.36.159.42，SSH alias `ssh-tokyo`） |
 | Sakrylle 定位 | 全生态 IdP + AI API 网关（OAuth 2.0 provider，billing，model routing） |
 
 **关键文件（按功能分类）：**
