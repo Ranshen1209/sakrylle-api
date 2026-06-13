@@ -1432,38 +1432,43 @@ func (h *OAuthProviderHandler) renderLogoutSuccessPage(c *gin.Context) {
 
 // renderLogoutErrorPage renders an inline HTML error page (not a redirect).
 func (h *OAuthProviderHandler) renderLogoutErrorPage(c *gin.Context, errorCode, errorDesc string) {
-	// Use string concatenation to avoid fmt.Sprintf % escaping issues
 	escapedCode := html.EscapeString(errorCode)
 	escapedDesc := html.EscapeString(errorDesc)
 
-	htmlContent := `<!DOCTYPE html>
+	page := `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>登出失败 - Sakrylle API</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-               background: linear-gradient(135deg, #9181bd 0%, #7a6ba8 100%);
-               margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                padding: 48px; max-width: 400px; text-align: center; }
-        .icon { font-size: 64px; margin-bottom: 24px; color: #e53e3e; }
-        h1 { color: #2d3748; font-size: 24px; margin: 0 0 16px; }
-        .error-code { color: #e53e3e; font-family: monospace; font-size: 14px; margin: 16px 0 8px; }
-        .error-desc { color: #718096; font-size: 14px; line-height: 1.6; margin: 0; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登出失败 · Sakrylle API</title>
+<style>
+  :root { color-scheme: light dark; --primary:#9181bd; --primary-dim:#7b6aab; --bg:#faf9fc; --fg:#1f1b2e; --card:#ffffff; --muted:#6b6481; --border:#e5e1ed; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#13111c; --fg:#ece9f5; --card:#1c1828; --muted:#a39bbf; --border:#2a2438; }
+  }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--fg); display:flex; align-items:center; justify-content:center; min-height:100dvh; padding:24px; box-sizing:border-box; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:0 8px 32px rgba(145,129,189,0.08); padding:32px 24px; max-width:400px; width:100%; box-sizing:border-box; text-align:center; }
+  @media (min-width:480px) { .card { padding:40px 32px; } }
+  .logo { display:block; margin:0 auto 20px; }
+  .badge { width:56px; height:56px; border-radius:50%; margin:0 auto 20px; display:flex; align-items:center; justify-content:center; background:rgba(220,38,38,.12); color:#dc2626; box-shadow:0 0 0 8px rgba(220,38,38,.06); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 16px; }
+  .error-code { display:inline-block; background:rgba(220,38,38,.12); color:#dc2626; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; padding:8px 12px; border-radius:8px; margin:0 0 12px; }
+  .error-desc { color:var(--muted); font-size:13px; line-height:1.5; margin:0; }
+</style>
 </head>
 <body>
-    <div class="card">
-        <div class="icon">✗</div>
-        <h1>登出失败</h1>
-        <div class="error-code">` + escapedCode + `</div>
-        <div class="error-desc">` + escapedDesc + `</div>
-    </div>
+<div class="card">
+  <img class="logo" src="` + sakrylleLogoDataURI + `" width="28" height="28" alt="Sakrylle">
+  <div class="badge">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </div>
+  <h1>登出失败</h1>
+  <div class="error-code">` + escapedCode + `</div>
+  <p class="error-desc">` + escapedDesc + `</p>
+</div>
 </body>
 </html>`
-	c.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(htmlContent))
+	c.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(page))
 }
 
 // ── Front-Channel Logout (OIDC Front-Channel Logout 1.0) ───────────────────
