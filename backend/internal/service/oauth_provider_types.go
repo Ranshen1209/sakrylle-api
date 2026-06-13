@@ -290,6 +290,7 @@ type OAuthAllowedGroup struct {
 	Name                 string  `json:"name"`
 	RateMultiplier       float64 `json:"rate_multiplier"`
 	AllowImageGeneration bool    `json:"allow_image_generation"`
+	ImageOnly            bool    `json:"image_only"`
 }
 
 // IntrospectionResponse is the RFC 7662 token introspection response.
