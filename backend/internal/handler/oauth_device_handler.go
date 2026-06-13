@@ -463,7 +463,7 @@ func deviceVerificationHTML(prefilledUserCode, csrfToken, nonce string) string {
   }
   function gotoLogin() {
     var next = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = "/auth/login?next=" + next;
+    window.location.href = "/login?redirect=" + next;
   }
   function submit(decision) {
     var jwt = getJWT();

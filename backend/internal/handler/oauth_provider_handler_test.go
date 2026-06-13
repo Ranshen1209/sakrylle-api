@@ -700,6 +700,34 @@ func TestAuthorizeRendersConsentHTML(t *testing.T) {
 	require.Contains(t, body, "调用图像生成 API")
 }
 
+func TestAuthorizeConsentBouncesToSPALoginRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _ := newOAuthProviderHandlerHarness(t)
+	_, challenge := pkceVerifierAndChallengeForHandler("the-quick-brown-fox-jumps-over-the-lazy-dog-12345")
+
+	q := url.Values{}
+	q.Set("client_id", testOAuthClientID)
+	q.Set("redirect_uri", testOAuthRedirectURI)
+	q.Set("response_type", "code")
+	q.Set("scope", "image_generation")
+	q.Set("state", "rnd-state")
+	q.Set("code_challenge", challenge)
+	q.Set("code_challenge_method", "S256")
+
+	c, rec := newGinTestContext(http.MethodGet, "/oauth/authorize?"+q.Encode(), nil, "")
+	h.Authorize(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	// The unauthenticated bounce must target the SPA login route (/login) with
+	// the redirect query the SPA actually consumes — NOT /auth/login?next= which
+	// the SPA router has no route for (→ NotFoundView 404).
+	require.Contains(t, body, `"/login?redirect="`,
+		"consent page must bounce to the SPA /login route with ?redirect=")
+	require.NotContains(t, body, "/auth/login?next=",
+		"consent page must not bounce to the nonexistent /auth/login route")
+}
+
 func TestAuthorizeMissingClientReturnsInlineError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h, _ := newOAuthProviderHandlerHarness(t)
