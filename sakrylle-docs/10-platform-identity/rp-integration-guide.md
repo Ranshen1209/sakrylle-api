@@ -892,6 +892,12 @@ curl -X POST https://sub.sakrylle.com/oauth/revoke \
 - 网关的「当前 group」绑定在 **access_token 所在的 `api_keys` 行**上（`api_keys.group_id`），`/v1/models` 默认只返回该组模型，推理请求默认按该组路由+计费。
 - 一个 `authorization_code` 换出的 token，其 `allowed_groups` 快照在**授权同意时**确定（与 refresh-grant 切组用的是**同一份快照**，见 §6.2）。单 token 客户端可在该快照范围内**按请求**选组——**不能越权**。
 
+> **图片组判别基于 `groups.image_only`，不是 `allow_image_generation`（migration 164，2026-06-13）**：构建 `allowed_groups`/`allowed_groups_snapshot` 的 scope 访问过滤器、以及 OIDC 同意页的「Image API 分组 / Responses API 分组」分桶，统一用专用字段 `groups.image_only` 判别一个组是否为图片专用组。`allow_image_generation` 是被复用为 Codex 图片工具闸的开关（文本编码组 GPT-Pro / GPT-Pro-Special 为通过该闸也置了 `true`），不再当作图片组判别条件，否则文本编码组会被误归图片桶、并从纯 chat 客户端（如 Sakrylle Web，无 `images:create`）的 `allowed_groups_snapshot` 中被错误剔除。
+>
+> scope → 可见性规则（`service/oauth_group_access.go` `groupVisibleForScope`）：纯图片客户端（有 `images:create`、无 chat scope）只见 `image_only=true` 组；chat 客户端（有 chat scope、无 `images:create`）排除 `image_only=true` 组；同时具备或两者皆无 → 所有可访问组。
+>
+> `image_only` 由 SQL 维护（无后台开关）：migration 164 已为现网图片专用组（5 GPT-Image / 11 GPT-Image-2-4K / 21 GPT-Image-Async）回填为 `true`，其余为 `false`。**新建图片专用组必须手动 `UPDATE groups SET image_only=true WHERE id=...` + 重启 sub2api**（重载分组缓存）。代码：`service/oauth_group_access.go`（scope 过滤）、`handler/oauth_provider_consent.go`（同意页分桶）。
+
 ### 18.2 列模型：`GET /v1/models?groups=all`（聚合 + 分组标记）
 
 不带参数时行为不变（仅当前组、`id` 无前缀、无 `group` 字段）。带 `?groups=all` 且为 `sk_oauth_` token 时，返回该 token **allowed_groups 快照内所有可选组**的模型并集，每个模型对象：
