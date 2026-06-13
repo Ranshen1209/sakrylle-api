@@ -171,7 +171,7 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
   }
   function gotoLogin() {
     var next = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = "/auth/login?next=" + next;
+    window.location.href = "/login?redirect=" + next;
   }
 
   // Build a group <label> via DOM APIs (createElement + textContent) instead of

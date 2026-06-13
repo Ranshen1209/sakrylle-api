@@ -464,6 +464,25 @@ function validateForm(): boolean {
 
 // ==================== Form Handlers ====================
 
+// Navigate to the post-login destination. The `redirect` query may point at a
+// server-rendered route (e.g. /oauth/authorize, the OIDC consent page) that the
+// SPA router has NO route for — router.push there would fall through to the
+// catch-all NotFoundView (404). Those must use a full-page navigation so the
+// backend handler renders. SPA routes still use router.push to avoid a reload.
+//
+// Open-redirect guard: only same-origin absolute paths ("/...", not "//host"
+// or "https://...") are honored; anything else falls back to /dashboard.
+async function redirectAfterLogin(): Promise<void> {
+  const raw = router.currentRoute.value.query.redirect
+  const target = typeof raw === 'string' && /^\/(?!\/)/.test(raw) ? raw : '/dashboard'
+  // Server-rendered (non-SPA) routes must be reached via a real navigation.
+  if (target.startsWith('/oauth/')) {
+    window.location.assign(target)
+    return
+  }
+  await router.push(target)
+}
+
 async function handleLogin(): Promise<void> {
   // Clear previous error
   errorMessage.value = ''
@@ -498,8 +517,7 @@ async function handleLogin(): Promise<void> {
     appStore.showSuccess(t('auth.loginSuccess'))
 
     // Redirect to dashboard or intended route
-    const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
-    await router.push(redirectTo)
+    await redirectAfterLogin()
   } catch (error: unknown) {
     // Reset Turnstile on error
     if (turnstileRef.value) {
@@ -532,8 +550,7 @@ async function handle2FAVerify(code: string): Promise<void> {
     appStore.showSuccess(t('auth.loginSuccess'))
 
     // Redirect to dashboard or intended route
-    const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
-    await router.push(redirectTo)
+    await redirectAfterLogin()
   } catch (error: unknown) {
     const err = error as { message?: string; response?: { data?: { message?: string } } }
     const message = err.response?.data?.message || err.message || t('profile.totp.loginFailed')
