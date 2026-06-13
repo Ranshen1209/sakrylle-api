@@ -112,6 +112,9 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.Bool("image_only").
+			Default(false).
+			Comment("是否为图片专用分组；仅服务图片 API。用于 OIDC 同意页分桶与 scope 访问过滤，与 allow_image_generation（图片生成意图闸）解耦"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

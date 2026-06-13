@@ -468,6 +468,20 @@ func (_u *GroupUpdate) ClearImagePrice4k() *GroupUpdate {
 	return _u
 }
 
+// SetImageOnly sets the "image_only" field.
+func (_u *GroupUpdate) SetImageOnly(v bool) *GroupUpdate {
+	_u.mutation.SetImageOnly(v)
+	return _u
+}
+
+// SetNillableImageOnly sets the "image_only" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageOnly(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageOnly(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1151,6 +1165,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImageOnly(); ok {
+		_spec.SetField(group.FieldImageOnly, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1969,6 +1986,20 @@ func (_u *GroupUpdateOne) ClearImagePrice4k() *GroupUpdateOne {
 	return _u
 }
 
+// SetImageOnly sets the "image_only" field.
+func (_u *GroupUpdateOne) SetImageOnly(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageOnly(v)
+	return _u
+}
+
+// SetNillableImageOnly sets the "image_only" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageOnly(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageOnly(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -2682,6 +2713,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImageOnly(); ok {
+		_spec.SetField(group.FieldImageOnly, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)

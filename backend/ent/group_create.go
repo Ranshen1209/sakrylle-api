@@ -357,6 +357,20 @@ func (_c *GroupCreate) SetNillableImagePrice4k(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetImageOnly sets the "image_only" field.
+func (_c *GroupCreate) SetImageOnly(v bool) *GroupCreate {
+	_c.mutation.SetImageOnly(v)
+	return _c
+}
+
+// SetNillableImageOnly sets the "image_only" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageOnly(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageOnly(*v)
+	}
+	return _c
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
 	_c.mutation.SetClaudeCodeOnly(v)
@@ -744,6 +758,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.ImageOnly(); !ok {
+		v := group.DefaultImageOnly
+		_c.mutation.SetImageOnly(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -874,6 +892,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.ImageOnly(); !ok {
+		return &ValidationError{Name: "image_only", err: errors.New(`ent: missing required field "Group.image_only"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -1038,6 +1059,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImagePrice4k(); ok {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
+	}
+	if value, ok := _c.mutation.ImageOnly(); ok {
+		_spec.SetField(group.FieldImageOnly, field.TypeBool, value)
+		_node.ImageOnly = value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1636,6 +1661,18 @@ func (u *GroupUpsert) AddImagePrice4k(v float64) *GroupUpsert {
 // ClearImagePrice4k clears the value of the "image_price_4k" field.
 func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	u.SetNull(group.FieldImagePrice4k)
+	return u
+}
+
+// SetImageOnly sets the "image_only" field.
+func (u *GroupUpsert) SetImageOnly(v bool) *GroupUpsert {
+	u.Set(group.FieldImageOnly, v)
+	return u
+}
+
+// UpdateImageOnly sets the "image_only" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageOnly() *GroupUpsert {
+	u.SetExcluded(group.FieldImageOnly)
 	return u
 }
 
@@ -2351,6 +2388,20 @@ func (u *GroupUpsertOne) UpdateImagePrice4k() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetImageOnly sets the "image_only" field.
+func (u *GroupUpsertOne) SetImageOnly(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageOnly(v)
+	})
+}
+
+// UpdateImageOnly sets the "image_only" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageOnly() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageOnly()
 	})
 }
 
@@ -3269,6 +3320,20 @@ func (u *GroupUpsertBulk) UpdateImagePrice4k() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetImageOnly sets the "image_only" field.
+func (u *GroupUpsertBulk) SetImageOnly(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageOnly(v)
+	})
+}
+
+// UpdateImageOnly sets the "image_only" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageOnly() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageOnly()
 	})
 }
 
