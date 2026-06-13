@@ -33,6 +33,9 @@ type Group struct {
 	ImagePrice1K         *float64
 	ImagePrice2K         *float64
 	ImagePrice4K         *float64
+	// 是否为图片专用分组（仅服务图片 API）。与 AllowImageGeneration 解耦：
+	// 后者是图片生成意图闸（Codex 需要），前者用于 OIDC 同意页分桶与 scope 过滤。
+	ImageOnly bool
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
