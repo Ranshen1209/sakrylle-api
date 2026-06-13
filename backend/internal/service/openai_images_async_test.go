@@ -52,7 +52,7 @@ func TestBuildAsyncSubmitBody_Generation(t *testing.T) {
 	if m["model"] != "gpt-image-2" {
 		t.Fatalf("model = %v", m["model"])
 	}
-	in := m["input"].(map[string]any)
+	in, _ := m["input"].(map[string]any)
 	if in["quality"] != "medium" { // auto → medium
 		t.Fatalf("quality = %v, want medium", in["quality"])
 	}
@@ -70,9 +70,13 @@ func TestBuildAsyncSubmitBody_EditWithUpload(t *testing.T) {
 	b, _ := buildAsyncSubmitBody("gpt-image-2", parsed)
 	var m map[string]any
 	_ = json.Unmarshal(b, &m)
-	in := m["input"].(map[string]any)
-	imgs := in["images"].([]any)
-	if len(imgs) != 1 || !strings.HasPrefix(imgs[0].(string), "data:image/png;base64,") {
+	in, _ := m["input"].(map[string]any)
+	imgs, _ := in["images"].([]any)
+	if len(imgs) != 1 {
+		t.Fatalf("images = %v", imgs)
+	}
+	first, _ := imgs[0].(string)
+	if !strings.HasPrefix(first, "data:image/png;base64,") {
 		t.Fatalf("images[0] = %v", imgs[0])
 	}
 	if mask, _ := in["mask"].(string); !strings.HasPrefix(mask, "data:image/png;base64,") {
@@ -87,11 +91,12 @@ func TestBuildOpenAIImagesResponse(t *testing.T) {
 	}
 	var m map[string]any
 	_ = json.Unmarshal(b, &m)
-	data := m["data"].([]any)
+	data, _ := m["data"].([]any)
 	if len(data) != 2 {
 		t.Fatalf("data len = %d", len(data))
 	}
-	if data[0].(map[string]any)["b64_json"] != "AAA" {
+	d0, _ := data[0].(map[string]any)
+	if d0["b64_json"] != "AAA" {
 		t.Fatalf("b64_json[0] = %v", data[0])
 	}
 	if _, ok := m["created"]; !ok {

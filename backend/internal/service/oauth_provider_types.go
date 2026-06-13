@@ -31,7 +31,7 @@ type OAuthClient struct {
 	// client_secret_post authentication. Only these clients may call
 	// POST /oauth/introspect (RFC 7662 §2.1). Public clients use PKCE-only
 	// and cannot introspect.
-	ClientConfidential     bool
+	ClientConfidential bool
 
 	// ── v2 ────────────────────────────────────────────────────────────────
 
@@ -300,16 +300,16 @@ type OAuthAllowedGroup struct {
 // introspection request is not authorized, the resource server SHOULD
 // respond with an HTTP 401").
 type IntrospectionResponse struct {
-	Active     bool    `json:"active"`
-	Scope      *string `json:"scope,omitempty"`
-	ClientID   *string `json:"client_id,omitempty"`
-	Username   *string `json:"username,omitempty"`
-	TokenType  *string `json:"token_type,omitempty"`
-	Exp        *int64  `json:"exp,omitempty"`
-	Iat        *int64  `json:"iat,omitempty"`
-	Sub        *string `json:"sub,omitempty"`
-	Aud        *string `json:"aud,omitempty"`
-	Iss        *string `json:"iss,omitempty"`
+	Active    bool    `json:"active"`
+	Scope     *string `json:"scope,omitempty"`
+	ClientID  *string `json:"client_id,omitempty"`
+	Username  *string `json:"username,omitempty"`
+	TokenType *string `json:"token_type,omitempty"`
+	Exp       *int64  `json:"exp,omitempty"`
+	Iat       *int64  `json:"iat,omitempty"`
+	Sub       *string `json:"sub,omitempty"`
+	Aud       *string `json:"aud,omitempty"`
+	Iss       *string `json:"iss,omitempty"`
 }
 
 // ── Repository interfaces ───────────────────────────────────────────────────
@@ -543,27 +543,27 @@ type OAuthConsentGrantRepository interface {
 
 // Sentinel errors are mapped to OAuth standard error codes by the handler.
 var (
-	ErrOAuthClientNotFound       = infraerrors.NotFound("INVALID_CLIENT", "oauth client not found")
-	ErrOAuthClientDisabled       = infraerrors.Forbidden("INVALID_CLIENT", "oauth client disabled")
-	ErrOAuthClientMisconfigured  = infraerrors.Forbidden("INVALID_CLIENT", "oauth client has neither pkce_required nor client_secret_hash configured")
+	ErrOAuthClientNotFound        = infraerrors.NotFound("INVALID_CLIENT", "oauth client not found")
+	ErrOAuthClientDisabled        = infraerrors.Forbidden("INVALID_CLIENT", "oauth client disabled")
+	ErrOAuthClientMisconfigured   = infraerrors.Forbidden("INVALID_CLIENT", "oauth client has neither pkce_required nor client_secret_hash configured")
 	ErrOAuthClientNotConfidential = infraerrors.Forbidden("INVALID_CLIENT", "only confidential clients may call this endpoint")
-	ErrOAuthClientAuthFailed     = infraerrors.Forbidden("INVALID_CLIENT", "client authentication failed")
-	ErrOAuthInvalidRedirectURI   = infraerrors.BadRequest("INVALID_REQUEST", "redirect_uri does not match any registered uri")
-	ErrOAuthInvalidScope         = infraerrors.BadRequest("INVALID_SCOPE", "requested scope is not allowed for this client")
-	ErrOAuthMissingPKCE          = infraerrors.BadRequest("INVALID_REQUEST", "code_challenge is required for this client")
-	ErrOAuthUnsupportedChallenge = infraerrors.BadRequest("INVALID_REQUEST", "code_challenge_method must be S256")
-	ErrOAuthInvalidGrant         = infraerrors.BadRequest("INVALID_GRANT", "authorization grant is invalid")
-	ErrOAuthCodeNotFound         = infraerrors.BadRequest("INVALID_GRANT", "authorization code not found")
-	ErrOAuthCodeExpired          = infraerrors.BadRequest("INVALID_GRANT", "authorization code expired")
-	ErrOAuthCodeAlreadyUsed      = infraerrors.BadRequest("INVALID_GRANT", "authorization code already used")
-	ErrOAuthRedirectMismatch     = infraerrors.BadRequest("INVALID_GRANT", "redirect_uri does not match the value used in /authorize")
-	ErrOAuthClientMismatch       = infraerrors.BadRequest("INVALID_GRANT", "client_id does not match the value used in /authorize")
-	ErrOAuthPKCEFailed           = infraerrors.BadRequest("INVALID_GRANT", "code_verifier does not match code_challenge")
-	ErrOAuthRefreshTokenNotFound = infraerrors.BadRequest("INVALID_GRANT", "refresh_token not found")
-	ErrOAuthRefreshTokenRevoked  = infraerrors.BadRequest("INVALID_GRANT", "refresh_token has been revoked")
-	ErrOAuthRefreshTokenExpired  = infraerrors.BadRequest("INVALID_GRANT", "refresh_token expired")
-	ErrOAuthUnsupportedGrant     = infraerrors.BadRequest("UNSUPPORTED_GRANT_TYPE", "grant_type is not supported")
-	ErrOAuthProviderDisabled     = infraerrors.Forbidden("OAUTH_PROVIDER_DISABLED", "oauth provider is disabled")
+	ErrOAuthClientAuthFailed      = infraerrors.Forbidden("INVALID_CLIENT", "client authentication failed")
+	ErrOAuthInvalidRedirectURI    = infraerrors.BadRequest("INVALID_REQUEST", "redirect_uri does not match any registered uri")
+	ErrOAuthInvalidScope          = infraerrors.BadRequest("INVALID_SCOPE", "requested scope is not allowed for this client")
+	ErrOAuthMissingPKCE           = infraerrors.BadRequest("INVALID_REQUEST", "code_challenge is required for this client")
+	ErrOAuthUnsupportedChallenge  = infraerrors.BadRequest("INVALID_REQUEST", "code_challenge_method must be S256")
+	ErrOAuthInvalidGrant          = infraerrors.BadRequest("INVALID_GRANT", "authorization grant is invalid")
+	ErrOAuthCodeNotFound          = infraerrors.BadRequest("INVALID_GRANT", "authorization code not found")
+	ErrOAuthCodeExpired           = infraerrors.BadRequest("INVALID_GRANT", "authorization code expired")
+	ErrOAuthCodeAlreadyUsed       = infraerrors.BadRequest("INVALID_GRANT", "authorization code already used")
+	ErrOAuthRedirectMismatch      = infraerrors.BadRequest("INVALID_GRANT", "redirect_uri does not match the value used in /authorize")
+	ErrOAuthClientMismatch        = infraerrors.BadRequest("INVALID_GRANT", "client_id does not match the value used in /authorize")
+	ErrOAuthPKCEFailed            = infraerrors.BadRequest("INVALID_GRANT", "code_verifier does not match code_challenge")
+	ErrOAuthRefreshTokenNotFound  = infraerrors.BadRequest("INVALID_GRANT", "refresh_token not found")
+	ErrOAuthRefreshTokenRevoked   = infraerrors.BadRequest("INVALID_GRANT", "refresh_token has been revoked")
+	ErrOAuthRefreshTokenExpired   = infraerrors.BadRequest("INVALID_GRANT", "refresh_token expired")
+	ErrOAuthUnsupportedGrant      = infraerrors.BadRequest("UNSUPPORTED_GRANT_TYPE", "grant_type is not supported")
+	ErrOAuthProviderDisabled      = infraerrors.Forbidden("OAUTH_PROVIDER_DISABLED", "oauth provider is disabled")
 
 	// ── v2 ────────────────────────────────────────────────────────────────
 

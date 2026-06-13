@@ -25,7 +25,7 @@ func TestOIDCHTTPClient_RejectsRedirectToInternalIP(t *testing.T) {
 	client := buildOIDCHTTPClientWithDialGuard(allowLoopbackDial)
 	resp, err := client.Get(srv.URL)
 	if err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatal("expected redirect to internal IP to be rejected")
 	}
 	if !strings.Contains(err.Error(), "internal host") {
@@ -43,7 +43,7 @@ func TestOIDCHTTPClient_RejectsHTTPSDowngrade(t *testing.T) {
 	client := buildOIDCHTTPClientWithDialGuard(allowLoopbackDial)
 	resp, err := client.Get(srv.URL)
 	if err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatal("expected https->http downgrade redirect to be rejected")
 	}
 	if !strings.Contains(err.Error(), "non-https") {
@@ -62,5 +62,5 @@ func TestOIDCHTTPClient_AllowsNormalResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normal request should succeed, got: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }

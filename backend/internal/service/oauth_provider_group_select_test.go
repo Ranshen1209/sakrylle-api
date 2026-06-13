@@ -44,8 +44,14 @@ func newGroupSelectService(t *testing.T, allowed []int64, rows map[int64]*Group,
 	)
 }
 
-func activeGroup(id int64) *Group  { return &Group{ID: id, Name: "g", Status: StatusActive, RateMultiplier: 1} }
-func subGroup(id int64) *Group     { g := activeGroup(id); g.SubscriptionType = SubscriptionTypeSubscription; return g }
+func activeGroup(id int64) *Group {
+	return &Group{ID: id, Name: "g", Status: StatusActive, RateMultiplier: 1}
+}
+func subGroup(id int64) *Group {
+	g := activeGroup(id)
+	g.SubscriptionType = SubscriptionTypeSubscription
+	return g
+}
 func disabledGroup(id int64) *Group { g := activeGroup(id); g.Status = "disabled"; return g }
 
 func TestResolveGroupOverride_Allowed(t *testing.T) {

@@ -1158,7 +1158,7 @@ func entOAuthClientToService(row *dbent.OAuthClient) *service.OAuthClient {
 		TermsURL:                         row.TermsURL,
 		SigningAlgorithm:                 row.SigningAlgorithm,
 		SubjectType:                      row.SubjectType,
-		SectorIdentifierURI:             row.SectorIdentifierURI,
+		SectorIdentifierURI:              row.SectorIdentifierURI,
 		RequestURIs:                      row.RequestUris,
 		BackchannelLogoutURI:             row.BackchannelLogoutURI,
 		BackchannelLogoutSessionRequired: row.BackchannelLogoutSessionRequired,

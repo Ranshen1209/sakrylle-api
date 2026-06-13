@@ -160,7 +160,8 @@ func (middlewareAPIKeyRepoStub) GetByKey(_ context.Context, _ string) (*service.
 func (middlewareAPIKeyRepoStub) GetByKeyForAuth(_ context.Context, _ string) (*service.APIKey, error) {
 	return nil, service.ErrAPIKeyNotFound
 }
-func (middlewareAPIKeyRepoStub) Delete(_ context.Context, _ int64) error { return nil }
+func (middlewareAPIKeyRepoStub) Delete(_ context.Context, _ int64) error          { return nil }
+func (middlewareAPIKeyRepoStub) DeleteWithAudit(_ context.Context, _ int64) error { return nil }
 func (middlewareAPIKeyRepoStub) ListByUserID(_ context.Context, _ int64, _ pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
