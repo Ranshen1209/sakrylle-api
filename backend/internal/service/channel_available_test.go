@@ -363,10 +363,10 @@ func TestListAvailable_ImageInputRatioZeroIsNil(t *testing.T) {
 
 func TestFeaturesConfigFloatPos(t *testing.T) {
 	tests := []struct {
-		name  string
-		cfg   map[string]any
-		key   string
-		wantV float64
+		name   string
+		cfg    map[string]any
+		key    string
+		wantV  float64
 		wantOk bool
 	}{
 		{"float64 positive", map[string]any{"k": float64(1.6)}, "k", 1.6, true},

@@ -113,12 +113,12 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	}
 
 	// pricing interval 白名单：不应暴露 id / sort_order。
-	pricing := toUserPricing(&service.ChannelModelPricing{
+	pricing := toUserPricingWithRatio(&service.ChannelModelPricing{
 		BillingMode: service.BillingModeToken,
 		Intervals: []service.PricingInterval{
 			{ID: 7, MinTokens: 0, MaxTokens: nil, SortOrder: 3},
 		},
-	})
+	}, nil)
 	require.NotNil(t, pricing)
 	require.Len(t, pricing.Intervals, 1)
 	rawIv, err := json.Marshal(pricing.Intervals[0])

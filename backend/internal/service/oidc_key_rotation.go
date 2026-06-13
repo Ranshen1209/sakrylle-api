@@ -44,7 +44,7 @@ const (
 // Failures are logged but never abort the scheduler — a failed rotation
 // is retried on the next tick.
 type OIDCKeyRotationScheduler struct {
-	keySvc    *OIDCKeyService
+	keySvc     *OIDCKeyService
 	settingSvc SettingRepository
 
 	mu     sync.Mutex

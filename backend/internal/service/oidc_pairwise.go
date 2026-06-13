@@ -180,7 +180,7 @@ func FetchSectorIdentifierURI(sectorURI string, clientRedirectURIs []string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("fetch sector_identifier_uri: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("sector_identifier_uri returned HTTP %d", resp.StatusCode)
