@@ -155,6 +155,11 @@ func ImagePrice4k(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImagePrice4k, v))
 }
 
+// ImageOnly applies equality check predicate on the "image_only" field. It's identical to ImageOnlyEQ.
+func ImageOnly(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageOnly, v))
+}
+
 // ClaudeCodeOnly applies equality check predicate on the "claude_code_only" field. It's identical to ClaudeCodeOnlyEQ.
 func ClaudeCodeOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldClaudeCodeOnly, v))
@@ -1123,6 +1128,16 @@ func ImagePrice4kIsNil() predicate.Group {
 // ImagePrice4kNotNil applies the NotNil predicate on the "image_price_4k" field.
 func ImagePrice4kNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldImagePrice4k))
+}
+
+// ImageOnlyEQ applies the EQ predicate on the "image_only" field.
+func ImageOnlyEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageOnly, v))
+}
+
+// ImageOnlyNEQ applies the NEQ predicate on the "image_only" field.
+func ImageOnlyNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageOnly, v))
 }
 
 // ClaudeCodeOnlyEQ applies the EQ predicate on the "claude_code_only" field.
