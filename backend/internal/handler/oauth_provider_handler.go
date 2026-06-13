@@ -1396,32 +1396,38 @@ func (h *OAuthProviderHandler) discoveryIssuerForLogout(ctx context.Context) str
 
 // renderLogoutSuccessPage renders an inline HTML success page.
 func (h *OAuthProviderHandler) renderLogoutSuccessPage(c *gin.Context) {
-	html := `<!DOCTYPE html>
+	page := `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>登出成功 - Sakrylle API</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-               background: linear-gradient(135deg, #9181bd 0%, #7a6ba8 100%);
-               margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .card { background: white; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                padding: 48px; max-width: 400px; text-align: center; }
-        .icon { font-size: 64px; margin-bottom: 24px; }
-        h1 { color: #2d3748; font-size: 24px; margin: 0 0 16px; }
-        p { color: #718096; font-size: 16px; line-height: 1.6; margin: 0; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登出成功 · Sakrylle API</title>
+<style>
+  :root { color-scheme: light dark; --primary:#9181bd; --primary-dim:#7b6aab; --bg:#faf9fc; --fg:#1f1b2e; --card:#ffffff; --muted:#6b6481; --border:#e5e1ed; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#13111c; --fg:#ece9f5; --card:#1c1828; --muted:#a39bbf; --border:#2a2438; }
+  }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--fg); display:flex; align-items:center; justify-content:center; min-height:100dvh; padding:24px; box-sizing:border-box; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:0 8px 32px rgba(145,129,189,0.08); padding:32px 24px; max-width:400px; width:100%; box-sizing:border-box; text-align:center; }
+  @media (min-width:480px) { .card { padding:40px 32px; } }
+  .logo { display:block; margin:0 auto 20px; }
+  .badge { width:56px; height:56px; border-radius:50%; margin:0 auto 20px; display:flex; align-items:center; justify-content:center; background:rgba(145,129,189,.12); color:var(--primary); box-shadow:0 0 0 8px rgba(145,129,189,.08); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 8px; }
+  .lead { color:var(--muted); font-size:14px; line-height:1.5; margin:0; }
+</style>
 </head>
 <body>
-    <div class="card">
-        <div class="icon">✓</div>
-        <h1>登出成功</h1>
-        <p>您已安全登出 Sakrylle API。<br>可以关闭此页面。</p>
-    </div>
+<div class="card">
+  <img class="logo" src="` + sakrylleLogoDataURI + `" width="28" height="28" alt="Sakrylle">
+  <div class="badge">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+  </div>
+  <h1>登出成功</h1>
+  <p class="lead">您已安全登出 Sakrylle API。<br>可以关闭此页面。</p>
+</div>
 </body>
 </html>`
-	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(page))
 }
 
 // renderLogoutErrorPage renders an inline HTML error page (not a redirect).
