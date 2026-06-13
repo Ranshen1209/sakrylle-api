@@ -236,7 +236,7 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
       var responsesGroups = [];
       for (var i = 0; i < groups.length; i++) {
         var g = groups[i];
-        if (g.allow_image_generation) {
+        if (g.image_only) {
           imageGroups.push(g);
         } else {
           responsesGroups.push(g);
