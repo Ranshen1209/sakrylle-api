@@ -107,18 +107,9 @@ func (p *defaultGroupAccessPolicy) ListUserAllowedGroupsForOAuth(
 				continue
 			}
 		}
-		// Scope-based capability filter:
-		//   - image-only scope (images:create, no chat): only image-capable groups.
-		//   - chat-only scope (no images:create): exclude image-only groups.
-		//   - both or neither: include all accessible groups.
-		if wantsImage && !wantsChat && !g.AllowImageGeneration {
-			continue
-		}
-		if wantsChat && !wantsImage && g.AllowImageGeneration {
-			// Exclude groups that are image-only. For phase 1 we use
-			// AllowImageGeneration as the proxy: a group with
-			// allow_image_generation=true is treated as image-capable; chat
-			// clients that don't request images:create skip it.
+		// Scope-based capability filter (keyed on ImageOnly, not
+		// AllowImageGeneration — see groupVisibleForScope).
+		if !groupVisibleForScope(g.ImageOnly, wantsImage, wantsChat) {
 			continue
 		}
 		out = append(out, OAuthAllowedGroup{
@@ -126,9 +117,30 @@ func (p *defaultGroupAccessPolicy) ListUserAllowedGroupsForOAuth(
 			Name:                 g.Name,
 			RateMultiplier:       g.RateMultiplier,
 			AllowImageGeneration: g.AllowImageGeneration,
+			ImageOnly:            g.ImageOnly,
 		})
 	}
 	return out, nil
+}
+
+// groupVisibleForScope reports whether a group should be offered to a client
+// given the capability flags derived from its requested scopes.
+//
+//   - image-only client (images:create, no chat): only image_only groups.
+//   - chat-only client (chat scopes, no images:create): exclude image_only groups.
+//   - both or neither: all accessible groups.
+//
+// Note this keys on ImageOnly, NOT AllowImageGeneration: a text group may carry
+// allow_image_generation=true purely to pass the Codex image-generation gate
+// (see CLAUDE.md gotcha #5) yet must remain visible to chat clients.
+func groupVisibleForScope(imageOnly, wantsImage, wantsChat bool) bool {
+	if wantsImage && !wantsChat && !imageOnly {
+		return false
+	}
+	if wantsChat && !wantsImage && imageOnly {
+		return false
+	}
+	return true
 }
 
 // hasAnyScope returns true if scopes contains any of the targets.
