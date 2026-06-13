@@ -58,12 +58,11 @@ func ApplyClaimsConstraints(claims jwt.MapClaims, claimsReq *ClaimsRequest, sect
 	for claimName, detail := range sectionMap {
 		val, exists := result[claimName]
 
-		// If the claim doesn't exist in the current claims, check if it's
-		// essential — in best-effort mode we just omit it (no error).
+		// If the claim doesn't exist in the current claims, omit it. In
+		// best-effort mode we do this even for essential claims, without
+		// raising an error (the essential flag is intentionally not acted on
+		// here).
 		if !exists {
-			if detail.Essential != nil && *detail.Essential {
-				// essential claim not available — omit (best-effort)
-			}
 			continue
 		}
 

@@ -251,12 +251,6 @@ func toUserSupportedModels(
 	return out
 }
 
-// toUserPricing 将 service 层定价转换为用户 DTO；入参为 nil 时返回 nil。
-// 不带 image_input_ratio（无渠道级别 ratio 可用时使用）。
-func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
-	return toUserPricingWithRatio(p, nil)
-}
-
 // toUserPricingWithRatio 将 service 层定价转换为用户 DTO，并将渠道级 imageInputRatio
 // 戳入 DTO 的 ImageInputRatio 字段。入参 p 为 nil 时返回 nil。
 func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *float64) *userSupportedModelPricing {

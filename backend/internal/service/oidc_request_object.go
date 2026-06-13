@@ -155,7 +155,7 @@ func claimDetailToMap(d ClaimRequestDetail) map[string]any {
 
 // ClaimsRequestFromMap reconstructs a ClaimsRequest from its stored map form.
 func ClaimsRequestFromMap(m map[string]any) *ClaimsRequest {
-	if m == nil || len(m) == 0 {
+	if len(m) == 0 {
 		return nil
 	}
 	cr := &ClaimsRequest{}
@@ -558,7 +558,7 @@ func FetchRequestURI(rawURI string, allowedURIs []string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("fetch request_uri: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("request_uri returned HTTP %d", resp.StatusCode)

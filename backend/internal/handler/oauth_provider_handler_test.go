@@ -58,6 +58,10 @@ func (s *oauthHandlerClientRepoStub) ListClientsWithFrontchannelLogout(_ context
 	return nil, nil
 }
 
+func (s *oauthHandlerClientRepoStub) ListClientsWithBackchannelLogout(_ context.Context) ([]*service.OAuthClient, error) {
+	return nil, nil
+}
+
 type oauthHandlerCodeRepoStub struct {
 	mu    sync.Mutex
 	codes map[string]*service.OAuthCode
@@ -342,7 +346,8 @@ func (s *oauthHandlerAPIKeyRepoStub) GetByKey(_ context.Context, _ string) (*ser
 func (s *oauthHandlerAPIKeyRepoStub) GetByKeyForAuth(_ context.Context, _ string) (*service.APIKey, error) {
 	return nil, service.ErrAPIKeyNotFound
 }
-func (s *oauthHandlerAPIKeyRepoStub) Delete(_ context.Context, _ int64) error { return nil }
+func (s *oauthHandlerAPIKeyRepoStub) Delete(_ context.Context, _ int64) error          { return nil }
+func (s *oauthHandlerAPIKeyRepoStub) DeleteWithAudit(_ context.Context, _ int64) error { return nil }
 func (s *oauthHandlerAPIKeyRepoStub) ListByUserID(_ context.Context, _ int64, _ pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }

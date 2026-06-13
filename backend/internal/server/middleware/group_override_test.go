@@ -17,20 +17,20 @@ import (
 
 func TestParseGroupPrefix(t *testing.T) {
 	cases := []struct {
-		in    string
-		gid   int64
-		rest  string
-		ok    bool
+		in   string
+		gid  int64
+		rest string
+		ok   bool
 	}{
 		{"12:claude-opus-4-6", 12, "claude-opus-4-6", true},
 		{"5:gpt-image-2-async", 5, "gpt-image-2-async", true},
-		{"claude-opus-4-6", 0, "", false},       // no prefix
-		{"gpt-5.4", 0, "", false},               // dotted, no colon selector
-		{"12:", 0, "", false},                   // empty model
-		{":foo", 0, "", false},                  // empty gid
-		{"abc:foo", 0, "", false},               // non-numeric gid
-		{"-1:foo", 0, "", false},                // negative
-		{"0:foo", 0, "", false},                 // zero is not a valid group id
+		{"claude-opus-4-6", 0, "", false},             // no prefix
+		{"gpt-5.4", 0, "", false},                     // dotted, no colon selector
+		{"12:", 0, "", false},                         // empty model
+		{":foo", 0, "", false},                        // empty gid
+		{"abc:foo", 0, "", false},                     // non-numeric gid
+		{"-1:foo", 0, "", false},                      // negative
+		{"0:foo", 0, "", false},                       // zero is not a valid group id
 		{"12:claude:weird", 12, "claude:weird", true}, // only first colon splits
 	}
 	for _, tc := range cases {
@@ -44,8 +44,8 @@ func TestParseGroupPrefix(t *testing.T) {
 }
 
 type fakeGroupSelector struct {
-	resolve     func(ctx context.Context, apiKeyID, gid int64) (*service.Group, error)
-	selectable  func(ctx context.Context, apiKeyID int64) ([]*service.Group, error)
+	resolve    func(ctx context.Context, apiKeyID, gid int64) (*service.Group, error)
+	selectable func(ctx context.Context, apiKeyID int64) ([]*service.Group, error)
 }
 
 func (f fakeGroupSelector) ResolveGroupOverride(ctx context.Context, apiKeyID, gid int64) (*service.Group, error) {

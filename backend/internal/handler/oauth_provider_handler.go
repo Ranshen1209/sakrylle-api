@@ -133,7 +133,7 @@ func (h *OAuthProviderHandler) Authorize(c *gin.Context) {
 		CodeChallengeMethod: formVal("code_challenge_method"),
 		Nonce:               formVal("nonce"),
 		// OIDC §5.5: voluntary claims request.
-		Claims:              service.ParseClaimsParameter(formVal("claims")),
+		Claims: service.ParseClaimsParameter(formVal("claims")),
 	}
 
 	// OIDC §6: request / request_uri parameter.
@@ -829,12 +829,12 @@ func (h *OAuthProviderHandler) authenticateClientForIntrospect(ctx context.Conte
 // the two documents from drifting apart.
 func (h *OAuthProviderHandler) commonDiscoveryMetadata(issuer string) gin.H {
 	return gin.H{
-		"issuer":                                issuer,
-		"authorization_endpoint":                issuer + "/oauth/authorize",
-		"token_endpoint":                        issuer + "/oauth/token",
-		"userinfo_endpoint":                     issuer + "/userinfo",
-		"jwks_uri":                              issuer + "/.well-known/jwks.json",
-		"end_session_endpoint":                  issuer + "/oauth/logout",
+		"issuer":                 issuer,
+		"authorization_endpoint": issuer + "/oauth/authorize",
+		"token_endpoint":         issuer + "/oauth/token",
+		"userinfo_endpoint":      issuer + "/userinfo",
+		"jwks_uri":               issuer + "/.well-known/jwks.json",
+		"end_session_endpoint":   issuer + "/oauth/logout",
 		// device_authorization_endpoint (RFC 8628 §4) is shared between both
 		// discovery documents: OIDC clients that read only
 		// /.well-known/openid-configuration (e.g. the Sakrylle CLI with
@@ -1139,45 +1139,44 @@ func (h *OAuthProviderHandler) UserInfo(c *gin.Context) {
 		return out
 	}()
 
-
-		// OIDC Core §5.3.2: Signed UserInfo. When the RP requests
-		// Accept: application/jwt, return a signed JWT instead of plain JSON.
-		// Only available when OIDC keys are wired and openid scope was granted.
-		acceptHeader := c.GetHeader("Accept")
-		if acceptHeader == "application/jwt" && h.oidcKeys != nil && service.HasScope(scopes, service.ScopeOpenID) {
-			sub, _ := resp["sub"].(string)
-			username := user.Username
-			email := user.Email
-			// Gate email claim by scope: only include email when email scope was granted.
-			emailForJWT := ""
-			emailVerifiedForJWT := false
-			if service.HasScope(scopes, service.ScopeEmail) {
-				emailForJWT = email
-				emailVerifiedForJWT = user.EmailVerified
+	// OIDC Core §5.3.2: Signed UserInfo. When the RP requests
+	// Accept: application/jwt, return a signed JWT instead of plain JSON.
+	// Only available when OIDC keys are wired and openid scope was granted.
+	acceptHeader := c.GetHeader("Accept")
+	if acceptHeader == "application/jwt" && h.oidcKeys != nil && service.HasScope(scopes, service.ScopeOpenID) {
+		sub, _ := resp["sub"].(string)
+		username := user.Username
+		email := user.Email
+		// Gate email claim by scope: only include email when email scope was granted.
+		emailForJWT := ""
+		emailVerifiedForJWT := false
+		if service.HasScope(scopes, service.ScopeEmail) {
+			emailForJWT = email
+			emailVerifiedForJWT = user.EmailVerified
+		}
+		claims := service.BuildUserInfoJWTClaims(
+			h.discoveryIssuer(c), meta.ClientID,
+			sub, username, emailForJWT, emailVerifiedForJWT,
+			time.Now(), 0,
+		)
+		// Use client's signing algorithm; default to RS256 when unknown.
+		alg := service.SigningAlgRS256
+		if client, lookupErr := h.provider.LookupClient(ctx, meta.ClientID); lookupErr == nil && client != nil {
+			alg = service.SigningAlgorithm(client.SigningAlgorithm)
+			if alg != service.SigningAlgRS256 && alg != service.SigningAlgES256 {
+				alg = service.SigningAlgRS256
 			}
-			claims := service.BuildUserInfoJWTClaims(
-				h.discoveryIssuer(c), meta.ClientID,
-				sub, username, emailForJWT, emailVerifiedForJWT,
-				time.Now(), 0,
-			)
-			// Use client's signing algorithm; default to RS256 when unknown.
-			alg := service.SigningAlgRS256
-			if client, lookupErr := h.provider.LookupClient(ctx, meta.ClientID); lookupErr == nil && client != nil {
-				alg = service.SigningAlgorithm(client.SigningAlgorithm)
-				if alg != service.SigningAlgRS256 && alg != service.SigningAlgES256 {
-					alg = service.SigningAlgRS256
-				}
-			}
-			signed, signErr := h.oidcKeys.Sign(claims, alg)
-			if signErr != nil {
-				slog.Error("oidc userinfo jwt signing failed", "error", signErr)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error", "error_description": "failed to sign UserInfo JWT"})
-				return
-			}
-			c.Header("Content-Type", "application/jwt")
-			c.String(http.StatusOK, signed)
+		}
+		signed, signErr := h.oidcKeys.Sign(claims, alg)
+		if signErr != nil {
+			slog.Error("oidc userinfo jwt signing failed", "error", signErr)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error", "error_description": "failed to sign UserInfo JWT"})
 			return
 		}
+		c.Header("Content-Type", "application/jwt")
+		c.String(http.StatusOK, signed)
+		return
+	}
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -1808,7 +1807,7 @@ func (h *OAuthProviderHandler) dispatchBackchannelLogout(c *gin.Context, clientI
 					"uri", uri, "error", doErr)
 				return
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				slog.Info("oidc backchannel logout: logout_token delivered",
 					"uri", uri, "client_id", cid, "status", resp.StatusCode)
