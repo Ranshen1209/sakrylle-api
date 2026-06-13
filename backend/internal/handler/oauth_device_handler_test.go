@@ -464,6 +464,13 @@ func TestDeviceVerificationPage_RendersHTML(t *testing.T) {
 	body := rec.Body.String()
 	require.Contains(t, body, "SKRY-BCDF-G2346", "page must prefill user_code from query")
 	require.Contains(t, body, "/api/v1/oauth/device/approve", "page must POST to approve endpoint")
+	// The unauthenticated bounce must target the SPA login route (/login) with
+	// the redirect query the SPA consumes — NOT /auth/login?next= (no such SPA
+	// route → NotFoundView 404).
+	require.Contains(t, body, `"/login?redirect="`,
+		"device page must bounce to the SPA /login route with ?redirect=")
+	require.NotContains(t, body, "/auth/login?next=",
+		"device page must not bounce to the nonexistent /auth/login route")
 }
 
 func TestDeviceDeny_HappyPath(t *testing.T) {
