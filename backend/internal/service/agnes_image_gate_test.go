@@ -28,4 +28,24 @@ func TestAccountImageModelsAndGate(t *testing.T) {
 	if err := validateOpenAIImagesModelForAccount("gpt-5.4", a); err == nil {
 		t.Fatal("non-image model must fail")
 	}
+
+	// nil account: declared-model path unavailable, must still reject non-gpt-image-*
+	if err := validateOpenAIImagesModelForAccount("agnes-image-2.0-flash", nil); err == nil {
+		t.Fatal("nil account: undeclared model must fail")
+	}
+
+	// empty image_models credential
+	aEmpty := &Account{Credentials: map[string]any{"image_models": ""}}
+	if ms := aEmpty.ImageModels(); len(ms) != 0 {
+		t.Fatalf("empty image_models: want len 0, got %#v", ms)
+	}
+	if aEmpty.IsDeclaredImageModel("anything") {
+		t.Fatal("empty image_models: IsDeclaredImageModel must return false")
+	}
+
+	// whitespace-only entries must be filtered out
+	aWhitespace := &Account{Credentials: map[string]any{"image_models": " , ,  "}}
+	if ms := aWhitespace.ImageModels(); len(ms) != 0 {
+		t.Fatalf("whitespace-only entries: want len 0, got %#v", ms)
+	}
 }
