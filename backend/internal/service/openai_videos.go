@@ -449,7 +449,7 @@ func (s *OpenAIGatewayService) RetrieveVideo(ctx context.Context, c *gin.Context
 			return asyncFail(c, http.StatusBadGateway, "video url rejected: "+err.Error())
 		}
 	}
-	body, err := buildVideoStatusResponse(taskID, tr.Model, tr.Status, videoURL, tr.Seconds, tr.Size, tr.Progress, tr.Error)
+	body, err := buildVideoStatusResponse(taskID, tr.Model, status, videoURL, tr.Seconds, tr.Size, tr.Progress, tr.Error)
 	if err != nil {
 		return asyncFail(c, http.StatusInternalServerError, err.Error())
 	}
