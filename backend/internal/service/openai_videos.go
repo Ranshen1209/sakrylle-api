@@ -1,9 +1,13 @@
 package service
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
+	"net/http"
 	"strconv"
 	"strings"
 )
@@ -146,4 +150,57 @@ func synthVideoOutputTokens(seconds, fallbackSeconds float64) int {
 		return 0
 	}
 	return int(math.Round(seconds))
+}
+
+// VideoClient talks to the Agnes async video API. baseURL includes the /v1 segment
+// (e.g. https://apihub.agnes-ai.com/v1); pollBaseURL is the host without /v1 because
+// Agnes's poll endpoint (/agnesapi) is NOT under /v1.
+type VideoClient struct {
+	httpClient   *http.Client
+	baseURL      string
+	pollBaseURL  string
+	apiKey       string
+	submitPath   string
+	pollPath     string
+	hostSuffixes []string
+}
+
+type videoSubmitResp struct {
+	VideoID string `json:"video_id"`
+	TaskID  string `json:"task_id"`
+	Status  string `json:"status"`
+	Seconds string `json:"seconds"`
+	Size    string `json:"size"`
+}
+
+func (cl *VideoClient) submitURL() string {
+	return strings.TrimRight(cl.baseURL, "/") + "/" + strings.TrimLeft(cl.submitPath, "/")
+}
+
+// Submit POSTs the (already model-rewritten) body to the Agnes video submit endpoint
+// and returns the task identifiers.
+func (cl *VideoClient) Submit(ctx context.Context, body []byte) (*videoSubmitResp, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cl.submitURL(), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cl.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := cl.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("video submit status %d: %s", resp.StatusCode, strings.TrimSpace(string(rb)))
+	}
+	var sr videoSubmitResp
+	if err := json.Unmarshal(rb, &sr); err != nil {
+		return nil, fmt.Errorf("video submit parse: %w", err)
+	}
+	if strings.TrimSpace(sr.VideoID) == "" && strings.TrimSpace(sr.TaskID) == "" {
+		return nil, fmt.Errorf("video submit returned no id")
+	}
+	return &sr, nil
 }
