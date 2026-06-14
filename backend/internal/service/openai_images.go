@@ -786,7 +786,7 @@ func injectDefaultImageSize(body []byte, defaultSize string) ([]byte, error) {
 	if defaultSize == "" {
 		return body, nil
 	}
-	if !gjson.ValidBytes(body) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return body, nil
 	}
 	if gjson.GetBytes(body, "size").Exists() {
