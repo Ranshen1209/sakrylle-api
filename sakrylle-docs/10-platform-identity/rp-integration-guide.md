@@ -707,7 +707,7 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 | **device_flow_enabled** | false | false | **true** |
 | **default_group_id** | 5（GPT-Image） | NULL（消费侧选组） | **3（GPT-Pro）** |
 | **redirect_uris** | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+ `/oauth/oidc/callback`)；`http://localhost:3080/...`（两变体，遗留）；`http://localhost:8080/oauth/oidc/login/callback` | `http://127.0.0.1/callback`, `http://127.0.0.1/auth/callback`（RFC 8252 §7.3 任意端口） |
-| **allowed_scopes** | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `offline_access` | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access` |
+| **allowed_scopes** | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `account:balance:read`, `offline_access`（`account:balance:read` 见 migration 166） | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access` |
 | **logout_redirect_uris** | — | `https://chat.sakrylle.com/` | — |
 | **signing_algorithm** | RS256 | RS256 | RS256 |
 | **subject_type** | public | public | public |
