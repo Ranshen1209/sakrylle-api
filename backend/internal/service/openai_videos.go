@@ -307,6 +307,7 @@ type videoTaskResp struct {
 	Size               string `json:"size"`
 	Model              string `json:"model"`
 	RemixedFromVideoID string `json:"remixed_from_video_id"`
+	OutputURL          string `json:"url"`
 	Error              string `json:"error"`
 }
 
@@ -344,6 +345,9 @@ func (s *OpenAIGatewayService) RetrieveVideo(ctx context.Context, c *gin.Context
 	videoURL := ""
 	if status == "completed" {
 		videoURL = strings.TrimSpace(tr.RemixedFromVideoID)
+		if videoURL == "" {
+			videoURL = strings.TrimSpace(tr.OutputURL)
+		}
 		if videoURL == "" {
 			return asyncFail(c, http.StatusBadGateway, "video completed but no url")
 		}
