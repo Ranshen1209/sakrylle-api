@@ -13,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 func (a *Account) IsVideoEnabled() bool {
@@ -334,4 +337,97 @@ func (cl *VideoClient) Poll(ctx context.Context, videoID string, interval, maxWa
 		case <-time.After(interval):
 		}
 	}
+}
+
+func (s *OpenAIGatewayService) newVideoClient(account *Account) *VideoClient {
+	base := strings.TrimRight(strings.TrimSpace(account.GetCredential("base_url")), "/")
+	pollBase := strings.TrimSuffix(base, "/v1")
+	return &VideoClient{
+		httpClient:   &http.Client{Timeout: 60 * time.Second},
+		baseURL:      base,
+		pollBaseURL:  pollBase,
+		apiKey:       account.GetOpenAIApiKey(),
+		submitPath:   account.VideoSubmitPath(),
+		pollPath:     account.VideoPollPath(),
+		hostSuffixes: account.VideoHostSuffixes(),
+	}
+}
+
+// ForwardVideo submits a video job to the Agnes async API, polls to completion,
+// writes a JSON response with the upstream video URL, and returns a result whose
+// synthesized Usage drives token-mode billing (OutputTokens = round(seconds)).
+// ctx must be cancelable so a client disconnect stops polling (no response, no billing).
+func (s *OpenAIGatewayService) ForwardVideo(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	parsed *OpenAIVideosRequest,
+	requestModel, upstreamModel string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	cl := s.newVideoClient(account)
+
+	body := parsed.Raw
+	if upstreamModel != "" && upstreamModel != parsed.Model {
+		if rewritten, err := sjson.SetBytes(body, "model", upstreamModel); err == nil {
+			body = rewritten
+		}
+	}
+
+	submitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	sub, err := cl.Submit(submitCtx, body)
+	cancel()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, asyncFail(c, http.StatusBadGateway, "video submit failed: "+err.Error())
+	}
+	videoID := sub.VideoID
+	if videoID == "" {
+		videoID = sub.TaskID
+	}
+
+	interval := time.Duration(account.VideoPollIntervalMs()) * time.Millisecond
+	maxWait := time.Duration(account.VideoMaxWaitMs()) * time.Millisecond
+	pr, err := cl.Poll(ctx, videoID, interval, maxWait)
+	if err != nil {
+		switch {
+		case ctx.Err() != nil:
+			return nil, ctx.Err()
+		case errors.Is(err, errVideoTimeout):
+			return nil, asyncFail(c, http.StatusGatewayTimeout, "video task timed out")
+		default:
+			return nil, asyncFail(c, http.StatusBadGateway, err.Error())
+		}
+	}
+	if pr.Failed || strings.TrimSpace(pr.URL) == "" {
+		msg := "video task failed"
+		if pr.ErrMsg != "" {
+			msg += ": " + pr.ErrMsg
+		}
+		return nil, asyncFail(c, http.StatusBadGateway, msg)
+	}
+	if err := validateVideoURL(pr.URL, account.VideoHostSuffixes()); err != nil {
+		return nil, asyncFail(c, http.StatusBadGateway, "video url rejected: "+err.Error())
+	}
+
+	outputTokens := synthVideoOutputTokens(pr.Seconds, account.VideoDefaultSeconds())
+	if outputTokens == 0 {
+		return nil, asyncFail(c, http.StatusInternalServerError, "video billing not configured (no seconds)")
+	}
+
+	respJSON, err := buildVideosResponse(requestModel, pr.URL, pr.Seconds, pr.Size)
+	if err != nil {
+		return nil, asyncFail(c, http.StatusInternalServerError, err.Error())
+	}
+	c.Data(http.StatusOK, "application/json", respJSON)
+
+	return &OpenAIForwardResult{
+		Usage:         OpenAIUsage{OutputTokens: outputTokens},
+		Model:         requestModel,
+		UpstreamModel: upstreamModel,
+		Duration:      time.Since(startTime),
+		ImageCount:    1,
+	}, nil
 }
