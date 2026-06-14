@@ -9,6 +9,9 @@ import (
 // models via the comma-separated `image_models` credential. Used to let
 // non-"gpt-image-" upstreams (e.g. Agnes) pass the images-endpoint model gate.
 func (a *Account) ImageModels() []string {
+	if a == nil {
+		return nil
+	}
 	raw := strings.TrimSpace(a.GetCredential("image_models"))
 	if raw == "" {
 		return nil
@@ -26,6 +29,9 @@ func (a *Account) ImageModels() []string {
 // IsDeclaredImageModel reports whether model is in this account's image_models
 // allowlist (case-insensitive, trimmed).
 func (a *Account) IsDeclaredImageModel(model string) bool {
+	if a == nil {
+		return false
+	}
 	model = strings.TrimSpace(strings.ToLower(model))
 	if model == "" {
 		return false
