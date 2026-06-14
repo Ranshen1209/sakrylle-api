@@ -118,6 +118,42 @@ func (a *Account) VideoHostSuffixes() []string {
 	return out
 }
 
+// validateVideoURL allows only http/https and, when allowSuffixes is non-empty,
+// requires the host to equal or be a subdomain of one suffix. Mirrors
+// validateAsyncImageURL but supports multiple suffixes.
+func validateVideoURL(raw string, allowSuffixes []string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid video url")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported video url scheme")
+	}
+	if len(allowSuffixes) == 0 {
+		return nil
+	}
+	host := u.Hostname()
+	for _, suf := range allowSuffixes {
+		if host == suf || strings.HasSuffix(host, "."+suf) {
+			return nil
+		}
+	}
+	return fmt.Errorf("video url host not allowed")
+}
+
+// buildVideosResponse builds the client-facing JSON for a completed video task.
+func buildVideosResponse(model, videoURL string, seconds float64, size string) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"created": time.Now().Unix(),
+		"model":   model,
+		"object":  "video",
+		"status":  "completed",
+		"url":     videoURL,
+		"seconds": seconds,
+		"size":    size,
+	})
+}
+
 // OpenAIVideosRequest is the client-facing /v1/videos request (OpenAI-ish).
 // Raw preserves the original body for verbatim forwarding to Agnes (after model rewrite).
 type OpenAIVideosRequest struct {
