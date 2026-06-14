@@ -2,6 +2,36 @@ package service
 
 import "testing"
 
+func TestParseVideosRequestAndUsageSynth(t *testing.T) {
+	body := []byte(`{"model":"agnes-video-v2.0","prompt":"a cat","size":"1280x768"}`)
+	req, err := ParseOpenAIVideosRequest(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Model != "agnes-video-v2.0" || req.Prompt != "a cat" {
+		t.Fatalf("parsed wrong: %#v", req)
+	}
+	if _, err := ParseOpenAIVideosRequest([]byte(`{"prompt":"x"}`)); err == nil {
+		t.Fatal("empty model must be rejected")
+	}
+	if _, err := ParseOpenAIVideosRequest([]byte(`not json`)); err == nil {
+		t.Fatal("invalid json must be rejected")
+	}
+
+	if got := synthVideoOutputTokens(10.0, 18.375); got != 10 {
+		t.Fatalf("10.0s -> 10 tokens, got %d", got)
+	}
+	if got := synthVideoOutputTokens(10.4, 18.375); got != 10 {
+		t.Fatalf("round down 10.4 -> 10, got %d", got)
+	}
+	if got := synthVideoOutputTokens(10.5, 18.375); got != 11 {
+		t.Fatalf("round half up 10.5 -> 11, got %d", got)
+	}
+	if got := synthVideoOutputTokens(0, 18.375); got != 18 {
+		t.Fatalf("0 -> fallback round(18.375)=18, got %d", got)
+	}
+}
+
 func TestAccountVideoConfig(t *testing.T) {
 	a := &Account{Credentials: map[string]any{
 		"video_enabled":          "true",
