@@ -380,6 +380,59 @@ func TestBuildVideoStatusResponse(t *testing.T) {
 	}
 }
 
+func newVideosTestCtx(t *testing.T) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	return c, rec
+}
+
+func TestRetrieveVideoStates(t *testing.T) {
+	makeSrv := func(payload string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(payload))
+		}))
+	}
+	acct := func(srv *httptest.Server) *Account {
+		return &Account{ID: 1137, Type: AccountTypeAPIKey, Credentials: map[string]any{
+			"base_url": srv.URL + "/v1", "api_key": "KEY",
+			"video_submit_path": "/videos", "video_host_suffix": "agnes-ai.space",
+		}}
+	}
+	s := &OpenAIGatewayService{}
+
+	srv := makeSrv(`{"id":"task_x","status":"completed","progress":100,"seconds":"3.4","size":"1280x704","model":"agnes-video-v2.0","remixed_from_video_id":"https://platform-outputs.agnes-ai.space/x.mp4"}`)
+	defer srv.Close()
+	c, rec := newVideosTestCtx(t)
+	if err := s.RetrieveVideo(context.Background(), c, acct(srv), "task_x"); err != nil {
+		t.Fatalf("completed: %v", err)
+	}
+	if rec.Code != 200 || gjson.GetBytes(rec.Body.Bytes(), "url").String() == "" {
+		t.Fatalf("completed body wrong: %d %s", rec.Code, rec.Body.String())
+	}
+
+	srv2 := makeSrv(`{"id":"task_x","status":"in_progress","progress":40,"model":"agnes-video-v2.0"}`)
+	defer srv2.Close()
+	c2, rec2 := newVideosTestCtx(t)
+	if err := s.RetrieveVideo(context.Background(), c2, acct(srv2), "task_x"); err != nil {
+		t.Fatalf("in_progress: %v", err)
+	}
+	if rec2.Code != 200 || gjson.GetBytes(rec2.Body.Bytes(), "url").Exists() {
+		t.Fatalf("in_progress body wrong: %s", rec2.Body.String())
+	}
+
+	srvBad := makeSrv(`{"id":"task_x","status":"completed","progress":100,"seconds":"3.4","model":"agnes-video-v2.0","remixed_from_video_id":"https://evil.com/x.mp4"}`)
+	defer srvBad.Close()
+	c3, rec3 := newVideosTestCtx(t)
+	if err := s.RetrieveVideo(context.Background(), c3, acct(srvBad), "task_x"); err == nil {
+		t.Fatal("SSRF reject must error")
+	}
+	if rec3.Code != http.StatusBadGateway {
+		t.Fatalf("SSRF reject must be 502, got %d", rec3.Code)
+	}
+}
+
 func TestForwardVideoTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
