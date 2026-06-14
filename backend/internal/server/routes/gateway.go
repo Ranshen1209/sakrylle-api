@@ -207,6 +207,19 @@ func RegisterGatewayRoutes(
 			}
 			h.OpenAIGateway.Videos(c)
 		})
+		gateway.GET("/videos/:id", func(c *gin.Context) {
+			if getGroupPlatform(c) != service.PlatformOpenAI {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+				c.JSON(http.StatusNotFound, gin.H{
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Videos API is not supported for this platform",
+					},
+				})
+				return
+			}
+			h.OpenAIGateway.RetrieveVideo(c)
+		})
 	}
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
@@ -329,6 +342,19 @@ func RegisterGatewayRoutes(
 			return
 		}
 		h.OpenAIGateway.Videos(c)
+	})
+	r.GET("/videos/:id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, func(c *gin.Context) {
+		if getGroupPlatform(c) != service.PlatformOpenAI {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Videos API is not supported for this platform",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.RetrieveVideo(c)
 	})
 
 	// Antigravity 模型列表
