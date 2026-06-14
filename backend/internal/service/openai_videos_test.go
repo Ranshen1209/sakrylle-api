@@ -347,6 +347,39 @@ func TestVideoClientRetrieve(t *testing.T) {
 	}
 }
 
+func TestBuildVideoStatusResponse(t *testing.T) {
+	// completed
+	b, err := buildVideoStatusResponse("task_1", "agnes-video-v2.0", "completed",
+		"https://platform-outputs.agnes-ai.space/x.mp4", "3.4", "1280x704", 100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gjson.GetBytes(b, "id").String() != "task_1" ||
+		gjson.GetBytes(b, "object").String() != "video" ||
+		gjson.GetBytes(b, "status").String() != "completed" ||
+		gjson.GetBytes(b, "url").String() != "https://platform-outputs.agnes-ai.space/x.mp4" ||
+		gjson.GetBytes(b, "seconds").String() != "3.4" ||
+		gjson.GetBytes(b, "size").String() != "1280x704" {
+		t.Fatalf("completed shape wrong: %s", b)
+	}
+	// in_progress: no url, has progress
+	b2, _ := buildVideoStatusResponse("task_1", "agnes-video-v2.0", "in_progress", "", "3.4", "1280x704", 30, "")
+	if gjson.GetBytes(b2, "url").Exists() {
+		t.Fatalf("in_progress must omit url: %s", b2)
+	}
+	if gjson.GetBytes(b2, "progress").Int() != 30 {
+		t.Fatalf("in_progress progress wrong: %s", b2)
+	}
+	// failed: has error, no url
+	b3, _ := buildVideoStatusResponse("task_1", "agnes-video-v2.0", "failed", "", "", "", 0, "boom")
+	if gjson.GetBytes(b3, "status").String() != "failed" || gjson.GetBytes(b3, "error").String() != "boom" {
+		t.Fatalf("failed shape wrong: %s", b3)
+	}
+	if gjson.GetBytes(b3, "url").Exists() {
+		t.Fatalf("failed must omit url: %s", b3)
+	}
+}
+
 func TestForwardVideoTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

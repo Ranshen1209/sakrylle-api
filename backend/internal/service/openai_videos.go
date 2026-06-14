@@ -171,6 +171,33 @@ func buildVideosResponse(model, videoURL string, seconds float64, size string) (
 	})
 }
 
+// buildVideoStatusResponse builds the client-facing JSON for any task state.
+// url is included only when non-empty (completed); error only when non-empty (failed);
+// seconds/size only when non-empty.
+func buildVideoStatusResponse(taskID, model, status, videoURL, seconds, size string, progress int, errMsg string) ([]byte, error) {
+	out := map[string]any{
+		"id":         taskID,
+		"object":     "video",
+		"model":      model,
+		"status":     status,
+		"progress":   progress,
+		"created_at": time.Now().Unix(),
+	}
+	if strings.TrimSpace(seconds) != "" {
+		out["seconds"] = seconds
+	}
+	if strings.TrimSpace(size) != "" {
+		out["size"] = size
+	}
+	if strings.TrimSpace(videoURL) != "" {
+		out["url"] = videoURL
+	}
+	if strings.TrimSpace(errMsg) != "" {
+		out["error"] = errMsg
+	}
+	return json.Marshal(out)
+}
+
 // OpenAIVideosRequest is the client-facing /v1/videos request (OpenAI-ish).
 // Raw preserves the original body for verbatim forwarding to Agnes (after model rewrite).
 type OpenAIVideosRequest struct {
