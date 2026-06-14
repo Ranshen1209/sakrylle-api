@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 func TestParseVideosRequestAndUsageSynth(t *testing.T) {
@@ -149,5 +151,32 @@ func TestVideoClientPoll(t *testing.T) {
 	}
 	if !rf.Failed || rf.ErrMsg != "boom" {
 		t.Fatalf("expected failed: %#v", rf)
+	}
+}
+
+func TestVideoURLValidationAndResponse(t *testing.T) {
+	if err := validateVideoURL("https://storage.googleapis.com/x.mp4", []string{"googleapis.com"}); err != nil {
+		t.Fatalf("allowed host must pass: %v", err)
+	}
+	if err := validateVideoURL("https://evil.com/x.mp4", []string{"googleapis.com"}); err == nil {
+		t.Fatal("disallowed host must fail")
+	}
+	if err := validateVideoURL("ftp://storage.googleapis.com/x", []string{"googleapis.com"}); err == nil {
+		t.Fatal("bad scheme must fail")
+	}
+	if err := validateVideoURL("https://anything.com/x", nil); err != nil {
+		t.Fatalf("empty allowlist allows any host: %v", err)
+	}
+
+	body, err := buildVideosResponse("agnes-video-v2.0", "https://storage.googleapis.com/x.mp4", 10.0, "1280x768")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gjson.GetBytes(body, "status").String() != "completed" ||
+		gjson.GetBytes(body, "url").String() != "https://storage.googleapis.com/x.mp4" ||
+		gjson.GetBytes(body, "model").String() != "agnes-video-v2.0" ||
+		gjson.GetBytes(body, "seconds").Float() != 10.0 ||
+		gjson.GetBytes(body, "size").String() != "1280x768" {
+		t.Fatalf("response shape wrong: %s", body)
 	}
 }
