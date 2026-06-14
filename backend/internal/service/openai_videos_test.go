@@ -411,6 +411,9 @@ func TestRetrieveVideoStates(t *testing.T) {
 	if rec.Code != 200 || gjson.GetBytes(rec.Body.Bytes(), "url").String() == "" {
 		t.Fatalf("completed body wrong: %d %s", rec.Code, rec.Body.String())
 	}
+	if gjson.GetBytes(rec.Body.Bytes(), "status").String() != "completed" {
+		t.Fatalf("status must be normalized lowercase: %s", rec.Body.String())
+	}
 
 	srv2 := makeSrv(`{"id":"task_x","status":"in_progress","progress":40,"model":"agnes-video-v2.0"}`)
 	defer srv2.Close()
