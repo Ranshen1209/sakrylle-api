@@ -1794,4 +1794,8 @@ func TestInjectDefaultImageSize(t *testing.T) {
 	if gjson.GetBytes(got3, "size").Exists() {
 		t.Fatalf("no default -> no injection: %s", got3)
 	}
+	got4, _ := injectDefaultImageSize(body, "   ")
+	if gjson.GetBytes(got4, "size").Exists() {
+		t.Fatalf("whitespace-only default -> no injection: %s", got4)
+	}
 }
