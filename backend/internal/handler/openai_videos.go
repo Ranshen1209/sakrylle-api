@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -119,7 +120,7 @@ func (h *OpenAIGatewayHandler) Videos(c *gin.Context) {
 
 	upstreamModel := account.GetMappedModel(requestModel)
 
-	result, err := h.gatewayService.ForwardVideo(c.Request.Context(), c, account, parsed, requestModel, upstreamModel, time.Now())
+	result, err := h.gatewayService.SubmitVideo(c.Request.Context(), c, account, parsed, requestModel, upstreamModel, time.Now())
 	if err != nil {
 		var imageUpstreamErr *service.OpenAIImagesUpstreamError
 		if errors.As(err, &imageUpstreamErr) {
@@ -176,4 +177,57 @@ func (h *OpenAIGatewayHandler) Videos(c *gin.Context) {
 	})
 
 	reqLog.Debug("openai.videos.request_completed", zap.Int64("account_id", account.ID))
+}
+
+// RetrieveVideo handles GET /v1/videos/{id} — proxies the Agnes task status. No billing.
+func (h *OpenAIGatewayHandler) RetrieveVideo(c *gin.Context) {
+	streamStarted := false
+	defer h.recoverResponsesPanic(c, &streamStarted)
+
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
+		return
+	}
+	reqLog := requestLogger(c, "handler.openai_gateway.videos.retrieve",
+		zap.Int64("user_id", subject.UserID), zap.Int64("api_key_id", apiKey.ID), zap.Any("group_id", apiKey.GroupID))
+	if !h.ensureResponsesDependencies(c, reqLog) {
+		return
+	}
+
+	taskID := strings.TrimSpace(c.Param("id"))
+	if taskID == "" {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "missing video id")
+		return
+	}
+
+	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForImages(
+		c.Request.Context(), apiKey.GroupID, "", "", map[int64]struct{}{}, service.OpenAIImagesCapabilityBasic)
+	if err != nil || selection == nil || selection.Account == nil {
+		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available compatible accounts")
+		return
+	}
+	account := selection.Account
+	setOpsSelectedAccount(c, account.ID, account.Platform)
+
+	if err := h.gatewayService.RetrieveVideo(c.Request.Context(), c, account, taskID); err != nil {
+		var imageUpstreamErr *service.OpenAIImagesUpstreamError
+		if errors.As(err, &imageUpstreamErr) {
+			reqLog.Warn("openai.videos.retrieve_upstream_error", zap.Int("status_code", imageUpstreamErr.StatusCode), zap.Error(err))
+			return // asyncFail already wrote the response
+		}
+		if c.Request.Context().Err() != nil {
+			return
+		}
+		reqLog.Error("openai.videos.retrieve_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		h.ensureForwardErrorResponse(c, streamStarted)
+		return
+	}
+	reqLog.Debug("openai.videos.retrieve_completed", zap.Int64("account_id", account.ID), zap.String("task_id", taskID))
 }
