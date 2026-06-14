@@ -72,18 +72,22 @@ func RegisterGatewayRoutes(
 			},
 		})
 	}
-	videoStatusHandler := func(c *gin.Context) {
-		if getGroupPlatform(c) == service.PlatformGrok {
+	retrieveVideoHandler := func(c *gin.Context) {
+		switch getGroupPlatform(c) {
+		case service.PlatformOpenAI:
+			h.OpenAIGateway.RetrieveVideo(c)
+		case service.PlatformGrok:
+			c.Params = append(c.Params, gin.Param{Key: "request_id", Value: c.Param("id")})
 			h.OpenAIGateway.GrokVideoStatus(c)
-			return
+		default:
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Videos API is not supported for this platform",
+				},
+			})
 		}
-		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": gin.H{
-				"type":    "not_found_error",
-				"message": "Videos API is not supported for this platform",
-			},
-		})
 	}
 	openAIVideosHandler := func(c *gin.Context) {
 		if getGroupPlatform(c) != service.PlatformOpenAI {
@@ -211,7 +215,7 @@ func RegisterGatewayRoutes(
 		gateway.POST("/images/edits", imagesHandler)
 		gateway.POST("/videos", openAIVideosHandler)
 		gateway.POST("/videos/generations", videoGenerationHandler)
-		gateway.GET("/videos/:request_id", videoStatusHandler)
+		gateway.GET("/videos/:id", retrieveVideoHandler)
 	}
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
@@ -288,7 +292,7 @@ func RegisterGatewayRoutes(
 	r.POST("/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, imagesHandler)
 	r.POST("/videos", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, openAIVideosHandler)
 	r.POST("/videos/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, videoGenerationHandler)
-	r.GET("/videos/:request_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, videoStatusHandler)
+	r.GET("/videos/:id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, retrieveVideoHandler)
 
 	// Antigravity 模型列表
 	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, h.Gateway.AntigravityModels)
