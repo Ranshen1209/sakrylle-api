@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (a *Account) IsVideoEnabled() bool {
@@ -203,4 +206,96 @@ func (cl *VideoClient) Submit(ctx context.Context, body []byte) (*videoSubmitRes
 		return nil, fmt.Errorf("video submit returned no id")
 	}
 	return &sr, nil
+}
+
+var errVideoTimeout = errors.New("video task timed out")
+
+// VideoPollResult is the terminal outcome of polling a video task.
+type VideoPollResult struct {
+	URL     string
+	Seconds float64
+	Size    string
+	Failed  bool
+	ErrMsg  string
+}
+
+type videoTaskResp struct {
+	Status             string `json:"status"`
+	Seconds            string `json:"seconds"`
+	Size               string `json:"size"`
+	RemixedFromVideoID string `json:"remixed_from_video_id"`
+	Error              string `json:"error"`
+}
+
+func (cl *VideoClient) pollURL(videoID string) string {
+	base := strings.TrimRight(cl.pollBaseURL, "/") + "/" + strings.TrimLeft(cl.pollPath, "/")
+	return base + "?video_id=" + url.QueryEscape(videoID)
+}
+
+func parseVideoSeconds(s string) float64 {
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0
+	}
+	return f
+}
+
+func (cl *VideoClient) getTask(ctx context.Context, videoID string) (*videoTaskResp, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cl.pollURL(videoID), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cl.apiKey)
+	resp, err := cl.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("video poll status %d: %s", resp.StatusCode, strings.TrimSpace(string(rb)))
+	}
+	var tr videoTaskResp
+	if err := json.Unmarshal(rb, &tr); err != nil {
+		return nil, fmt.Errorf("video poll parse: %w", err)
+	}
+	return &tr, nil
+}
+
+// Poll polls the Agnes video task until completed/failed, ctx cancel, or maxWait.
+// Tolerates up to 3 consecutive transient poll errors before aborting.
+func (cl *VideoClient) Poll(ctx context.Context, videoID string, interval, maxWait time.Duration) (*VideoPollResult, error) {
+	deadline := time.Now().Add(maxWait)
+	consecFail := 0
+	for {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if time.Now().After(deadline) {
+			return nil, errVideoTimeout
+		}
+		tr, err := cl.getTask(ctx, videoID)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			consecFail++
+			if consecFail >= 3 {
+				return nil, err
+			}
+		} else {
+			consecFail = 0
+			switch strings.ToLower(strings.TrimSpace(tr.Status)) {
+			case "completed":
+				return &VideoPollResult{URL: strings.TrimSpace(tr.RemixedFromVideoID), Seconds: parseVideoSeconds(tr.Seconds), Size: tr.Size}, nil
+			case "failed":
+				return &VideoPollResult{Failed: true, ErrMsg: tr.Error}, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
 }
