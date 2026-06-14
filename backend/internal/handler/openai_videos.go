@@ -134,11 +134,15 @@ func (h *OpenAIGatewayHandler) Videos(c *gin.Context) {
 			return
 		}
 		reqLog.Error("openai.videos.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		h.ensureForwardErrorResponse(c, streamStarted)
 		return
 	}
 
-	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+	userAgent := c.GetHeader("User-Agent")
+	clientIP := ip.GetClientIP(c)
+	requestPayloadHash := service.HashUsageRequestPayload(body)
 	inboundEndpoint := GetInboundEndpoint(c)
+	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
 	upstreamModelResult := ""
 	if result != nil {
@@ -154,9 +158,9 @@ func (h *OpenAIGatewayHandler) Videos(c *gin.Context) {
 			Subscription:       subscription,
 			InboundEndpoint:    inboundEndpoint,
 			UpstreamEndpoint:   upstreamEndpoint,
-			UserAgent:          c.GetHeader("User-Agent"),
-			IPAddress:          ip.GetClientIP(c),
-			RequestPayloadHash: service.HashUsageRequestPayload(body),
+			UserAgent:          userAgent,
+			IPAddress:          clientIP,
+			RequestPayloadHash: requestPayloadHash,
 			APIKeyService:      h.apiKeyService,
 			ChannelUsageFields: channelMapping.ToUsageFields(requestModel, upstreamModelResult),
 		}); err != nil {
