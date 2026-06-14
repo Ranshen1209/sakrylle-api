@@ -1789,3 +1789,30 @@ func TestInjectDefaultImageSize(t *testing.T) {
 		t.Fatalf("whitespace-only default -> no injection: %s", got4)
 	}
 }
+
+func TestValidateOpenAIImagesModel(t *testing.T) {
+	cases := []struct {
+		name    string
+		model   string
+		wantErr bool
+	}{
+		{"grok imagine image lite accepted", "grok-imagine-image-lite", false},
+		{"grok imagine image accepted", "grok-imagine-image", false},
+		{"grok imagine image pro accepted", "grok-imagine-image-pro", false},
+		{"grok imagine image edit accepted", "grok-imagine-image-edit", false},
+		{"grok imagine video rejected", "grok-imagine-video", true},
+		{"gpt image still accepted", "gpt-image-2", false},
+		{"unrelated text model rejected", "gpt-5.4", true},
+		{"empty rejected", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateOpenAIImagesModel(tc.model)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
