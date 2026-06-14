@@ -19,6 +19,7 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+// IsVideoEnabled reports whether this account has the async video feature enabled.
 func (a *Account) IsVideoEnabled() bool {
 	if a == nil {
 		return false
@@ -44,7 +45,11 @@ func (a *Account) videoModels() []string {
 	return out
 }
 
+// IsDeclaredVideoModel reports whether model appears in the account's video_models credential list.
 func (a *Account) IsDeclaredVideoModel(model string) bool {
+	if a == nil {
+		return false
+	}
 	model = strings.TrimSpace(strings.ToLower(model))
 	for _, m := range a.videoModels() {
 		if strings.ToLower(m) == model {
@@ -64,9 +69,12 @@ func (a *Account) videoStrCredential(key, def string) string {
 	return def
 }
 
+// VideoSubmitPath returns the Agnes video submit endpoint path (default /v1/videos).
 func (a *Account) VideoSubmitPath() string {
 	return a.videoStrCredential("video_submit_path", "/v1/videos")
 }
+
+// VideoPollPath returns the Agnes video poll endpoint path (default /agnesapi).
 func (a *Account) VideoPollPath() string { return a.videoStrCredential("video_poll_path", "/agnesapi") }
 
 func (a *Account) videoIntCredential(key string, def int) int {
@@ -84,11 +92,15 @@ func (a *Account) videoIntCredential(key string, def int) int {
 	return n
 }
 
+// VideoPollIntervalMs returns the polling interval in milliseconds (default 5000).
 func (a *Account) VideoPollIntervalMs() int {
 	return a.videoIntCredential("video_poll_interval_ms", 5000)
 }
+
+// VideoMaxWaitMs returns the maximum total wait time in milliseconds for video polling (default 600000).
 func (a *Account) VideoMaxWaitMs() int { return a.videoIntCredential("video_max_wait_ms", 600000) }
 
+// VideoDefaultSeconds returns the fallback video duration in seconds used for billing when the upstream does not report one (default 18.375).
 func (a *Account) VideoDefaultSeconds() float64 {
 	if a == nil {
 		return 18.375
@@ -104,6 +116,7 @@ func (a *Account) VideoDefaultSeconds() float64 {
 	return f
 }
 
+// VideoHostSuffixes returns the comma-separated list of allowed video URL host suffixes from credentials.
 func (a *Account) VideoHostSuffixes() []string {
 	if a == nil {
 		return nil
@@ -174,12 +187,12 @@ func ParseOpenAIVideosRequest(body []byte) (*OpenAIVideosRequest, error) {
 		Prompt string `json:"prompt"`
 	}
 	if err := json.Unmarshal(body, &probe); err != nil {
-		return nil, fmt.Errorf("failed to parse request body")
+		return nil, fmt.Errorf("failed to parse request body: %w", err)
 	}
 	if strings.TrimSpace(probe.Model) == "" {
 		return nil, fmt.Errorf("videos endpoint requires a model")
 	}
-	return &OpenAIVideosRequest{Model: probe.Model, Prompt: probe.Prompt, Raw: body}, nil
+	return &OpenAIVideosRequest{Model: strings.TrimSpace(probe.Model), Prompt: probe.Prompt, Raw: body}, nil
 }
 
 // synthVideoOutputTokens maps generated video seconds to synthetic output tokens

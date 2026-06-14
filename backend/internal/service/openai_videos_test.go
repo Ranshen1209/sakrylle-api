@@ -168,6 +168,9 @@ func TestVideoURLValidationAndResponse(t *testing.T) {
 	if err := validateVideoURL("https://anything.com/x", nil); err != nil {
 		t.Fatalf("empty allowlist allows any host: %v", err)
 	}
+	if err := validateVideoURL("https://evilgoogleapis.com/x.mp4", []string{"googleapis.com"}); err == nil {
+		t.Fatal("suffix-only substring host must not pass")
+	}
 
 	body, err := buildVideosResponse("agnes-video-v2.0", "https://storage.googleapis.com/x.mp4", 10.0, "1280x768")
 	if err != nil {
@@ -272,10 +275,10 @@ func TestForwardVideoSubmitError(t *testing.T) {
 func TestForwardVideoPollFailed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = w.Write([]byte(`{"video_id":"video_abc","status":"queued"}`))
-		case r.Method == http.MethodGet:
+		case http.MethodGet:
 			_, _ = w.Write([]byte(`{"status":"failed","error":"boom"}`))
 		default:
 			w.WriteHeader(404)
@@ -315,10 +318,10 @@ func TestForwardVideoPollFailed(t *testing.T) {
 func TestForwardVideoTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = w.Write([]byte(`{"video_id":"video_abc","status":"queued"}`))
-		case r.Method == http.MethodGet:
+		case http.MethodGet:
 			_, _ = w.Write([]byte(`{"status":"in_progress"}`))
 		default:
 			w.WriteHeader(404)
