@@ -309,4 +309,18 @@ func TestRetrieveVideoStates(t *testing.T) {
 	if rec3.Code != http.StatusBadGateway {
 		t.Fatalf("SSRF reject must be 502, got %d", rec3.Code)
 	}
+
+	// Defensive fallback: completed with only "url" field (no remixed_from_video_id).
+	srvURL := makeSrv(`{"id":"task_x","status":"completed","progress":100,"seconds":"3.4","model":"agnes-video-v2.0","url":"https://platform-outputs.agnes-ai.space/y.mp4"}`)
+	defer srvURL.Close()
+	c4, rec4 := newVideosTestCtx(t)
+	if err := s.RetrieveVideo(context.Background(), c4, acct(srvURL), "task_x"); err != nil {
+		t.Fatalf("url-field fallback: %v", err)
+	}
+	if rec4.Code != 200 {
+		t.Fatalf("url-field fallback: expected 200, got %d", rec4.Code)
+	}
+	if got := gjson.GetBytes(rec4.Body.Bytes(), "url").String(); got != "https://platform-outputs.agnes-ai.space/y.mp4" {
+		t.Fatalf("url-field fallback: url wrong: %s", rec4.Body.String())
+	}
 }

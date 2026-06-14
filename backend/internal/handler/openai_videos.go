@@ -206,6 +206,9 @@ func (h *OpenAIGatewayHandler) RetrieveVideo(c *gin.Context) {
 		return
 	}
 
+	// NOTE: retrieve correctness assumes single-account groups — the task lives only on
+	// the upstream account that submitted it. group 23 (Agnes) is single-account. A future
+	// multi-account video group would need the submitting account pinned into the task id.
 	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForImages(
 		c.Request.Context(), apiKey.GroupID, "", "", map[int64]struct{}{}, service.OpenAIImagesCapabilityBasic)
 	if err != nil || selection == nil || selection.Account == nil {
