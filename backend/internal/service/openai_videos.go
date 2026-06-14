@@ -448,6 +448,10 @@ func (s *OpenAIGatewayService) ForwardVideo(
 		Model:         requestModel,
 		UpstreamModel: upstreamModel,
 		Duration:      time.Since(startTime),
-		ImageCount:    1,
+		// ImageCount intentionally 0: video bills by synthesized per-second OutputTokens
+		// via the token cost path. A non-zero ImageCount would route billing into the
+		// per-request image-cost branch (openai_gateway_service.go calculateOpenAIRecordUsageCost)
+		// when the channel pricing row is not token-mode, silently ignoring the per-second tokens.
+		ImageCount: 0,
 	}, nil
 }
