@@ -215,6 +215,9 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 	}
 
 	applyOpenAIImagesDefaults(req)
+	// applyOpenAIImagesDefaults fills "gpt-image-2" when model is blank; this guard
+	// is a defensive contract assertion. Real model-validity is enforced at forward
+	// time via validateOpenAIImagesModelForAccount (account-scoped).
 	if strings.TrimSpace(req.Model) == "" {
 		return nil, fmt.Errorf("images endpoint requires an image model")
 	}
