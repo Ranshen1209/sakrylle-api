@@ -1765,3 +1765,23 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingDrainsAfterClientDiscon
 	require.Equal(t, 9, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.ImageOutputTokens)
 }
+
+func TestInjectDefaultImageSize(t *testing.T) {
+	body := []byte(`{"model":"agnes-image-2.0-flash","prompt":"x"}`)
+	got, err := injectDefaultImageSize(body, "1024x1024")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gjson.GetBytes(got, "size").String() != "1024x1024" {
+		t.Fatalf("size not injected: %s", got)
+	}
+	body2 := []byte(`{"model":"m","prompt":"x","size":"512x512"}`)
+	got2, _ := injectDefaultImageSize(body2, "1024x1024")
+	if gjson.GetBytes(got2, "size").String() != "512x512" {
+		t.Fatalf("existing size must not be overwritten: %s", got2)
+	}
+	got3, _ := injectDefaultImageSize(body, "")
+	if gjson.GetBytes(got3, "size").Exists() {
+		t.Fatalf("no default -> no injection: %s", got3)
+	}
+}

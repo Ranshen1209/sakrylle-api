@@ -590,6 +590,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		parsed.Endpoint,
 		account.Type,
 	)
+	if !parsed.Multipart {
+		if injected, err := injectDefaultImageSize(body, account.GetCredential("image_default_size")); err == nil {
+			body = injected
+		}
+	}
 	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
 	if err != nil {
 		return nil, err
@@ -771,6 +776,23 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 
 func buildOpenAIImagesURL(base string, endpoint string) string {
 	return buildOpenAIEndpointURL(base, endpoint)
+}
+
+// injectDefaultImageSize sets "size" on a JSON images body when absent and a
+// non-empty default is provided. Returns body unchanged on parse error or when
+// size already present / default empty.
+func injectDefaultImageSize(body []byte, defaultSize string) ([]byte, error) {
+	defaultSize = strings.TrimSpace(defaultSize)
+	if defaultSize == "" {
+		return body, nil
+	}
+	if !gjson.ValidBytes(body) {
+		return body, nil
+	}
+	if gjson.GetBytes(body, "size").Exists() {
+		return body, nil
+	}
+	return sjson.SetBytes(body, "size", defaultSize)
 }
 
 func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]byte, string, error) {
