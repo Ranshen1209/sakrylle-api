@@ -318,6 +318,35 @@ func TestForwardVideoPollFailed(t *testing.T) {
 	}
 }
 
+func TestVideoClientRetrieve(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/videos/task_abc" {
+			w.WriteHeader(404)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer KEY" {
+			w.WriteHeader(401)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"task_abc","status":"completed","progress":100,"seconds":"3.4","size":"1280x704","model":"agnes-video-v2.0","remixed_from_video_id":"https://platform-outputs.agnes-ai.space/x.mp4","error":null}`))
+	}))
+	defer srv.Close()
+
+	cl := &VideoClient{httpClient: srv.Client(), baseURL: srv.URL + "/v1", apiKey: "KEY", submitPath: "/videos"}
+	tr, err := cl.Retrieve(context.Background(), "task_abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr.Status != "completed" || tr.Progress != 100 || tr.Model != "agnes-video-v2.0" ||
+		tr.RemixedFromVideoID != "https://platform-outputs.agnes-ai.space/x.mp4" || parseVideoSeconds(tr.Seconds) != 3.4 {
+		t.Fatalf("retrieve parsed wrong: %#v", tr)
+	}
+	if _, err := cl.Retrieve(context.Background(), "missing"); err == nil {
+		t.Fatal("404 must error")
+	}
+}
+
 func TestForwardVideoTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
