@@ -85,6 +85,19 @@ func RegisterGatewayRoutes(
 			},
 		})
 	}
+	openAIVideosHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) != service.PlatformOpenAI {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Videos API is not supported for this platform",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.Videos(c)
+	}
 
 	// OAuth scope enforcement (§7.3 / §13.1).
 	//
@@ -196,6 +209,7 @@ func RegisterGatewayRoutes(
 		})
 		gateway.POST("/images/generations", imagesHandler)
 		gateway.POST("/images/edits", imagesHandler)
+		gateway.POST("/videos", openAIVideosHandler)
 		gateway.POST("/videos/generations", videoGenerationHandler)
 		gateway.GET("/videos/:request_id", videoStatusHandler)
 	}
@@ -272,6 +286,7 @@ func RegisterGatewayRoutes(
 	})
 	r.POST("/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, imagesHandler)
 	r.POST("/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, imagesHandler)
+	r.POST("/videos", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, openAIVideosHandler)
 	r.POST("/videos/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, videoGenerationHandler)
 	r.GET("/videos/:request_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, requireOAuthScope, videoStatusHandler)
 
