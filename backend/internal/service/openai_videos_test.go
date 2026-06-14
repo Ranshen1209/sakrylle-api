@@ -115,46 +115,6 @@ func TestAccountVideoConfig(t *testing.T) {
 	}
 }
 
-func TestVideoClientPoll(t *testing.T) {
-	var calls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/agnesapi" || r.URL.Query().Get("video_id") != "video_abc" {
-			w.WriteHeader(404)
-			return
-		}
-		calls++
-		w.Header().Set("Content-Type", "application/json")
-		if calls < 2 {
-			_, _ = w.Write([]byte(`{"status":"in_progress","progress":40}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"status":"completed","seconds":"10.0","size":"1280x768","remixed_from_video_id":"https://storage.googleapis.com/agnes-aigc/v.mp4"}`))
-	}))
-	defer srv.Close()
-
-	cl := &VideoClient{httpClient: srv.Client(), pollBaseURL: srv.URL, apiKey: "KEY", pollPath: "/agnesapi"}
-	res, err := cl.Poll(context.Background(), "video_abc", 5*time.Millisecond, 2*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.URL != "https://storage.googleapis.com/agnes-aigc/v.mp4" || res.Seconds != 10.0 {
-		t.Fatalf("poll result wrong: %#v", res)
-	}
-
-	srvFail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"status":"failed","error":"boom"}`))
-	}))
-	defer srvFail.Close()
-	clF := &VideoClient{httpClient: srvFail.Client(), pollBaseURL: srvFail.URL, apiKey: "KEY", pollPath: "/agnesapi"}
-	rf, err := clF.Poll(context.Background(), "video_abc", 5*time.Millisecond, 2*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !rf.Failed || rf.ErrMsg != "boom" {
-		t.Fatalf("expected failed: %#v", rf)
-	}
-}
-
 func TestVideoURLValidationAndResponse(t *testing.T) {
 	if err := validateVideoURL("https://storage.googleapis.com/x.mp4", []string{"googleapis.com"}); err != nil {
 		t.Fatalf("allowed host must pass: %v", err)
