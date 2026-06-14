@@ -1,6 +1,9 @@
 package service
 
 import (
+	"encoding/json"
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -106,4 +109,41 @@ func (a *Account) VideoHostSuffixes() []string {
 		}
 	}
 	return out
+}
+
+// OpenAIVideosRequest is the client-facing /v1/videos request (OpenAI-ish).
+// Raw preserves the original body for verbatim forwarding to Agnes (after model rewrite).
+type OpenAIVideosRequest struct {
+	Model  string
+	Prompt string
+	Raw    []byte
+}
+
+// ParseOpenAIVideosRequest extracts model+prompt and keeps the raw body. Rejects
+// invalid JSON and an empty model.
+func ParseOpenAIVideosRequest(body []byte) (*OpenAIVideosRequest, error) {
+	var probe struct {
+		Model  string `json:"model"`
+		Prompt string `json:"prompt"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return nil, fmt.Errorf("failed to parse request body")
+	}
+	if strings.TrimSpace(probe.Model) == "" {
+		return nil, fmt.Errorf("videos endpoint requires a model")
+	}
+	return &OpenAIVideosRequest{Model: probe.Model, Prompt: probe.Prompt, Raw: body}, nil
+}
+
+// synthVideoOutputTokens maps generated video seconds to synthetic output tokens
+// (1 token = 1 second) for token-mode billing. Falls back to fallbackSeconds when
+// seconds is non-positive/unknown. Returns 0 only when both are non-positive.
+func synthVideoOutputTokens(seconds, fallbackSeconds float64) int {
+	if seconds <= 0 {
+		seconds = fallbackSeconds
+	}
+	if seconds <= 0 {
+		return 0
+	}
+	return int(math.Round(seconds))
 }
