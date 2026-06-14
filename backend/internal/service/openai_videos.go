@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/sjson"
 )
@@ -387,6 +388,9 @@ func (s *OpenAIGatewayService) ForwardVideo(
 	if videoID == "" {
 		videoID = sub.TaskID
 	}
+	if strings.TrimSpace(videoID) == "" {
+		return nil, asyncFail(c, http.StatusBadGateway, "video submit: missing video_id/task_id in response")
+	}
 
 	interval := time.Duration(account.VideoPollIntervalMs()) * time.Millisecond
 	maxWait := time.Duration(account.VideoMaxWaitMs()) * time.Millisecond
@@ -414,6 +418,9 @@ func (s *OpenAIGatewayService) ForwardVideo(
 
 	outputTokens := synthVideoOutputTokens(pr.Seconds, account.VideoDefaultSeconds())
 	if outputTokens == 0 {
+		logger.LegacyPrintf("service.openai_gateway",
+			"[OpenAI] video billing gap account=%d seconds=%v default_seconds=%v output_tokens=0 — refusing delivery (set video_default_seconds)",
+			account.ID, pr.Seconds, account.VideoDefaultSeconds())
 		return nil, asyncFail(c, http.StatusInternalServerError, "video billing not configured (no seconds)")
 	}
 
