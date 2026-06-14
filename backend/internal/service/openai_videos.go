@@ -261,6 +261,35 @@ func (cl *VideoClient) Submit(ctx context.Context, body []byte) (*videoSubmitRes
 	return &sr, nil
 }
 
+// retrieveURL builds the Agnes legacy retrieve endpoint: {base}/videos/{task_id}
+// (base_url already includes /v1, submitPath is /videos → .../v1/videos/{task_id}).
+func (cl *VideoClient) retrieveURL(taskID string) string {
+	return cl.submitURL() + "/" + url.PathEscape(taskID)
+}
+
+// Retrieve GETs the Agnes legacy video task status by task_id.
+func (cl *VideoClient) Retrieve(ctx context.Context, taskID string) (*videoTaskResp, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cl.retrieveURL(taskID), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+cl.apiKey)
+	resp, err := cl.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	rb, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("video retrieve status %d: %s", resp.StatusCode, strings.TrimSpace(string(rb)))
+	}
+	var tr videoTaskResp
+	if err := json.Unmarshal(rb, &tr); err != nil {
+		return nil, fmt.Errorf("video retrieve parse: %w", err)
+	}
+	return &tr, nil
+}
+
 var errVideoTimeout = errors.New("video task timed out")
 
 // VideoPollResult is the terminal outcome of polling a video task.
@@ -273,9 +302,12 @@ type VideoPollResult struct {
 }
 
 type videoTaskResp struct {
+	ID                 string `json:"id"`
 	Status             string `json:"status"`
+	Progress           int    `json:"progress"`
 	Seconds            string `json:"seconds"`
 	Size               string `json:"size"`
+	Model              string `json:"model"`
 	RemixedFromVideoID string `json:"remixed_from_video_id"`
 	Error              string `json:"error"`
 }
