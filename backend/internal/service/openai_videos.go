@@ -158,19 +158,6 @@ func validateVideoURL(raw string, allowSuffixes []string) error {
 	return fmt.Errorf("video url host not allowed")
 }
 
-// buildVideosResponse builds the client-facing JSON for a completed video task.
-func buildVideosResponse(model, videoURL string, seconds float64, size string) ([]byte, error) {
-	return json.Marshal(map[string]any{
-		"created": time.Now().Unix(),
-		"model":   model,
-		"object":  "video",
-		"status":  "completed",
-		"url":     videoURL,
-		"seconds": seconds,
-		"size":    size,
-	})
-}
-
 // buildVideoStatusResponse builds the client-facing JSON for any task state.
 // url is included only when non-empty (completed); error only when non-empty (failed);
 // seconds/size only when non-empty.
@@ -457,11 +444,11 @@ func (s *OpenAIGatewayService) RetrieveVideo(ctx context.Context, c *gin.Context
 	return nil
 }
 
-// ForwardVideo submits a video job to the Agnes async API, polls to completion,
-// writes a JSON response with the upstream video URL, and returns a result whose
-// synthesized Usage drives token-mode billing (OutputTokens = round(seconds)).
-// ctx must be cancelable so a client disconnect stops polling (no response, no billing).
-func (s *OpenAIGatewayService) ForwardVideo(
+// SubmitVideo submits a video job to Agnes, writes the queued task object to c
+// (HTTP 200), and returns a result whose synthesized Usage drives token billing
+// (OutputTokens = round(submit seconds)). It does NOT poll — clients poll via
+// GET /v1/videos/{id}. Billing happens once, at submit (no white-use on non-poll).
+func (s *OpenAIGatewayService) SubmitVideo(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
@@ -487,47 +474,28 @@ func (s *OpenAIGatewayService) ForwardVideo(
 		}
 		return nil, asyncFail(c, http.StatusBadGateway, "video submit failed: "+err.Error())
 	}
-	videoID := sub.VideoID
-	if videoID == "" {
-		videoID = sub.TaskID
+	taskID := strings.TrimSpace(sub.TaskID)
+	if taskID == "" {
+		taskID = strings.TrimSpace(sub.VideoID)
 	}
-	if strings.TrimSpace(videoID) == "" {
-		return nil, asyncFail(c, http.StatusBadGateway, "video submit: missing video_id/task_id in response")
-	}
-
-	interval := time.Duration(account.VideoPollIntervalMs()) * time.Millisecond
-	maxWait := time.Duration(account.VideoMaxWaitMs()) * time.Millisecond
-	pr, err := cl.Poll(ctx, videoID, interval, maxWait)
-	if err != nil {
-		switch {
-		case ctx.Err() != nil:
-			return nil, ctx.Err()
-		case errors.Is(err, errVideoTimeout):
-			return nil, asyncFail(c, http.StatusGatewayTimeout, "video task timed out")
-		default:
-			return nil, asyncFail(c, http.StatusBadGateway, err.Error())
-		}
-	}
-	if pr.Failed || strings.TrimSpace(pr.URL) == "" {
-		msg := "video task failed"
-		if pr.ErrMsg != "" {
-			msg += ": " + pr.ErrMsg
-		}
-		return nil, asyncFail(c, http.StatusBadGateway, msg)
-	}
-	if err := validateVideoURL(pr.URL, account.VideoHostSuffixes()); err != nil {
-		return nil, asyncFail(c, http.StatusBadGateway, "video url rejected: "+err.Error())
+	if taskID == "" {
+		return nil, asyncFail(c, http.StatusBadGateway, "video submit: missing task_id in response")
 	}
 
-	outputTokens := synthVideoOutputTokens(pr.Seconds, account.VideoDefaultSeconds())
+	seconds := parseVideoSeconds(sub.Seconds)
+	outputTokens := synthVideoOutputTokens(seconds, account.VideoDefaultSeconds())
 	if outputTokens == 0 {
 		logger.LegacyPrintf("service.openai_gateway",
-			"[OpenAI] video billing gap account=%d seconds=%v default_seconds=%v output_tokens=0 — refusing delivery (set video_default_seconds)",
-			account.ID, pr.Seconds, account.VideoDefaultSeconds())
+			"[OpenAI] video billing gap account=%d seconds=%v default_seconds=%v output_tokens=0 — refusing (set video_default_seconds)",
+			account.ID, sub.Seconds, account.VideoDefaultSeconds())
 		return nil, asyncFail(c, http.StatusInternalServerError, "video billing not configured (no seconds)")
 	}
 
-	respJSON, err := buildVideosResponse(requestModel, pr.URL, pr.Seconds, pr.Size)
+	status := strings.TrimSpace(sub.Status)
+	if status == "" {
+		status = "queued"
+	}
+	respJSON, err := buildVideoStatusResponse(taskID, requestModel, status, "", sub.Seconds, sub.Size, 0, "")
 	if err != nil {
 		return nil, asyncFail(c, http.StatusInternalServerError, err.Error())
 	}
@@ -539,9 +507,8 @@ func (s *OpenAIGatewayService) ForwardVideo(
 		UpstreamModel: upstreamModel,
 		Duration:      time.Since(startTime),
 		// ImageCount intentionally 0: video bills by synthesized per-second OutputTokens
-		// via the token cost path. A non-zero ImageCount would route billing into the
-		// per-request image-cost branch (openai_gateway_service.go calculateOpenAIRecordUsageCost)
-		// when the channel pricing row is not token-mode, silently ignoring the per-second tokens.
+		// via the token cost path (calculateOpenAIRecordUsageCost). A non-zero ImageCount
+		// would route billing into the per-request image-cost branch and ignore the tokens.
 		ImageCount: 0,
 	}, nil
 }

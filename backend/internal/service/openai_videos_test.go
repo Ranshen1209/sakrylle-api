@@ -171,147 +171,62 @@ func TestVideoURLValidationAndResponse(t *testing.T) {
 	if err := validateVideoURL("https://evilgoogleapis.com/x.mp4", []string{"googleapis.com"}); err == nil {
 		t.Fatal("suffix-only substring host must not pass")
 	}
-
-	body, err := buildVideosResponse("agnes-video-v2.0", "https://storage.googleapis.com/x.mp4", 10.0, "1280x768")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gjson.GetBytes(body, "status").String() != "completed" ||
-		gjson.GetBytes(body, "url").String() != "https://storage.googleapis.com/x.mp4" ||
-		gjson.GetBytes(body, "model").String() != "agnes-video-v2.0" ||
-		gjson.GetBytes(body, "seconds").Float() != 10.0 ||
-		gjson.GetBytes(body, "size").String() != "1280x768" {
-		t.Fatalf("response shape wrong: %s", body)
-	}
 }
 
-func TestForwardVideoHappyPath(t *testing.T) {
-	var submitHit, pollHit int
+func TestSubmitVideoHappyPath(t *testing.T) {
+	var submitHit int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/v1/videos":
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/videos" {
 			submitHit++
-			_, _ = w.Write([]byte(`{"video_id":"video_abc","status":"queued"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/agnesapi":
-			pollHit++
-			_, _ = w.Write([]byte(`{"status":"completed","seconds":"10.0","size":"1280x768","remixed_from_video_id":"https://storage.googleapis.com/x.mp4"}`))
-		default:
-			w.WriteHeader(404)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"task_abc","task_id":"task_abc","video_id":"video_x","status":"queued","seconds":"3.4","size":"1280x704"}`))
+			return
 		}
+		w.WriteHeader(404)
 	}))
 	defer srv.Close()
 
-	account := &Account{
-		ID: 1137, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url":               srv.URL + "/v1",
-			"api_key":                "KEY",
-			"video_enabled":          "true",
-			"video_models":           "agnes-video-v2.0",
-			"video_submit_path":      "/videos",
-			"video_poll_path":        "/agnesapi",
-			"video_poll_interval_ms": "5",
-			"video_max_wait_ms":      "2000",
-			"video_default_seconds":  "18.375",
-			"video_host_suffix":      "googleapis.com",
-		},
-	}
+	account := &Account{ID: 1137, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url": srv.URL + "/v1", "api_key": "KEY",
+		"video_enabled": "true", "video_models": "agnes-video-v2.0",
+		"video_submit_path": "/videos", "video_default_seconds": "18.375",
+		"video_host_suffix": "agnes-ai.space",
+	}}
 	s := &OpenAIGatewayService{}
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c, rec := newVideosTestCtx(t)
 	parsed := &OpenAIVideosRequest{Model: "agnes-video-v2.0", Prompt: "x", Raw: []byte(`{"model":"agnes-video-v2.0","prompt":"x"}`)}
 
-	res, err := s.ForwardVideo(context.Background(), c, account, parsed, "agnes-video-v2.0", "agnes-video-v2.0", time.Now())
+	res, err := s.SubmitVideo(context.Background(), c, account, parsed, "agnes-video-v2.0", "agnes-video-v2.0", time.Now())
 	if err != nil {
-		t.Fatalf("forward: %v", err)
+		t.Fatalf("submit: %v", err)
 	}
-	if submitHit != 1 || pollHit < 1 {
-		t.Fatalf("hits submit=%d poll=%d", submitHit, pollHit)
+	if submitHit != 1 {
+		t.Fatalf("submitHit=%d", submitHit)
 	}
-	if res.Usage.OutputTokens != 10 {
-		t.Fatalf("expected 10 output tokens (10s), got %d", res.Usage.OutputTokens)
+	if rec.Code != 200 || gjson.GetBytes(rec.Body.Bytes(), "status").String() != "queued" ||
+		gjson.GetBytes(rec.Body.Bytes(), "id").String() != "task_abc" {
+		t.Fatalf("queued body wrong: %s", rec.Body.String())
+	}
+	if res.Usage.OutputTokens != 3 {
+		t.Fatalf("expected 3 output tokens, got %d", res.Usage.OutputTokens)
 	}
 	if res.ImageCount != 0 {
-		t.Fatalf("video result must have ImageCount=0 so billing uses the token path, got %d", res.ImageCount)
-	}
-	if res.Model != "agnes-video-v2.0" {
-		t.Fatalf("model = %q", res.Model)
+		t.Fatalf("ImageCount must be 0, got %d", res.ImageCount)
 	}
 }
 
-func TestForwardVideoSubmitError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte(`{"error":"upstream down"}`))
-	}))
+func TestSubmitVideoSubmitError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(502) }))
 	defer srv.Close()
-
-	account := &Account{
-		ID: 1137, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url":               srv.URL + "/v1",
-			"api_key":                "KEY",
-			"video_enabled":          "true",
-			"video_models":           "agnes-video-v2.0",
-			"video_submit_path":      "/videos",
-			"video_poll_path":        "/agnesapi",
-			"video_poll_interval_ms": "5",
-			"video_max_wait_ms":      "2000",
-			"video_default_seconds":  "18.375",
-			"video_host_suffix":      "googleapis.com",
-		},
-	}
+	account := &Account{ID: 1137, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url": srv.URL + "/v1", "api_key": "KEY", "video_submit_path": "/videos",
+		"video_default_seconds": "18.375",
+	}}
 	s := &OpenAIGatewayService{}
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	parsed := &OpenAIVideosRequest{Model: "agnes-video-v2.0", Prompt: "x", Raw: []byte(`{"model":"agnes-video-v2.0","prompt":"x"}`)}
-
-	_, err := s.ForwardVideo(context.Background(), c, account, parsed, "agnes-video-v2.0", "agnes-video-v2.0", time.Now())
-	if err == nil {
-		t.Fatal("expected error on submit failure")
-	}
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", rec.Code)
-	}
-}
-
-func TestForwardVideoPollFailed(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.Method {
-		case http.MethodPost:
-			_, _ = w.Write([]byte(`{"video_id":"video_abc","status":"queued"}`))
-		case http.MethodGet:
-			_, _ = w.Write([]byte(`{"status":"failed","error":"boom"}`))
-		default:
-			w.WriteHeader(404)
-		}
-	}))
-	defer srv.Close()
-
-	account := &Account{
-		ID: 1137, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url":               srv.URL + "/v1",
-			"api_key":                "KEY",
-			"video_enabled":          "true",
-			"video_models":           "agnes-video-v2.0",
-			"video_submit_path":      "/videos",
-			"video_poll_path":        "/agnesapi",
-			"video_poll_interval_ms": "5",
-			"video_max_wait_ms":      "2000",
-			"video_default_seconds":  "18.375",
-			"video_host_suffix":      "googleapis.com",
-		},
-	}
-	s := &OpenAIGatewayService{}
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	parsed := &OpenAIVideosRequest{Model: "agnes-video-v2.0", Prompt: "x", Raw: []byte(`{"model":"agnes-video-v2.0","prompt":"x"}`)}
-
-	_, err := s.ForwardVideo(context.Background(), c, account, parsed, "agnes-video-v2.0", "agnes-video-v2.0", time.Now())
-	if err == nil {
-		t.Fatal("expected error on poll failure")
+	c, rec := newVideosTestCtx(t)
+	parsed := &OpenAIVideosRequest{Model: "agnes-video-v2.0", Raw: []byte(`{"model":"agnes-video-v2.0"}`)}
+	if _, err := s.SubmitVideo(context.Background(), c, account, parsed, "agnes-video-v2.0", "agnes-video-v2.0", time.Now()); err == nil {
+		t.Fatal("submit 502 must error")
 	}
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", rec.Code)
@@ -433,48 +348,5 @@ func TestRetrieveVideoStates(t *testing.T) {
 	}
 	if rec3.Code != http.StatusBadGateway {
 		t.Fatalf("SSRF reject must be 502, got %d", rec3.Code)
-	}
-}
-
-func TestForwardVideoTimeout(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.Method {
-		case http.MethodPost:
-			_, _ = w.Write([]byte(`{"video_id":"video_abc","status":"queued"}`))
-		case http.MethodGet:
-			_, _ = w.Write([]byte(`{"status":"in_progress"}`))
-		default:
-			w.WriteHeader(404)
-		}
-	}))
-	defer srv.Close()
-
-	account := &Account{
-		ID: 1137, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url":               srv.URL + "/v1",
-			"api_key":                "KEY",
-			"video_enabled":          "true",
-			"video_models":           "agnes-video-v2.0",
-			"video_submit_path":      "/videos",
-			"video_poll_path":        "/agnesapi",
-			"video_poll_interval_ms": "5",
-			"video_max_wait_ms":      "30",
-			"video_default_seconds":  "18.375",
-			"video_host_suffix":      "googleapis.com",
-		},
-	}
-	s := &OpenAIGatewayService{}
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	parsed := &OpenAIVideosRequest{Model: "agnes-video-v2.0", Prompt: "x", Raw: []byte(`{"model":"agnes-video-v2.0","prompt":"x"}`)}
-
-	_, err := s.ForwardVideo(context.Background(), c, account, parsed, "agnes-video-v2.0", "agnes-video-v2.0", time.Now())
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if rec.Code != http.StatusGatewayTimeout {
-		t.Fatalf("expected 504, got %d", rec.Code)
 	}
 }
