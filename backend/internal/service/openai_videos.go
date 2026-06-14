@@ -426,6 +426,37 @@ func (s *OpenAIGatewayService) newVideoClient(account *Account) *VideoClient {
 	}
 }
 
+// RetrieveVideo proxies the Agnes legacy video-task retrieve, normalizes the
+// response, validates the output URL host on completion, and writes it to c.
+// GET path: never bills. Returns a typed error (via asyncFail) on upstream/SSRF failure.
+func (s *OpenAIGatewayService) RetrieveVideo(ctx context.Context, c *gin.Context, account *Account, taskID string) error {
+	cl := s.newVideoClient(account)
+	tr, err := cl.Retrieve(ctx, taskID)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return asyncFail(c, http.StatusBadGateway, "video retrieve failed: "+err.Error())
+	}
+	status := strings.ToLower(strings.TrimSpace(tr.Status))
+	videoURL := ""
+	if status == "completed" {
+		videoURL = strings.TrimSpace(tr.RemixedFromVideoID)
+		if videoURL == "" {
+			return asyncFail(c, http.StatusBadGateway, "video completed but no url")
+		}
+		if err := validateVideoURL(videoURL, account.VideoHostSuffixes()); err != nil {
+			return asyncFail(c, http.StatusBadGateway, "video url rejected: "+err.Error())
+		}
+	}
+	body, err := buildVideoStatusResponse(taskID, tr.Model, tr.Status, videoURL, tr.Seconds, tr.Size, tr.Progress, tr.Error)
+	if err != nil {
+		return asyncFail(c, http.StatusInternalServerError, err.Error())
+	}
+	c.Data(http.StatusOK, "application/json", body)
+	return nil
+}
+
 // ForwardVideo submits a video job to the Agnes async API, polls to completion,
 // writes a JSON response with the upstream video URL, and returns a result whose
 // synthesized Usage drives token-mode billing (OutputTokens = round(seconds)).
