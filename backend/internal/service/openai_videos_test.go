@@ -231,6 +231,9 @@ func TestForwardVideoHappyPath(t *testing.T) {
 	if res.Usage.OutputTokens != 10 {
 		t.Fatalf("expected 10 output tokens (10s), got %d", res.Usage.OutputTokens)
 	}
+	if res.ImageCount != 0 {
+		t.Fatalf("video result must have ImageCount=0 so billing uses the token path, got %d", res.ImageCount)
+	}
 	if res.Model != "agnes-video-v2.0" {
 		t.Fatalf("model = %q", res.Model)
 	}
