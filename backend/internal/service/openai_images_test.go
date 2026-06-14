@@ -318,7 +318,9 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_ExplicitSizeRequiresNative
 	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
 }
 
-func TestOpenAIGatewayServiceParseOpenAIImagesRequest_RejectsNonImageModel(t *testing.T) {
+func TestOpenAIGatewayServiceParseOpenAIImagesRequest_NonImageModelDeferredToForward(t *testing.T) {
+	// Gate moved to forward-time (account-scoped). Parse no longer rejects non-gpt-image models;
+	// validateOpenAIImagesModelForAccount in forwardOpenAIImagesAPIKey rejects them there.
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-5.4","prompt":"draw a cat"}`)
 
@@ -330,8 +332,38 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_RejectsNonImageModel(t *te
 
 	svc := &OpenAIGatewayService{}
 	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
-	require.Nil(t, parsed)
-	require.ErrorContains(t, err, `images endpoint requires an image model, got "gpt-5.4"`)
+	require.NoError(t, err)
+	require.NotNil(t, parsed)
+	require.Equal(t, "gpt-5.4", parsed.Model)
+}
+
+func TestParseImagesAllowsUndeclaredModelDefersToForward(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+
+	// Non-gpt-image model must parse successfully now (gate deferred to forward-time).
+	body := []byte(`{"model":"agnes-image-2.0-flash","prompt":"x","size":"1024x1024"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err, "parse must not reject non-gpt-image model now")
+	require.NotNil(t, parsed)
+	require.Equal(t, "agnes-image-2.0-flash", parsed.Model)
+
+	// Absent model must still succeed at parse time: applyOpenAIImagesDefaults fills in
+	// "gpt-image-2", so parse should not error for a missing model field.
+	noModelBody := []byte(`{"prompt":"x"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(noModelBody))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(rec2)
+	c2.Request = req2
+	parsed2, err2 := svc.ParseOpenAIImagesRequest(c2, noModelBody)
+	require.NoError(t, err2, "absent model should default to gpt-image-2, not error")
+	require.Equal(t, "gpt-image-2", parsed2.Model)
 }
 
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSONEditURLs(t *testing.T) {
