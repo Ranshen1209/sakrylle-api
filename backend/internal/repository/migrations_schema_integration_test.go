@@ -92,6 +92,21 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.settings')").Scan(&settingsRegclass))
 	require.True(t, settingsRegclass.Valid, "expected settings table to exist")
 
+	// agiso_orders: automatic delivery idempotency and step state
+	var agisoOrdersRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.agiso_orders')").Scan(&agisoOrdersRegclass))
+	require.True(t, agisoOrdersRegclass.Valid, "expected agiso_orders table to exist")
+	requireColumn(t, tx, "agiso_orders", "biz_order_id", "character varying", 64, false)
+	requireColumn(t, tx, "agiso_orders", "payment_cents", "bigint", 0, false)
+	requireColumn(t, tx, "agiso_orders", "value", "numeric", 0, false)
+	requireColumn(t, tx, "agiso_orders", "raw_json", "jsonb", 0, false)
+	requireColumn(t, tx, "agiso_orders", "detail_fetched", "boolean", 0, false)
+	requireColumn(t, tx, "agiso_orders", "code_minted", "boolean", 0, false)
+	requireColumn(t, tx, "agiso_orders", "msg_sent", "boolean", 0, false)
+	requireColumn(t, tx, "agiso_orders", "shipped", "boolean", 0, false)
+	requireIndex(t, tx, "agiso_orders", "agiso_orders_biz_order_id_key")
+	requireIndex(t, tx, "agiso_orders", "idx_agiso_orders_status")
+
 	// security_secrets table should exist
 	var securitySecretsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.security_secrets')").Scan(&securitySecretsRegclass))
