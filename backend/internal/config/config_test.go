@@ -30,6 +30,35 @@ func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoadAgisoConfigFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("AGISO_APP_SECRET", "agiso-secret")
+	t.Setenv("AGISO_ACCESS_TOKEN", "agiso-token")
+	t.Setenv("AGISO_API_BASE", "https://example.test/aldsIdle")
+	t.Setenv("AGISO_VALUE_MULTIPLIER", "1.25")
+	t.Setenv("AGISO_CODE_EXPIRES_DAYS", "7")
+	t.Setenv("AGISO_SELLER_ID", "seller-1")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "agiso-secret", cfg.Agiso.AppSecret)
+	require.Equal(t, "agiso-token", cfg.Agiso.AccessToken)
+	require.Equal(t, "https://example.test/aldsIdle", cfg.Agiso.APIBase)
+	require.Equal(t, 1.25, cfg.Agiso.ValueMultiplier)
+	require.Equal(t, 7, cfg.Agiso.CodeExpiresDays)
+	require.Equal(t, "seller-1", cfg.Agiso.SellerID)
+}
+
+func TestLoadAgisoConfigDefaults(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "https://gw-api.agiso.com/aldsIdle", cfg.Agiso.APIBase)
+	require.Equal(t, 1.0, cfg.Agiso.ValueMultiplier)
+	require.Equal(t, 0, cfg.Agiso.CodeExpiresDays)
+}
+
 func TestNormalizeRunMode(t *testing.T) {
 	tests := []struct {
 		input    string

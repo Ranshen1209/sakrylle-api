@@ -40,6 +40,14 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 	return NewEmailQueueService(emailService, 3)
 }
 
+func ProvideAgisoClient(cfg *config.Config) *AgisoClient {
+	return NewAgisoClient(cfg.Agiso)
+}
+
+func ProvideAgisoDeliveryService(cfg *config.Config, repo AgisoOrderRepository, client *AgisoClient, redeem *RedeemService) *AgisoDeliveryService {
+	return NewAgisoDeliveryService(cfg.Agiso, repo, client, redeem)
+}
+
 // ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
 func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
 	return NewOAuthRefreshAPI(accountRepo, tokenCache)
@@ -568,6 +576,10 @@ var ProviderSet = wire.NewSet(
 	NewEmailService,
 	NewNotificationEmailService,
 	ProvideEmailQueueService,
+	ProvideAgisoClient,
+	ProvideAgisoDeliveryService,
+	wire.Bind(new(AgisoOutboundClient), new(*AgisoClient)),
+	wire.Bind(new(AgisoRedeemMinter), new(*RedeemService)),
 	NewTurnstileService,
 	NewSubscriptionService,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
