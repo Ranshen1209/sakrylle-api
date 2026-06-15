@@ -75,7 +75,7 @@ func TestAgisoDeliveryService_FailClosedWhenPaymentInvalid(t *testing.T) {
 func TestAgisoDeliveryService_RefundDisablesUnusedCode(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeAgisoOrderRepo()
-	repo.orders["1004"] = &AgisoOrder{BizOrderID: "1004", RedeemCodeID: ptrInt64(42), CodeMinted: true, Code: "CODE-1"}
+	repo.orders["1004"] = &AgisoOrder{BizOrderID: "1004", RedeemCodeID: ptrAgisoInt64(42), CodeMinted: true, Code: "CODE-1"}
 	redeem := &fakeAgisoRedeemMinter{codes: map[int64]*RedeemCode{42: {ID: 42, Code: "CODE-1", Status: StatusUnused}}}
 	svc := NewAgisoDeliveryService(config.AgisoConfig{ValueMultiplier: 1}, repo, &fakeAgisoClient{}, redeem)
 
@@ -85,10 +85,10 @@ func TestAgisoDeliveryService_RefundDisablesUnusedCode(t *testing.T) {
 }
 
 type fakeAgisoClient struct {
-	detail     AgisoOrderDetail
-	detailErr  error
-	sendErr    error
-	shipErr    error
+	detail      AgisoOrderDetail
+	detailErr   error
+	sendErr     error
+	shipErr     error
 	detailCalls int
 	msgCalls    int
 	shipCalls   int
@@ -195,4 +195,4 @@ func cloneAgisoOrder(o *AgisoOrder) *AgisoOrder {
 	return &cp
 }
 
-func ptrInt64(v int64) *int64 { return &v }
+func ptrAgisoInt64(v int64) *int64 { return &v }

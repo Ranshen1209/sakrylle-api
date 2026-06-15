@@ -13,11 +13,11 @@ import (
 
 const (
 	AgisoPlatformAldsIdle = "AldsIdle"
-	AgisoAopicTradePay   = "1"
-	AgisoAopicRefund     = "8"
-	AgisoTradeStatusPaid = 2
-	AgisoRedeemURL       = "https://sub.sakrylle.com/redeem"
-	AgisoMaxMsgRunes     = 1000
+	AgisoAopicTradePay    = "1"
+	AgisoAopicRefund      = "8"
+	AgisoTradeStatusPaid  = 2
+	AgisoRedeemURL        = "https://sub.sakrylle.com/redeem"
+	AgisoMaxMsgRunes      = 1000
 )
 
 type AgisoDeliveryEvent struct {
@@ -57,12 +57,12 @@ func AgisoAPISign(appSecret string, params map[string]string) string {
 	sort.Strings(keys)
 
 	var b strings.Builder
-	b.WriteString(appSecret)
+	_, _ = b.WriteString(appSecret)
 	for _, k := range keys {
-		b.WriteString(k)
-		b.WriteString(params[k])
+		_, _ = b.WriteString(k)
+		_, _ = b.WriteString(params[k])
 	}
-	b.WriteString(appSecret)
+	_, _ = b.WriteString(appSecret)
 	return agisoMD5(b.String())
 }
 
