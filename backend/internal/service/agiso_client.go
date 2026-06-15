@@ -32,12 +32,12 @@ func (e *AgisoAPIError) Error() string {
 }
 
 type agisoEnvelope struct {
-	IsSuccess bool            `json:"IsSuccess"`
-	ErrorCode int             `json:"Error_Code"`
-	ErrorMsg  string          `json:"Error_Msg"`
-	AllowRetry bool           `json:"AllowRetry"`
-	RequestID string          `json:"RequestId"`
-	Data      json.RawMessage `json:"Data"`
+	IsSuccess  bool            `json:"IsSuccess"`
+	ErrorCode  int             `json:"Error_Code"`
+	ErrorMsg   string          `json:"Error_Msg"`
+	AllowRetry bool            `json:"AllowRetry"`
+	RequestID  string          `json:"RequestId"`
+	Data       json.RawMessage `json:"Data"`
 }
 
 func NewAgisoClient(cfg config.AgisoConfig) *AgisoClient {
@@ -117,7 +117,7 @@ func (c *AgisoClient) post(ctx context.Context, path string, params map[string]s
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return nil, err
