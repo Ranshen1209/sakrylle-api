@@ -57,6 +57,7 @@ type Handlers struct {
 	Totp             *TotpHandler
 	Payment          *PaymentHandler
 	PaymentWebhook   *PaymentWebhookHandler
+	AgisoDelivery    *AgisoDeliveryHandler
 	AvailableChannel *AvailableChannelHandler
 	OAuthProvider    *OAuthProviderHandler
 	OAuthDevice      *OAuthDeviceHandler

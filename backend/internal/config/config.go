@@ -93,6 +93,7 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Agiso                   AgisoConfig                   `mapstructure:"agiso"`
 }
 
 type LogConfig struct {
@@ -173,6 +174,15 @@ type IdempotencyConfig struct {
 	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
 	// CleanupBatchSize 每次清理的最大记录数。
 	CleanupBatchSize int `mapstructure:"cleanup_batch_size"`
+}
+
+type AgisoConfig struct {
+	AppSecret       string  `mapstructure:"app_secret"`
+	AccessToken     string  `mapstructure:"access_token"`
+	APIBase         string  `mapstructure:"api_base"`
+	ValueMultiplier float64 `mapstructure:"value_multiplier"`
+	CodeExpiresDays int     `mapstructure:"code_expires_days"`
+	SellerID        string  `mapstructure:"seller_id"`
 }
 
 type LinuxDoConnectConfig struct {
@@ -1471,6 +1481,10 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.Environment = strings.TrimSpace(cfg.Log.Environment)
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
+	cfg.Agiso.AppSecret = strings.TrimSpace(cfg.Agiso.AppSecret)
+	cfg.Agiso.AccessToken = strings.TrimSpace(cfg.Agiso.AccessToken)
+	cfg.Agiso.APIBase = strings.TrimRight(strings.TrimSpace(cfg.Agiso.APIBase), "/")
+	cfg.Agiso.SellerID = strings.TrimSpace(cfg.Agiso.SellerID)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
@@ -1821,6 +1835,14 @@ func setDefaults() {
 	viper.SetDefault("idempotency.max_stored_response_len", 64*1024)
 	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
+
+	// Agiso Xianyu automatic delivery bridge
+	viper.SetDefault("agiso.app_secret", "")
+	viper.SetDefault("agiso.access_token", "")
+	viper.SetDefault("agiso.api_base", "https://gw-api.agiso.com/aldsIdle")
+	viper.SetDefault("agiso.value_multiplier", 1.0)
+	viper.SetDefault("agiso.code_expires_days", 0)
+	viper.SetDefault("agiso.seller_id", "")
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
