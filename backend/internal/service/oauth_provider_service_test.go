@@ -607,6 +607,19 @@ func TestAuthorizeRequestValidation(t *testing.T) {
 	svc, _, _ := newServiceUnderTest(t)
 	ctx := context.Background()
 	_, challenge := pkceVerifierAndChallenge("the-quick-brown-fox-jumps-over-the-lazy-dog-12345")
+	if repo, ok := svc.clientRepo.(*stubClientRepo); ok {
+		repo.clients["sakrylle-studio"] = &OAuthClient{
+			ClientID:         "sakrylle-studio",
+			Name:             "Sakrylle Studio",
+			ClientType:       "public",
+			RedirectURIs:     []string{"http://127.0.0.1/callback", "http://[::1]/callback", "http://localhost/callback"},
+			AllowedScopes:    []string{"openid", "profile", "email", "models:read", "responses:create", "messages:create", "usage:read", "offline_access"},
+			DefaultScopes:    []string{"openid", "profile", "email", "models:read", "responses:create", "messages:create", "usage:read", "offline_access"},
+			PKCERequired:     true,
+			SigningAlgorithm: "RS256",
+			SubjectType:      "public",
+		}
+	}
 
 	cases := []struct {
 		name    string
@@ -702,6 +715,95 @@ func TestAuthorizeRequestValidation(t *testing.T) {
 				ClientID:            "sakrylle-image-playground",
 				RedirectURI:         "https://image.sakrylle.com/oauth/callback",
 				ResponseType:        "code",
+				State:               "abc",
+				CodeChallenge:       challenge,
+				CodeChallengeMethod: "plain",
+			},
+			ErrOAuthUnsupportedChallenge,
+		},
+		{
+			"studio_127_loopback_random_port",
+			&AuthorizeRequest{
+				ClientID:            "sakrylle-studio",
+				RedirectURI:         "http://127.0.0.1:49152/callback",
+				ResponseType:        "code",
+				Scopes:              []string{"openid", "profile", "email", "offline_access"},
+				State:               "abc",
+				CodeChallenge:       challenge,
+				CodeChallengeMethod: "S256",
+			},
+			nil,
+		},
+		{
+			"studio_localhost_loopback_random_port",
+			&AuthorizeRequest{
+				ClientID:            "sakrylle-studio",
+				RedirectURI:         "http://localhost:54321/callback",
+				ResponseType:        "code",
+				Scopes:              []string{"openid", "profile", "email", "offline_access"},
+				State:               "abc",
+				CodeChallenge:       challenge,
+				CodeChallengeMethod: "S256",
+			},
+			nil,
+		},
+		{
+			"studio_ipv6_loopback_random_port",
+			&AuthorizeRequest{
+				ClientID:            "sakrylle-studio",
+				RedirectURI:         "http://[::1]:61234/callback",
+				ResponseType:        "code",
+				Scopes:              []string{"openid", "profile", "email", "offline_access"},
+				State:               "abc",
+				CodeChallenge:       challenge,
+				CodeChallengeMethod: "S256",
+			},
+			nil,
+		},
+		{
+			"studio_unregistered_host",
+			&AuthorizeRequest{
+				ClientID:            "sakrylle-studio",
+				RedirectURI:         "http://example.com:49152/callback",
+				ResponseType:        "code",
+				Scopes:              []string{"openid"},
+				State:               "abc",
+				CodeChallenge:       challenge,
+				CodeChallengeMethod: "S256",
+			},
+			ErrOAuthInvalidRedirectURI,
+		},
+		{
+			"studio_non_callback_path",
+			&AuthorizeRequest{
+				ClientID:            "sakrylle-studio",
+				RedirectURI:         "http://127.0.0.1:49152/auth/callback",
+				ResponseType:        "code",
+				Scopes:              []string{"openid"},
+				State:               "abc",
+				CodeChallenge:       challenge,
+				CodeChallengeMethod: "S256",
+			},
+			ErrOAuthInvalidRedirectURI,
+		},
+		{
+			"studio_missing_pkce",
+			&AuthorizeRequest{
+				ClientID:     "sakrylle-studio",
+				RedirectURI:  "http://127.0.0.1:49152/callback",
+				ResponseType: "code",
+				Scopes:       []string{"openid"},
+				State:        "abc",
+			},
+			ErrOAuthMissingPKCE,
+		},
+		{
+			"studio_plain_pkce_rejected",
+			&AuthorizeRequest{
+				ClientID:            "sakrylle-studio",
+				RedirectURI:         "http://127.0.0.1:49152/callback",
+				ResponseType:        "code",
+				Scopes:              []string{"openid"},
 				State:               "abc",
 				CodeChallenge:       challenge,
 				CodeChallengeMethod: "plain",
