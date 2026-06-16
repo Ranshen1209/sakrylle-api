@@ -205,10 +205,10 @@ last_verified: 2026-06-06
 | Sakrylle Web（open-webui fork，域名 `chat.sakrylle.com`） | `sakrylle-web` | 机密 | authorization_code + refresh_token | pkce + client_secret | `https://chat.sakrylle.com/oauth/oidc/login/callback` | `openid profile email` + 调用 `/v1` 所需 |
 | Sakrylle Image（已上线） | `sakrylle-image-playground`（**沿用现有 client_id，不新建 `-v2`**） | 公共（SPA） | authorization_code + refresh_token | pkce | `https://image.sakrylle.com/oauth/callback`、`http://localhost:5173/oauth/callback` | 在原 `image_generation`/`balance:read`/`models:read` 基础上**追加 `openid profile email`** |
 | Sakrylle CLI（codex fork） | `sakrylle-cli` | 公共 | authorization_code + device_code + refresh_token | pkce_required | `http://127.0.0.1`（任意端口）`/callback` + `http://localhost`（loopback 白名单）；device flow 无需 redirect | `openid profile email` + 调用 `/v1` 所需 |
-| Sakrylle Studio（CodexMonitor fork，桌面 Tauri） | （首发**不单独注册**，复用 CLI 凭据；后续独立登录再注册 public + loopback） | 公共（native） | 复用 `sakrylle-cli` | — | 复用 CLI（后续独立注册时用 loopback） | 复用 CLI |
+| Sakrylle Studio（CodexMonitor fork，桌面 Tauri） | `sakrylle-studio` | 公共（native） | authorization_code + refresh_token | pkce_required，仅 S256 | `http://127.0.0.1:{random_port}/callback`；兼容 `[::1]` / `localhost` loopback 任意端口，路径必须 `/callback` | `openid profile email offline_access` + 调用 `/v1` 所需 |
 | Sakrylle Chat（kelivo fork，移动/跨端） | `sakrylle-chat` | 公共 | authorization_code + PKCE | pkce | `sakrylle-chat://oauth/callback`（scheme 实现期核实） | `openid profile email` + 调用 `/v1` 所需 |
 
-**原则**：Web 这类有后端、可安全保存 secret 的服务端 RP 使用机密 client；SPA、CLI、桌面、移动等公共 client 使用 `pkce_required=true`。redirect_uri 走**精确白名单**（Web 固定 `https://chat.sakrylle.com/oauth/oidc/login/callback`；CLI loopback 用 `http://127.0.0.1` 任意端口 + `http://localhost`）；CLI 支持 Device Authorization Flow（无浏览器/无回调端口依赖，已有 RFC 8628 基础）。`email:read` 对第一方 client（Image/CLI/Web/Chat）默认授予（已确认 2026-06-03）。
+**原则**：Web 这类有后端、可安全保存 secret 的服务端 RP 使用机密 client；SPA、CLI、桌面、移动等公共 client 使用 `pkce_required=true`。redirect_uri 走**精确白名单**（Web 固定 `https://chat.sakrylle.com/oauth/oidc/login/callback`；CLI/Studio loopback 用 `http://127.0.0.1` / `http://[::1]` / `http://localhost` 任意端口并精确匹配路径）；CLI 支持 Device Authorization Flow（无浏览器/无回调端口依赖，已有 RFC 8628 基础）。`email:read` 对第一方 client（Image/CLI/Web/Chat/Studio）默认授予（已确认 2026-06-03）。
 > bundle/包标识统一 `com.sakrylle.*`；CLI 二进制 `sakrylle`（短别名 `skl`）；遥测默认关闭（已确认 2026-06-03，详见 `05`）。
 > 仅 **Chat 回调 scheme** 保留「实现期核实」注记；Web 回调路径已按 open-webui `oidc` provider 路由确认为 `/oauth/oidc/login/callback`。
 
