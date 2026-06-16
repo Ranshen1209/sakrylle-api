@@ -20,8 +20,9 @@ import (
 // values live on the server-side transaction row keyed by transaction_id,
 // so the JS cannot tamper with the parameters the user consented to.
 //
-// If the JWT is missing the page bounces to the SPA login flow with a
-// post-login `next` pointing back at the current /oauth/authorize URL.
+// If the JWT is missing or expired, the page bounces to the SPA login flow
+// with a post-login `redirect` pointing back at the current /oauth/authorize
+// URL.
 //
 // nonce is the per-request CSP nonce from middleware.GetNonceFromContext; the
 // inline <script> tag must carry it or the production CSP (script-src 'self'
@@ -170,7 +171,7 @@ func oauthConsentHTML(clientName string, req *service.AuthorizeRequest, nonce st
     } catch (e) { return ""; }
   }
   function gotoLogin() {
-    var next = encodeURIComponent(window.location.pathname + window.location.search);
+    var next = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
     window.location.href = "/login?redirect=" + next;
   }
 
