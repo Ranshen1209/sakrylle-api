@@ -73,6 +73,8 @@ DNS: SPF/DKIM/DMARC on `sakrylle.com` + `send.sakrylle.com`. Outlook/Gmail/163/i
 
 **OAuth provider** (Sakrylle issues tokens): endpoints at `/oauth/*`, clients in `oauth_clients` table. Settings: `oauth_provider_enabled`, `oauth_default_group_id=5` (GPT-Image). **Embedded-frontend gotcha**: `backend/internal/web/embed_on.go` SPA fallback MUST bypass `/oauth/` or routes get intercepted.
 
+**Sakrylle Studio OIDC client** (registered in production 2026-06-16): `settings.oauth_issuer=https://oidc1.sakrylle.com`; client `sakrylle-studio`, public desktop, PKCE required, `default_group_id=3`, redirect allowlist `http://127.0.0.1/callback` + `http://localhost/callback`. Loopback matching permits random ports (`http://127.0.0.1:<port>/callback`) but the path must be exactly `/callback` (not `/oauth/callback`). Allowed/default scopes: `openid profile email models:read responses:create messages:create usage:read offline_access`. Missing client symptom: `/oauth/authorize` 400 page with `oauth client not found`; restart `sub2api` after DB-only client changes.
+
 **GitHub OAuth login** (Sakrylle is client): settings keys `github_oauth_enabled`, `github_oauth_client_id`, `github_oauth_client_secret`, redirect URLs. Manage via direct SQL.
 
 **Password reset**: requires `frontend_url=https://sub.sakrylle.com` in settings. Missing → 500.

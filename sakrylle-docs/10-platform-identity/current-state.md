@@ -214,16 +214,16 @@ id_token      = ✅ **RS256 或 ES256 签名的 JWT**（2026-06-04）
 >
 > **2026-06-12 重建 `sakrylle-cli`**：CLI 进入开发，按下表重新注册（public + PKCE + Device Flow + loopback 任意端口 `/callback`、`/auth/callback`），`default_group_id=3`（GPT-Pro）。
 >
-> **2026-06-16 注册 `sakrylle-studio`**：Studio 作为独立 public native OIDC RP，使用 Authorization Code + PKCE S256 + loopback `/callback` 任意端口；命名统一为 `sakrylle-studio`，不复用历史 `sakrylle-desktop`。
+> **2026-06-16 注册 `sakrylle-studio`**：Studio 作为独立 public native OIDC RP，使用 Authorization Code + PKCE S256 + loopback `/callback` 任意端口；命名统一为 `sakrylle-studio`，不复用历史 `sakrylle-desktop`。生产 `settings.oauth_issuer=https://oidc1.sakrylle.com`，注册后已重启 `sub2api` 并验证 authorize 页返回 `200 授权 Sakrylle Studio`。
 
 | client_id | app_type | client_type | PKCE | Device Flow | redirect_uris | 关键 scope |
 |---|---|---|---|---|---|---|
 | `sakrylle-image-playground` | `image` | `public` | 强制 | 否 | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access`（`chat.completions:create` 见 migration 162） |
 | `sakrylle-web` | `web` | `confidential` | 强制 | 否 | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+`/oauth/oidc/callback`), `http://localhost:3080/...`（遗留）, `http://localhost:8080/oauth/oidc/login/callback` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `account:balance:read`, `offline_access`（`client_confidential=true`；secret 于 2026-06-11 轮换；`account:balance:read` 见 migration 166） |
 | `sakrylle-cli` | `cli` | `public` | 强制 | **是** | `http://127.0.0.1/callback`, `http://127.0.0.1/auth/callback`（RFC 8252 任意端口） | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access`（`trusted_first_party=true`；`default_group_id=3`） |
-| `sakrylle-studio` | `desktop` | `public` | 强制 | 否 | `http://127.0.0.1/callback`, `http://[::1]/callback`, `http://localhost/callback`（RFC 8252 任意端口，路径必须 `/callback`） | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access`（`trusted_first_party=true`；无 client_secret；`signing_algorithm=RS256`） |
+| `sakrylle-studio` | `desktop` | `public` | 强制 | 否 | `http://127.0.0.1/callback`, `http://localhost/callback`（RFC 8252 任意端口，路径必须 `/callback`） | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access`（`trusted_first_party=true`；无 client_secret；`signing_algorithm=RS256`） |
 
-> `default_group_id`：`sakrylle-image-playground=5`、`sakrylle-web=NULL`（消费侧选组）、`sakrylle-cli=3`（GPT-Pro）、`sakrylle-studio=NULL`（写入 CLI token 文件供 CLI 复用）。v2 OAuth 不消费全局 `oauth_default_group_id`，非订阅消费型 client 必须自带默认组，否则登录 `invalid_group` 失败闭合。
+> `default_group_id`：`sakrylle-image-playground=5`、`sakrylle-web=NULL`（消费侧选组）、`sakrylle-cli=3`（GPT-Pro）、`sakrylle-studio=3`（GPT-Pro）。v2 OAuth 不消费全局 `oauth_default_group_id`，非订阅消费型 client 必须自带默认组，否则登录 `invalid_group` 失败闭合。
 
 ### 4.5 Scope 体系
 
@@ -266,12 +266,12 @@ handler 实际返回的字段（`oauth_provider_handler.go:643–665`）：
 
 ```json
 {
-  "issuer": "https://sub.sakrylle.com",
-  "authorization_endpoint": "https://sub.sakrylle.com/oauth/authorize",
-  "token_endpoint": "https://sub.sakrylle.com/oauth/token",
-  "revocation_endpoint": "https://sub.sakrylle.com/oauth/revoke",
-  "device_authorization_endpoint": "https://sub.sakrylle.com/oauth/device/code",
-  "userinfo_endpoint": "https://sub.sakrylle.com/userinfo",
+  "issuer": "https://oidc1.sakrylle.com",
+  "authorization_endpoint": "https://oidc1.sakrylle.com/oauth/authorize",
+  "token_endpoint": "https://oidc1.sakrylle.com/oauth/token",
+  "revocation_endpoint": "https://oidc1.sakrylle.com/oauth/revoke",
+  "device_authorization_endpoint": "https://oidc1.sakrylle.com/oauth/device/code",
+  "userinfo_endpoint": "https://oidc1.sakrylle.com/userinfo",
   "response_types_supported": ["code"],
   "response_modes_supported": ["query"],
   "ui_locales_supported": ["zh-CN", "en"],
@@ -289,12 +289,12 @@ handler 实际返回的字段（`oauth_provider_handler.go`）：
 
 ```json
 {
-  "issuer": "https://sub.sakrylle.com",
-  "authorization_endpoint": "https://sub.sakrylle.com/oauth/authorize",
-  "token_endpoint": "https://sub.sakrylle.com/oauth/token",
-  "userinfo_endpoint": "https://sub.sakrylle.com/userinfo",
-  "jwks_uri": "https://sub.sakrylle.com/.well-known/jwks.json",
-  "end_session_endpoint": "https://sub.sakrylle.com/oauth/logout",
+  "issuer": "https://oidc1.sakrylle.com",
+  "authorization_endpoint": "https://oidc1.sakrylle.com/oauth/authorize",
+  "token_endpoint": "https://oidc1.sakrylle.com/oauth/token",
+  "userinfo_endpoint": "https://oidc1.sakrylle.com/userinfo",
+  "jwks_uri": "https://oidc1.sakrylle.com/.well-known/jwks.json",
+  "end_session_endpoint": "https://oidc1.sakrylle.com/oauth/logout",
   "frontchannel_logout_supported": true,
   "frontchannel_logout_session_supported": true,
   "backchannel_logout_supported": true,
@@ -316,7 +316,7 @@ handler 实际返回的字段（`oauth_provider_handler.go`）：
 
 `discoveryIssuer()` 按以下顺序解析（`setting_service.go:713–730`）：
 
-1. `settings.oauth_issuer`（规范值，migration 148 中 seed 为 `https://sub.sakrylle.com`）
+1. `settings.oauth_issuer`（生产规范值现为 `https://oidc1.sakrylle.com`；migration 148 的旧 seed 是 `https://sub.sakrylle.com`）
 2. `settings.frontend_url`（legacy fallback）
 3. 请求的 `scheme://Host`（最后兜底，部署异常时不稳定）
 
@@ -376,7 +376,7 @@ account:read              → account + current_group + allowed_groups + capabil
 | **`/.well-known/openid-configuration`** | ✅ 已实现并挂载，正常 serving |
 | **`/.well-known/jwks.json`（JWKS 端点）** | ✅ 已实现：同时发布 RS256 + ES256 公钥（各自 kid） |
 | **RS256 非对称签名基础设施** | ✅ 已实现：RSA-2048 + EC-P256 私钥加密存 `security_secrets`，独立于 HS256 session secret |
-| **OIDC 标准 claims（`sub`/`iss`/`aud`/`nonce`）** | ✅ 已实现：`BuildIDTokenClaims` 输出标准 claims；`aud` 以**单元素 JSON 数组**发出；`iss` 固定 `https://sub.sakrylle.com` |
+| **OIDC 标准 claims（`sub`/`iss`/`aud`/`nonce`）** | ✅ 已实现：`BuildIDTokenClaims` 输出标准 claims；`aud` 以**单元素 JSON 数组**发出；`iss` 取 `settings.oauth_issuer`，生产现为 `https://oidc1.sakrylle.com` |
 
 > **claims 安全护栏**：`BuildIDTokenClaims` 仅允许 `iss/sub/aud/exp/iat/nonce/auth_time/sid/name/preferred_username/email/email_verified/at_hash/c_hash`。纵深防御 allowlist 守卫 `assertNoForbiddenClaims` **fail-closed**：一旦任何商业 claim（`balance`、`group`、`group_id`、`rate_multiplier`、`quota`、`quota_used`、`daily_limit_usd`、`model_mapping`、`models`、`restrict_models`、`capabilities`、`allowed_groups`）出现即拒绝签发。
 > **`email_verified`**：来自 `users.email_verified` 列（migration 157，per-user 标志，默认 `false`）。
