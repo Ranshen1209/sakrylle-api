@@ -59,11 +59,11 @@ curl https://sub.sakrylle.com/.well-known/openid-configuration
 
 ```json
 {
-  "issuer": "https://sub.sakrylle.com",
-  "authorization_endpoint": "https://sub.sakrylle.com/oauth/authorize",
-  "token_endpoint": "https://sub.sakrylle.com/oauth/token",
-  "userinfo_endpoint": "https://sub.sakrylle.com/userinfo",
-  "jwks_uri": "https://sub.sakrylle.com/.well-known/jwks.json",
+  "issuer": "https://oidc1.sakrylle.com",
+  "authorization_endpoint": "https://oidc1.sakrylle.com/oauth/authorize",
+  "token_endpoint": "https://oidc1.sakrylle.com/oauth/token",
+  "userinfo_endpoint": "https://oidc1.sakrylle.com/userinfo",
+  "jwks_uri": "https://oidc1.sakrylle.com/.well-known/jwks.json",
   "end_session_endpoint": "https://sub.sakrylle.com/oauth/logout",
   "frontchannel_logout_supported": true,
   "frontchannel_logout_session_supported": true,
@@ -397,7 +397,7 @@ curl -X POST https://sub.sakrylle.com/oauth/introspect \
   "sub": "123",
   "exp": 1717680000,
   "iat": 1717593600,
-  "iss": "https://sub.sakrylle.com"
+  "iss": "https://oidc1.sakrylle.com"
 }
 ```
 
@@ -416,7 +416,7 @@ curl -X POST https://sub.sakrylle.com/oauth/introspect \
 
 | Claim | 来源 | 条件 | 说明 |
 |---|---|---|---|
-| `iss` | `settings.oauth_issuer` | 必含 | 固定 `https://sub.sakrylle.com` |
+| `iss` | `settings.oauth_issuer` | 必含 | 固定为当前 `settings.oauth_issuer`；生产现为 `https://oidc1.sakrylle.com` |
 | `sub` | `user.ID` 字符串 | 必含 | pairwise client 时为 SHA-256 伪名 |
 | `aud` | `client_id` | 必含 | **单元素 JSON 数组** `["sakrylle-image-playground"]` |
 | `exp` | 签发时间 + TTL | 必含 | 默认 TTL = 1 小时 |
@@ -435,7 +435,7 @@ curl -X POST https://sub.sakrylle.com/oauth/introspect \
 
 ```json
 {
-  "iss": "https://sub.sakrylle.com",
+  "iss": "https://oidc1.sakrylle.com",
   "sub": "123",
   "aud": ["sakrylle-image-playground"],
   "exp": 1717680000,
@@ -697,7 +697,7 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 >
 > **2026-06-12 重建 `sakrylle-cli`**：CLI 进入开发，按下表重新注册（public + PKCE S256 + Device Flow + loopback 任意端口）。绑定 `default_group_id=3`（GPT-Pro）——v2 OAuth **不消费**全局 `oauth_default_group_id`，client 必须自带默认组，否则登录因 `invalid_group` 失败闭合。
 >
-> **2026-06-16 注册 `sakrylle-studio`**：Studio 作为独立 public native OIDC RP，使用 Authorization Code + PKCE S256 + RFC 8252 loopback `/callback` 任意端口。`sakrylle-desktop` 不再作为 Studio 命名使用，避免与历史 seed 混淆。
+> **2026-06-16 注册 `sakrylle-studio`**：Studio 作为独立 public native OIDC RP，使用 Authorization Code + PKCE S256 + RFC 8252 loopback `/callback` 任意端口。`sakrylle-desktop` 不再作为 Studio 命名使用，避免与历史 seed 混淆。生产 issuer 为 `https://oidc1.sakrylle.com`；注册后已验证 Studio authorize 请求返回授权页。
 
 | 字段 | sakrylle-image-playground | sakrylle-web | sakrylle-cli | sakrylle-studio |
 |---|---|---|---|---|
@@ -707,8 +707,8 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 | **client_confidential** | false | true | false | false |
 | **trusted_first_party** | true | true | true | true |
 | **device_flow_enabled** | false | false | **true** | false |
-| **default_group_id** | 5（GPT-Image） | NULL（消费侧选组） | **3（GPT-Pro）** | NULL（复用 CLI token 写入） |
-| **redirect_uris** | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+ `/oauth/oidc/callback`)；`http://localhost:3080/...`（两变体，遗留）；`http://localhost:8080/oauth/oidc/login/callback` | `http://127.0.0.1/callback`, `http://127.0.0.1/auth/callback`（RFC 8252 §7.3 任意端口） | `http://127.0.0.1/callback`, `http://[::1]/callback`, `http://localhost/callback`（RFC 8252 §7.3 任意端口） |
+| **default_group_id** | 5（GPT-Image） | NULL（消费侧选组） | **3（GPT-Pro）** | **3（GPT-Pro）** |
+| **redirect_uris** | `image.sakrylle.com/oauth/callback`, `localhost:5173` | `https://chat.sakrylle.com/oauth/oidc/login/callback`(+ `/oauth/oidc/callback`)；`http://localhost:3080/...`（两变体，遗留）；`http://localhost:8080/oauth/oidc/login/callback` | `http://127.0.0.1/callback`, `http://127.0.0.1/auth/callback`（RFC 8252 §7.3 任意端口） | `http://127.0.0.1/callback`, `http://localhost/callback`（RFC 8252 §7.3 任意端口，路径必须 `/callback`） |
 | **allowed_scopes** | `images:create`, `chat.completions:create`, `account:balance:read`, `models:read`, `offline_access` | `openid`, `email`, `profile`, `models:read`, `chat.completions:create`, `responses:create`, `messages:create`, `usage:read`, `account:read`, `account:balance:read`, `offline_access`（`account:balance:read` 见 migration 166） | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access` | `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access` |
 | **logout_redirect_uris** | — | `https://chat.sakrylle.com/` | — | — |
 | **signing_algorithm** | RS256 | RS256 | RS256 | RS256 |
@@ -808,7 +808,7 @@ curl -X POST https://sub.sakrylle.com/oauth/logout \
 - [ ] 处理回调：校验 `state`，用 `code` + `code_verifier` 换 token
 - [ ] 存储 `access_token` + `refresh_token`（平台安全存储）
 - [ ] 解析 id_token payload（base64url 解码第二段）取 `sub`/`name`/`email`
-- [ ] 校验 id_token 的 `iss` == `https://sub.sakrylle.com`、`aud` 含本 client_id、`exp` 未过期
+- [ ] 校验 id_token 的 `iss` == discovery `issuer`（生产现为 `https://oidc1.sakrylle.com`）、`aud` 含本 client_id、`exp` 未过期
 - [ ] 校验 `nonce`（如果发了的话）
 
 ### Token 生命周期
