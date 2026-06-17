@@ -82,7 +82,7 @@ last_verified: 2026-06-06
 |---|---|---|---|
 | `SAKRYLLE_API_BASE_URL` | 网关 `/v1/*` 基址 | `OPENAI_API_BASE_URL` / `VITE_DEFAULT_API_URL` | `https://api.sakrylle.com/v1` |
 | `SAKRYLLE_AUTH_BASE_URL` | OAuth/OIDC 授权页基址 | `VITE_SAKRYLLE_OAUTH_BASE` | `https://sub.sakrylle.com` |
-| `SAKRYLLE_OIDC_ISSUER` | OIDC issuer（见 `03` §6） | — | `https://sub.sakrylle.com` |
+| `SAKRYLLE_OIDC_ISSUER` | OIDC issuer（见 `03` §6） | — | `https://oidc1.sakrylle.com` |
 | `SAKRYLLE_CLIENT_ID` | OAuth client_id | `VITE_SAKRYLLE_OAUTH_CLIENT_ID` | 按客户端（见 `03` §9） |
 | `SAKRYLLE_CONFIG_HOME` | 配置根 | `CODEX_HOME`(部分) | 平台默认（§4.2） |
 | `SAKRYLLE_CACHE_HOME` | 缓存根 | — | 平台默认 |

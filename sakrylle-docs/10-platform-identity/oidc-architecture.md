@@ -129,9 +129,9 @@ last_verified: 2026-06-06
 | `/api/v1/oauth/authorize/approve` | POST | 已有（`oauth.go:118`） | JWT 保护 consent 决策 |
 | `/api/v1/oauth/authorized-apps` | GET/DELETE | 已有（`oauth.go:128-133`） | 用户自助撤权 |
 
-**Issuer（已确认 2026-06-03）**：`oauth_issuer = https://sub.sakrylle.com`（单一 issuer，与 migration 148 seed 一致；`api.sakrylle.com` 仅作 `/v1` 反代，**不作 issuer**）。
-理由：(a) issuer **一经发布不可轻易更改**（已嵌入所有 RP 缓存的 discovery、已签发 id_token 的 `iss` claim）；(b) `sub.sakrylle.com` 是 app 主域、已是登录/consent 页所在，浏览器型 RP（Web/Image）回跳天然同域；(c) `api.sakrylle.com` 是纯 Nginx 反代 `/v1/*` 的**网关域**，职责是数据面，不宜承载 IdP 控制面。
-**`jwks_uri` / `userinfo_endpoint` 必须用 issuer 同源绝对 URL**：`https://sub.sakrylle.com/.well-known/jwks.json`、`https://sub.sakrylle.com/v1/me`。
+**Issuer（生产现状，2026-06-16 核对）**：`oauth_issuer = https://oidc1.sakrylle.com`（单一 issuer；`api.sakrylle.com` 仅作 `/v1` 反代，**不作 issuer**）。
+理由：(a) issuer **一经发布不可轻易更改**（已嵌入所有 RP 缓存的 discovery、已签发 id_token 的 `iss` claim）；(b) `oidc1.sakrylle.com` 是当前 discovery 发布的 IdP 控制面，authorize/token/JWKS/UserInfo 均同源；(c) `api.sakrylle.com` 是纯 Nginx 反代 `/v1/*` 的**网关域**，职责是数据面，不宜承载 IdP 控制面。
+**`jwks_uri` / `userinfo_endpoint` 必须用 issuer 同源绝对 URL**：`https://oidc1.sakrylle.com/.well-known/jwks.json`、`https://oidc1.sakrylle.com/v1/me`。
 
 ## 7. 签名密钥管理方案（G2/G3 核心）
 
@@ -205,7 +205,7 @@ last_verified: 2026-06-06
 | Sakrylle Web（open-webui fork，域名 `chat.sakrylle.com`） | `sakrylle-web` | 机密 | authorization_code + refresh_token | pkce + client_secret | `https://chat.sakrylle.com/oauth/oidc/login/callback` | `openid profile email` + 调用 `/v1` 所需 |
 | Sakrylle Image（已上线） | `sakrylle-image-playground`（**沿用现有 client_id，不新建 `-v2`**） | 公共（SPA） | authorization_code + refresh_token | pkce | `https://image.sakrylle.com/oauth/callback`、`http://localhost:5173/oauth/callback` | 在原 `image_generation`/`balance:read`/`models:read` 基础上**追加 `openid profile email`** |
 | Sakrylle CLI（codex fork） | `sakrylle-cli` | 公共 | authorization_code + device_code + refresh_token | pkce_required | `http://127.0.0.1`（任意端口）`/callback` + `http://localhost`（loopback 白名单）；device flow 无需 redirect | `openid profile email` + 调用 `/v1` 所需 |
-| Sakrylle Studio（CodexMonitor fork，桌面 Tauri） | `sakrylle-studio` | 公共（native） | authorization_code + refresh_token | pkce_required，仅 S256 | `http://127.0.0.1:{random_port}/callback`；兼容 `[::1]` / `localhost` loopback 任意端口，路径必须 `/callback` | `openid profile email offline_access` + 调用 `/v1` 所需 |
+| Sakrylle Studio（CodexMonitor fork，桌面 Tauri） | `sakrylle-studio` | 公共（native） | authorization_code + refresh_token | pkce_required，仅 S256 | `http://127.0.0.1:{random_port}/callback`；生产白名单 `http://127.0.0.1/callback` + `http://localhost/callback`，路径必须 `/callback` | `openid profile email offline_access` + `models:read responses:create messages:create usage:read` |
 | Sakrylle Chat（kelivo fork，移动/跨端） | `sakrylle-chat` | 公共 | authorization_code + PKCE | pkce | `sakrylle-chat://oauth/callback`（scheme 实现期核实） | `openid profile email` + 调用 `/v1` 所需 |
 
 **原则**：Web 这类有后端、可安全保存 secret 的服务端 RP 使用机密 client；SPA、CLI、桌面、移动等公共 client 使用 `pkce_required=true`。redirect_uri 走**精确白名单**（Web 固定 `https://chat.sakrylle.com/oauth/oidc/login/callback`；CLI/Studio loopback 用 `http://127.0.0.1` / `http://[::1]` / `http://localhost` 任意端口并精确匹配路径）；CLI 支持 Device Authorization Flow（无浏览器/无回调端口依赖，已有 RFC 8628 基础）。`email:read` 对第一方 client（Image/CLI/Web/Chat/Studio）默认授予（已确认 2026-06-03）。
@@ -224,7 +224,7 @@ last_verified: 2026-06-06
 - [x] 客户端注册总表已锁定（已确认 2026-06-03，见 §9）
   - 涉及文件：`backend/migrations/148_oauth_v2_sakrylle_seed.sql`（seed 替换时按 §9 总表对齐：Image 沿用现有 `sakrylle-image-playground` 不建 `-v2`；Studio 首发复用 CLI 凭据不单独注册）
   - 验收标准：seed 与 §9 总表一致
-- [x] 冻结 `oauth_issuer = https://sub.sakrylle.com` 决策（已确认 2026-06-03，见 §6）
+- [x] 核对生产 `oauth_issuer = https://oidc1.sakrylle.com`（2026-06-16，见 §6）
   - 验收标准：决策已写入文档；生产 `settings.oauth_issuer` 现值核对（只读，不改）
 
 ### Phase 1 · 最小可用 OIDC 集成（依赖 Phase 0；G3/G2/G5 串行，G1 可并行）✅ **[已完成 2026-06-04]**
