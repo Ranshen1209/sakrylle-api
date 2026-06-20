@@ -50,6 +50,7 @@
 | [`30-program-management/risk-register.md`](./30-program-management/risk-register.md) | 风险登记册 |
 | [`30-program-management/decision-log.md`](./30-program-management/decision-log.md) | 决策记录与实现期核查项 |
 | [`30-program-management/implementation-checklist.md`](./30-program-management/implementation-checklist.md) | 实施 checklist |
+| [`30-program-management/gateway-capability-public-strategy.md`](./30-program-management/gateway-capability-public-strategy.md) | Gemini native / Antigravity / Videos 网关能力公开策略 |
 | [`40-brand-system/design.md`](./40-brand-system/design.md) | Monet Purple / 樱花品牌与设计系统 |
 
 ---

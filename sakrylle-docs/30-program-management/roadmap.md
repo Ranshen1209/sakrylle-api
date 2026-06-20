@@ -8,7 +8,7 @@ last_verified: 2026-06-06
 # 90 · Sakrylle 生态总路线图
 
 > 规划文档（planning only）。Sakrylle API（sub.sakrylle.com）与 Sakrylle Image（image.sakrylle.com）**已上线生产**，本文不含任何直接改生产配置、破坏性迁移、删用户数据的指令。所有触及生产的步骤标注「需额外审批」。
-> 兄弟文档：`03-sakrylle-api-oidc-architecture.md`（OIDC 基座详设）、`05-configuration-isolation-standard.md`（隔离规范）、`91-risk-register.md`（风险登记）、`92-open-questions.md`（待确认问题）、`93-implementation-checklist.md`（总实施 checklist）。
+> 兄弟文档：`03-sakrylle-api-oidc-architecture.md`（OIDC 基座详设）、`05-configuration-isolation-standard.md`（隔离规范）、`91-risk-register.md`（风险登记）、`92-open-questions.md`（待确认问题）、`93-implementation-checklist.md`（总实施 checklist）、[`gateway-capability-public-strategy.md`](./gateway-capability-public-strategy.md)（Gemini native / Antigravity / Videos 公开策略）。
 
 ---
 
@@ -45,6 +45,7 @@ Sakrylle API（IdP + 网关）
 - Sakrylle Image 已有 OAuth PKCE，OIDC 升级成本最低（加 `openid` scope + 客户端解析 id_token），**是验证 OIDC 链路的最佳首发 RP**。
 - Responses API（`/v1/responses`）：`backend/internal/handler/gateway_handler_responses.go` + `backend/internal/server/routes/gateway.go:91-105` 已实现，CLI 对接 blocker 已解除。
 - CLI 配置隔离（`SAKRYLLE_CLI_HOME`）**不依赖 OIDC**，可最早独立启动，与 OIDC 基座并行推进。
+- Gemini native、Antigravity、Videos 属于网关能力公开策略范围，不随代码路由存在而自动全量公开；默认按邀请制 beta 逐层放开，见 [`gateway-capability-public-strategy.md`](./gateway-capability-public-strategy.md)。
 
 ---
 
