@@ -7,8 +7,8 @@ Sakrylle API fork of sub2api. Maintenance notes — operational facts, gotchas, 
 - **Upstream**: [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api)
 - **Fork**: [Ranshen1209/sub2api](https://github.com/Ranshen1209/sub2api), branch `theme/monet-purple`
 - **Production**: `sub.sakrylle.com` (app), `api.sakrylle.com` (API), `doc.sakrylle.com` (docs), `status.sakrylle.com` (monitor)
-- **Server**: `cliproxyapi-jp` (64.83.47.108, SSH alias `ssh-tokyo`)
-- **Architecture**: `Public 443 → sslh → 127.0.0.1:8443 → Nginx → upstream container`
+- **Server**: `cliproxyapi-jp` (154.36.159.42, SSH alias `ssh-tokyo`)
+- **Architecture**: `Public 443 → Nginx stream (ssl_preread) → {TLS: 127.0.0.1:8443 Nginx http → upstream container | SSH: 172.18.0.1:22 host sshd}`. Port 80 → Nginx directly. (Was `sslh` until 2026-06-15; sslh-fork dropped connections under concurrent bursts — model/protocol-independent, surfaced as "Agnes image hangs". Replaced by Nginx `stream{}`+`ssl_preread` in `/opt/stack/nginx/nginx.conf`; sslh service kept in compose under `profiles:["disabled"]` for rollback. **SSH-over-443 (`ssh-tokyo` uses Port 443) rides this — never drive a 443-edge change through 443; use direct port 22.** See memory `sslh-burst-connection-drops`.)
 
 Compose stack at `/opt/stack/docker-compose.yml`:
 - `sub2api` (service name) — `ghcr.io/ranshen1209/sakrylle-api:purple` (repo renamed sub2api→sakrylle-api; GHA pushes here)
@@ -27,6 +27,7 @@ Visual rebrand + backend behavior changes. No core gateway logic touched.
   - `/v1/models` never falls back to `claude.DefaultModels` / `openai.DefaultModels` (prevents leaking unconfigured models).
   - SMTP nil-auth allowed in `email_service.go`.
   - Turnstile widget follows site's dark mode, not OS.
+  - **Per-request group selection (single-token RP contract)**: `sk_oauth_` tokens may pick a group per request via a `model: "<group_id>:<model>"` prefix, and list all allowed groups via `GET /v1/models?groups=all` (entries get prefixed `id` + `group{}`). Routing+billing rebind to the selected group's `rate_multiplier`, bounded by the token's `allowed_groups` snapshot; OAuth-only, non-subscription groups only. Code: `server/middleware/group_override.go` + `service/oauth_provider_group_select.go`, mounted on the `/v1` chain after `apiKeyAuth` in `routes/gateway.go`. Contract doc: `sakrylle-docs/10-platform-identity/rp-integration-guide.md` §18. Built for Sakrylle Web (open-webui backend proxy).
 - **Currency**: see [Currency policy](#currency-policy).
 
 ## Currency Policy
@@ -55,8 +56,9 @@ Local preview: `JWT_SECRET` ≥32B (64 hex), `TOTP_ENCRYPTION_KEY` exactly 32B (
 
 | Domain | Purpose | Source | Notes |
 |---|---|---|---|
-| `api.sakrylle.com` | Nginx reverse proxy to `/v1/*` | `nginx/conf.d/sakrylle-api.conf` | Separates API from web UI |
+| `api.sakrylle.com` | Nginx reverse proxy, **API-only** | `nginx/conf.d/sakrylle-api.conf` | Separates API from web UI. **Whitelist (2026-06-15)**: `/v1/` + `/health` + the bare (no-`/v1`) gateway aliases sub2api registers at root (`/responses`, `/chat/completions`, `/embeddings`, `/images/{generations,edits}`, `/videos`, `/backend-api/codex/`, `/antigravity/`) proxy to sub2api; everything else (panel SPA, `/admin`, `/assets`, `/api/v1`) returns 404. **Why the bare aliases (added 2026-06-15 same day):** the initial whitelist 404'd clients whose base_url omits `/v1` — e.g. Codex configured with `base_url=https://api.sakrylle.com` POSTs to `/responses` and got nginx 404 ("Reconnecting 5/5", `url: .../responses`). Those routes exist in the gateway (`routes/gateway.go` root-level aliases) with full `apiKeyAuth`+group/scope middleware, so exposing them does NOT bypass auth. Correct client config is still `https://api.sakrylle.com/v1`; these aliases are belt-and-suspenders for misconfigured clients. OIDC issuer is `sub.` so no `/oauth` needed here. DNS-only (grey). Pre-change config backed up `sakrylle-api.conf.bak.*` |
 | `doc.sakrylle.com` | VitePress docs (zh/en) | [Ranshen1209/sakrylle-docs](https://github.com/Ranshen1209/sakrylle-docs) (private) | GHA deploy on push to `main`. **Nginx gotcha**: `try_files` MUST include `$uri.html` before fallback for `cleanUrls: true` |
+| `automatic-delivery.sakrylle.com` | Agiso Xianyu auto-delivery bridge | `nginx/conf.d/sakrylle-automatic-delivery.conf` | Root webhook only: `POST /integrations/agiso/delivery` + `/health`; all other paths 404 |
 | `status.sakrylle.com` | relay-pulse fork | [Ranshen1209/relay-pulse](https://github.com/Ranshen1209/relay-pulse) `theme/sakrylle` | 7 probes @ 3m cadence, ~$0.51/mo. Config hot-reloads |
 | `sakrylle.com` / `www` | 301 redirect | `nginx/conf.d/sakrylle-redirect.conf` | → `https://sub.sakrylle.com/` |
 
@@ -73,11 +75,28 @@ DNS: SPF/DKIM/DMARC on `sakrylle.com` + `send.sakrylle.com`. Outlook/Gmail/163/i
 
 **OAuth provider** (Sakrylle issues tokens): endpoints at `/oauth/*`, clients in `oauth_clients` table. Settings: `oauth_provider_enabled`, `oauth_default_group_id=5` (GPT-Image). **Embedded-frontend gotcha**: `backend/internal/web/embed_on.go` SPA fallback MUST bypass `/oauth/` or routes get intercepted.
 
-**Sakrylle Studio OIDC client** (registered in production 2026-06-16): `settings.oauth_issuer=https://oidc1.sakrylle.com`; client `sakrylle-studio`, public desktop, PKCE required, `default_group_id=3`, redirect allowlist `http://127.0.0.1/callback` + `http://localhost/callback`. Loopback matching permits random ports (`http://127.0.0.1:<port>/callback`) but the path must be exactly `/callback` (not `/oauth/callback`). Allowed/default scopes: `openid profile email models:read responses:create messages:create usage:read offline_access`. Missing client symptom: `/oauth/authorize` 400 page with `oauth client not found`; restart `sub2api` after DB-only client changes.
+**v2 OAuth client 必带 `default_group_id`（2026-06-12 踩坑）**: v2 OAuth **不消费**全局 `oauth_default_group_id`，client 若不自带 `default_group_id` 则登录因 `invalid_group` 失败闭合（见 `ResolveOAuthGroup`）。`sakrylle-cli`（2026-06-11 清理后于 06-12 重建）即绑定 `default_group_id=3` (GPT-Pro)。配套修复：① migration 163 把 CLI 注册（loopback `/callback`+`/auth/callback`、OIDC 8 scope、device flow）持久化，避免全量重建出空 `redirect_uris` 的坏 client（`default_group_id` 仍按 148 约定由运营手动设，不写死）；② `device_authorization_endpoint` 之前只出现在 RFC 8414 doc，已搬入 `commonDiscoveryMetadata` 使 OIDC discovery 也暴露（否则 `--device-auth` 报 unsupported）。注册矩阵见 `sakrylle-docs/10-platform-identity/`（current-state §4.4 / rp-integration-guide §14-15）。
+
+**Sakrylle Studio OIDC client（2026-06-16 生产补注册）**: canonical issuer 当前是 `settings.oauth_issuer=https://oidc1.sakrylle.com`（discovery 的 authorize/token 也在 `oidc1`，不是 `sub.`）。生产 `oauth_clients` 已有 `sakrylle-studio`：public desktop、PKCE required、`default_group_id=3`、`redirect_uris=["http://127.0.0.1/callback","http://localhost/callback"]`、`allowed_scopes/default_scopes=["openid","profile","email","models:read","responses:create","messages:create","usage:read","offline_access"]`。Studio 实际生成 `http://127.0.0.1:<port>/callback`，后端 loopback 白名单会放行随机端口，但路径必须精确 `/callback`；`/oauth/callback` 会被拒。事故症状：授权页 400 `oauth client not found`（当 client 缺失）；修复后已验证当前 4-scope 请求和补全资源 scope 请求均返回 `200 授权 Sakrylle Studio`。DB-only client 改动后 `docker compose restart sub2api`。
 
 **GitHub OAuth login** (Sakrylle is client): settings keys `github_oauth_enabled`, `github_oauth_client_id`, `github_oauth_client_secret`, redirect URLs. Manage via direct SQL.
 
 **Password reset**: requires `frontend_url=https://sub.sakrylle.com` in settings. Missing → 500.
+
+### sakrylle-web (chat.sakrylle.com) OIDC SSO 部署（2026-06-13 上线，单 token RP 契约消费方）
+
+open-webui 0.9.6,`/opt/stack/sakrylle-web/.env`,`sakrylle-web` 服务在主 compose。它是"单 token RP 契约"的消费方:**用户用自己登录拿到的 OIDC token 调网关,不用静态 key**。完整踩坑见 memory `sakrylle-web-oidc-deploy`。要点:
+
+- **`.env` 三处必须正确**(否则各种半残):
+  - `OPENAI_API_KEYS=`（留空）—— 静态 key 模式已弃用;填了失效 key 会让模型下拉空（401）。
+  - `OPENAI_API_CONFIGS={"0":{"auth_type":"system_oauth","model_list_query":{"groups":"all"}}}` —— `system_oauth` 转发用户 OIDC token;**`model_list_query` 不可省**,否则走裸 `/v1/models` 只显示单组（症状:下拉只有 GPT-Image）。
+  - `OAUTH_SCOPES` 必须含 `chat.completions:create responses:create messages:create usage:read`，否则能列模型但聊天 **403 `insufficient_scope`**。token 实授 scope 取决于 `.env` 请求了什么，**改 scope 后用户必须重新登录**才生效。
+- **PKCE**:client `pkce_required=true`，open-webui confidential client 默认不发 `code_challenge` → authorize 400。`.env` 加 `OAUTH_CODE_CHALLENGE_METHOD=S256` 修复（confidential+PKCE 可共存）。
+- **OIDC client `default_group_id` 必填**（v2 不消费全局 `oauth_default_group_id`）。已设 `=14`（active GPT-Pro;注意 groups 表有软删除的同名 id 13，选前查 `deleted_at IS NULL`）。
+- **client_secret 是 bcrypt**，DB 只存 hash;轮换时务必服务器端 python 生成 + psql stdin dollar-quoting 写入（`$2b$` 会被 shell 吃掉，症状 hash len=15）。
+- **nginx upstream 用容器名**:`proxy_pass http://sakrylle-web:8080`（不是 `127.0.0.1`，nginx 在容器里 loopback 不通宿主机 → 502）。见 memory `sakrylle-web-nginx-upstream`。
+- **跨组**:body `model:"<gid>:<model>"`（gid 在 token 的 `allowed_groups_snapshot` 内）→ `group_override` rebind 路由+计费到该组（实测账本 `group_id`/`rate_multiplier` 按前缀组，非 token 原绑组）。`?groups=all` 每模型对象自带 `group.{id,name,rate_multiplier}`，前端零硬编码。
+- 改 `.env` 后 `docker compose up -d --force-recreate sakrylle-web`。
 
 ## Upstream Channels & Groups
 
@@ -143,6 +162,18 @@ History: `ai.centos.hk` → 95 OAuth accounts (2026-05-31) → **single apikey a
 
 `gpt-5.3-codex` removed 2026-06-01 (OpenAI retired).
 
+#### 5. Text GPT groups need `allow_image_generation=true` (Codex 403, hit 2026-06-13)
+
+**症状**: GPT-Pro 整组不可用、客户端报 403 `Image generation is not enabled for this group`,但 `status.sakrylle.com` 全绿。
+
+**根因**: 图片生成权限闸(`handler/openai_gateway_handler.go:250`,另有 `service/openai_gateway_service.go`、`openai_ws_forwarder.go`)会对任何被判定为"图片生成意图"的 `/v1/responses` 请求,在分组 `allow_image_generation=false` 时返回 403。判定器 `openAIJSONToolsContainImageGeneration`(`service/image_generation_intent.go`)只要请求的 `tools[]` 数组**包含** `image_generation` 工具就命中——而 **Codex 每个请求(含纯写代码对话)都声明该工具** → 走文本 GPT 组的 Codex 请求全被提前拦掉(审核通过后 ~4ms 403,不打上游)。**监测探针发纯聊天、不带 tools,所以从不触发** → 状态绿但客户端全挂。
+
+**修复**: `UPDATE groups SET allow_image_generation=true WHERE id IN (3,4,14)`(GPT-Pro-Special / GPT-Plus / GPT-Pro)+ `docker compose restart sub2api`(重载分组缓存,见 Deepseek 陷阱 #1)。**无白嫖风险**:这几组走渠道 9(`restrict_models=true`,pricing 仅文本模型),真发图片请求照样 503;该开关在文本组上唯一作用就是误杀 Codex 流量。
+
+**规则**: `allow_image_generation` 是给专用图片组(5/11/21,`gpt-image-*` 渠道)用的开关;**任何 openai-platform 的文本/编码组都必须设为 `true`**,否则 Codex 必炸。新建编码类组记得打开。
+
+**配套字段 `image_only`(migration 164,2026-06-13)**: 上面给 3/14 设 `allow_image_generation=true` 连带破坏了 OIDC 同意页分桶与 OAuth scope 访问过滤——两者曾用 `allow_image_generation` 当"是否图片组"判别(GPT-Pro/Pro-Special 被误归图片组;chat-only 客户端如 sakrylle-web 的 `allowed_groups_snapshot` 直接剔除它们)。新增专用判别字段 `groups.image_only` 解耦:真图片组(5/11/21)`image_only=true`,文本组(含为 Codex 打了 `allow_image_generation=true` 的 3/14)`image_only=false`。`allow_image_generation` 语义不变。**新建图片专用组必须手动 `UPDATE groups SET image_only=true WHERE id=...` + 重启 sub2api**(分组缓存)。漏设后果:该组对 image 客户端不可见、对 chat 客户端可见、同意页归入 Responses 桶(优雅降级,不崩)。SQL 维护,无后台开关。代码:`service/oauth_group_access.go` `groupVisibleForScope` + `handler/oauth_provider_consent.go` 分桶。详见 memory `image-only-group-discriminator`。
+
 ## Async Image Bridge (group 21 / channel 13 / account 1131 → 12ai)
 
 Fixes the gpt-image-2 **524** (upstream sync render >100s hits its Cloudflare origin timeout). For accounts flagged async, the gateway submits to **12ai's async task API** (`cdn.12ai.org` `POST /v1/task/submit` → poll `GET /v1/task/{id}` → download `outputs[]` → return `b64_json`), so no hop stays open >100s. Client protocol unchanged. Code: `backend/internal/service/openai_images_async.go` + `openai_images_usage_synth.go`; branch in `openai_images.go` `forwardOpenAIImagesAPIKey` on `account.IsAsyncImage()`.
@@ -179,7 +210,13 @@ Fixes the gpt-image-2 **524** (upstream sync render >100s hits its Cloudflare or
 
 **Admin password rotation**: bcrypt 72B limit. **Assert hash non-empty + starts `$2b$` before SQL**. Script in original doc line 337-349. `.env` `ADMIN_PASSWORD` bootstrap-only.
 
-**Cloudflare DNS**: token at `/opt/stack/secrets/cloudflare.ini`, zone `cf223b3e0b2adcd4876cea779b041a1c`. All subdomains A → `64.83.47.108`, DNS-only (not proxied).
+**Cloudflare DNS**: token at `/opt/stack/secrets/cloudflare.ini`, zone `cf223b3e0b2adcd4876cea779b041a1c`. Subdomains A → `154.36.159.42`, DNS-only (not proxied) **EXCEPT `sub.sakrylle.com`** (see GFW note below). Note: the `cloudflare.ini` token is DNS-only scope (certbot); reading zone settings (SSL mode etc.) needs a broader token.
+
+### `sub.sakrylle.com` GFW block + Cloudflare-proxy exception (2026-06-15)
+
+**`sub.sakrylle.com` (the user-facing panel) is GFW-blocked from mainland China**: per-hostname **DNS poisoning** (returns forged IPs — seen `69.63.186.31` Facebook range, `108.160.169.55` Dropbox, `2a03:2880:...face:b00c` Facebook v6) **+ SNI-based TLS RST** (Client Hello carrying `sub.sakrylle.com` gets reset). `api.sakrylle.com` and the origin are **not** blocked. **The server is healthy** — failed connections never reach it. Diagnosis trail: only `sub` fails, same-IP siblings fine, phone (cellular) fine, this-PC fails; `dig`→forged IP, `curl --resolve <realIP>`→RST. Memory: `sub-domain-gfw-blocked`.
+
+**Mitigation applied**: `sub.sakrylle.com` flipped to **Cloudflare proxied (orange cloud)** — the only exception to the DNS-only policy. SSL/TLS mode is **Full** (origin has valid LE cert; consider upgrading to Full strict). This hides the origin IP and helps clean-DNS users, **but does NOT fully restore China direct access**: GFW still injects forged DNS for the domain string (orange's real CF IP never arrives over plain UDP/53), and the plaintext SNI to the CF edge can still be RST. Full direct-access fix needs **DoH (bypass DNS injection) + ECH (hide SNI)** — pending. Until then, **mainland users must use a proxy** (most API-resale customers already do); operator's own Loon: `DOMAIN-SUFFIX,sakrylle.com,Proxies` (NOT DIRECT — see memory `loon-fakeip-proxy-routing`). Reverting orange: PATCH the `sub` A record `proxied:false`.
 
 ## Syncing Upstream
 
