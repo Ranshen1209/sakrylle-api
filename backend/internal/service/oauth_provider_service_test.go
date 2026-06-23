@@ -1576,6 +1576,10 @@ func (s *stubOriginRepo) ListClientsWithFrontchannelLogout(_ context.Context) ([
 	return nil, nil
 }
 
+func (s *stubOriginRepo) ListClientsWithBackchannelLogout(_ context.Context) ([]*OAuthClient, error) {
+	return nil, nil
+}
+
 func newOriginTestService(repo OAuthClientRepository) *OAuthProviderService {
 	// Only clientRepo is exercised by AllowedClientOrigins; the rest can be
 	// nil without panicking because the method never reaches them.
