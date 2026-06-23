@@ -267,7 +267,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	groupAccessPolicy := service.NewDefaultGroupAccessPolicy(userRepository, groupRepository, userSubscriptionRepository)
 	oAuthTokenMintRepository := repository.NewOAuthTokenMintRepo(client)
 	oidcKeyService := service.ProvideOIDCKeyService(client, secretEncryptor)
-	oidcKeyRotationScheduler := service.ProvideOIDCKeyRotationScheduler(oidcKeyService, settingRepository)
 	oAuthProviderService := service.ProvideOAuthProviderService(oAuthClientRepository, oAuthCodeRepository, oAuthRefreshTokenRepository, oAuthAccessTokenRepository, oAuthDeviceCodeRepository, oAuthAuthorizeTransactionRepository, oAuthAPIKeyRepository, groupRepository, groupAccessPolicy, settingRepository, apiKeyAuthCacheInvalidator, oAuthTokenMintRepository, oidcKeyService, settingService, userService)
 	oAuthProviderHandler := handler.NewOAuthProviderHandler(oAuthProviderService, settingService)
 	oAuthDeviceHandler := handler.NewOAuthDeviceHandler(oAuthProviderService)
@@ -295,6 +294,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	oAuthCleanupService := service.ProvideOAuthCleanupService(db)
+	oidcKeyRotationScheduler := service.ProvideOIDCKeyRotationScheduler(oidcKeyService, settingRepository)
 	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, oAuthCleanupService, oidcKeyRotationScheduler)
 	application := &Application{
 		Server:  httpServer,
