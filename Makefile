@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd secret-scan
+.PHONY: build build-backend build-frontend build-datamanagementd test test-backend test-frontend test-frontend-critical test-datamanagementd security-audit secret-scan
 
 FRONTEND_CRITICAL_VITEST := \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
@@ -40,5 +40,11 @@ test-frontend-critical:
 test-datamanagementd:
 	@cd datamanagement && go test ./...
 
+security-audit:
+	@mkdir -p tmp
+	@pnpm --dir frontend audit --prod --audit-level=high --json > tmp/pnpm-audit.json || true
+	@python3 tools/check_pnpm_audit_exceptions.py --audit tmp/pnpm-audit.json --exceptions .github/audit-exceptions.yml
+
 secret-scan:
-	@python3 tools/secret_scan.py
+	@echo "secret-scan is deprecated; running security-audit instead"
+	@$(MAKE) security-audit

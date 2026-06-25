@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Sakrylle API fork of sub2api. This file is a routing index, not a required reading list.
 
