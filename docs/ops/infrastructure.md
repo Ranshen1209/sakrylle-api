@@ -1,0 +1,74 @@
+# Infrastructure And Deploy
+
+## Repository And Production
+
+- **Upstream**: [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api)
+- **Fork**: [Ranshen1209/sub2api](https://github.com/Ranshen1209/sub2api), branch `theme/monet-purple`
+- **Production**: `sub.sakrylle.com` (app), `api.sakrylle.com` (API), `doc.sakrylle.com` (docs), `status.sakrylle.com` (monitor)
+- **Server**: `cliproxyapi-jp` (`154.36.159.42`, SSH alias `ssh-tokyo`)
+- **Architecture**: `Public 443 -> Nginx stream (ssl_preread) -> {TLS: 127.0.0.1:8443 Nginx http -> upstream container | SSH: 172.18.0.1:22 host sshd}`. Port 80 goes to Nginx directly.
+
+`sslh` was replaced on 2026-06-15 because `sslh-fork` dropped connections under concurrent bursts, surfacing as "Agnes image hangs". Rollback profile remains disabled in compose. SSH-over-443 rides the same edge, so never drive 443-edge changes through 443; use direct port 22.
+
+## Compose Stack
+
+Compose stack path: `/opt/stack/docker-compose.yml`.
+
+- `sub2api` — `ghcr.io/ranshen1209/sakrylle-api:purple`
+- `sub2api-postgres` — PostgreSQL 18
+- `sub2api-redis` — Redis 8
+- `relay-pulse`
+- `smtp-relay` — unused, can be cleaned up
+
+Configs live under `/opt/stack/`: `sub2api/.env`, `nginx/conf.d/*.conf`, `relay-pulse/config/`, `secrets/cloudflare.ini`, `certs/live/sakrylle.com/`.
+
+Admin bootstrap account: `admin@sub2api.local`; bootstrap password comes from `.env` as `ADMIN_PASSWORD`. Restarts do not reseed it.
+
+## Build And Deploy
+
+Push to `theme/monet-purple` to trigger GitHub Actions and publish `ghcr.io/ranshen1209/sakrylle-api:purple`.
+
+```bash
+git push origin theme/monet-purple
+ssh ssh-tokyo 'docker pull ghcr.io/ranshen1209/sakrylle-api:purple && cd /opt/stack && docker compose up -d sub2api'
+curl -sS https://sub.sakrylle.com/health
+```
+
+Local preview needs:
+
+- `JWT_SECRET` at least 32 bytes (64 hex is fine)
+- `TOTP_ENCRYPTION_KEY` exactly 32 bytes (64 hex)
+- `POSTGRES_PASSWORD` set
+
+Default local URL: `http://localhost:18080`.
+
+## Companion Services
+
+| Domain | Purpose | Source | Notes |
+| --- | --- | --- | --- |
+| `api.sakrylle.com` | Nginx reverse proxy, API-only | `nginx/conf.d/sakrylle-api.conf` | Allows `/v1/`, `/health`, and root gateway aliases such as `/responses`, `/chat/completions`, `/embeddings`, `/images/{generations,edits}`, `/videos`, `/backend-api/codex/`, `/antigravity/`. Everything else returns 404. Root aliases preserve auth middleware and exist for clients with base URL missing `/v1`. |
+| `doc.sakrylle.com` | VitePress docs | external private docs repo | `try_files` must include `$uri.html` before fallback for `cleanUrls: true`. |
+| `automatic-delivery.sakrylle.com` | Agiso Xianyu auto-delivery bridge | `nginx/conf.d/sakrylle-automatic-delivery.conf` | Root webhook only: `POST /integrations/agiso/delivery` plus `/health`; all other paths 404. |
+| `status.sakrylle.com` | relay-pulse fork | `Ranshen1209/relay-pulse` `theme/sakrylle` | 7 probes at 3 minute cadence, about $0.51/month. Config hot-reloads. |
+| `sakrylle.com` / `www` | 301 redirect | `nginx/conf.d/sakrylle-redirect.conf` | Redirects to `https://sub.sakrylle.com/`. |
+
+Locked docs policies for `doc.sakrylle.com`: refund is 3 days, SLA is best-effort, no age limit, reselling needs written permission, `codex-auto-review` docs alias is `gpt-5.4`, and group names use `Claude-Kiro`, `GPT-Pro`, `GPT-Plus`.
+
+## Common Ops
+
+```bash
+# Status
+ssh ssh-tokyo 'cd /opt/stack && docker compose ps sub2api sub2api-postgres sub2api-redis'
+
+# Logs
+ssh ssh-tokyo 'cd /opt/stack && docker compose logs --tail=50 sub2api'
+
+# Backup
+ssh ssh-tokyo 'docker exec sub2api-postgres pg_dump -U sub2api sub2api > /opt/stack/backups/sub2api-db-$(date +%F).sql'
+
+# Restart after config change
+ssh ssh-tokyo 'cd /opt/stack && docker compose restart sub2api'
+
+# Pull latest image
+ssh ssh-tokyo 'docker pull ghcr.io/ranshen1209/sakrylle-api:purple && cd /opt/stack && docker compose up -d sub2api'
+```

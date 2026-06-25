@@ -12,10 +12,10 @@ This repository keeps the Go backend, Vue frontend, deployment assets, and local
 | `frontend/` | Vue 3 + Vite management panel. |
 | `backend/internal/web/dist/` | Embedded frontend build output placeholder/asset target for the backend. |
 | `deploy/` | Docker Compose examples, service files, deployment scripts, and environment template. |
+| `docs/` | Development and operations notes. |
 | `nginx/` | Nginx configuration assets. |
-| `assets/` | Static project assets. |
 | `scripts/` | Project scripts. |
-| `tools/` | Maintenance tools, including secret scanning. |
+| `tools/` | Maintenance tools, including audit exception checks. |
 | `.claude/skills/` | Local Codex/Claude skills used while operating this fork. |
 
 ## Requirements
@@ -45,10 +45,10 @@ Run frontend checks:
 make test-frontend
 ```
 
-Run the secret scanner:
+Run the frontend security audit exception check:
 
 ```bash
-make secret-scan
+make security-audit
 ```
 
 Build only the backend:
