@@ -38,7 +38,7 @@ func (f *fakeDiagnoser) DiagnoseModelAvailabilityForPlatform(
 	return f.resp
 }
 
-func ptrInt64(v int64) *int64 { return &v }
+func testInt64Ptr(v int64) *int64 { return &v }
 
 // newTestGinContextWithRequest wraps the bare newTestGinContext helper
 // (defined in openai_gateway_cyber_test.go) by additionally attaching a stub
@@ -51,7 +51,7 @@ func newTestGinContextWithRequest() *gin.Context {
 
 func TestClassifyNoAccountError_NilDiagnoser_Falls503(t *testing.T) {
 	c := newTestGinContextWithRequest()
-	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
+	apiKey := &service.APIKey{GroupID: testInt64Ptr(7)}
 
 	cls := classifyNoAccountErrorFromGin(c, nil, apiKey, "gpt-5", "gpt-5", service.PlatformOpenAI)
 
@@ -86,7 +86,7 @@ func TestClassifyNoAccountError_NilGroupID_Falls503(t *testing.T) {
 func TestClassifyNoAccountError_EmptyModel_Falls503(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
-	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
+	apiKey := &service.APIKey{GroupID: testInt64Ptr(7)}
 
 	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "   ", "", service.PlatformOpenAI)
 
@@ -98,7 +98,7 @@ func TestClassifyNoAccountError_EmptyModel_Falls503(t *testing.T) {
 func TestClassifyNoAccountError_ModelNotSupported_Returns404(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
-	apiKey := &service.APIKey{GroupID: ptrInt64(42)}
+	apiKey := &service.APIKey{GroupID: testInt64Ptr(42)}
 
 	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "gpt-5.1-codex-mini", "gpt-5.1-codex-mini", service.PlatformOpenAI)
 
@@ -117,7 +117,7 @@ func TestClassifyNoAccountError_ModelNotSupported_Returns404(t *testing.T) {
 func TestClassifyNoAccountError_HasModelSupport_KeepsRoutingMessageGenerationToCaller(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}}
-	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
+	apiKey := &service.APIKey{GroupID: testInt64Ptr(7)}
 
 	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "gpt-5", "gpt-5", service.PlatformOpenAI)
 
@@ -129,7 +129,7 @@ func TestClassifyNoAccountError_HasModelSupport_KeepsRoutingMessageGenerationToC
 func TestClassifyNoAccountError_NoAccountsInPool_Stays503(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: false, HasModelSupport: false}}
-	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
+	apiKey := &service.APIKey{GroupID: testInt64Ptr(7)}
 
 	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "gpt-5", "gpt-5", service.PlatformOpenAI)
 
@@ -140,7 +140,7 @@ func TestClassifyNoAccountError_NoAccountsInPool_Stays503(t *testing.T) {
 func TestClassifyNoAccountError_DisplayModelOverridesRoutingForMessage(t *testing.T) {
 	c := newTestGinContextWithRequest()
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
-	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
+	apiKey := &service.APIKey{GroupID: testInt64Ptr(7)}
 
 	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "gpt-5", "claude-3-fancy", service.PlatformOpenAI)
 
@@ -152,7 +152,7 @@ func TestClassifyNoAccountError_DisplayModelOverridesRoutingForMessage(t *testin
 
 func TestClassifyNoAccountError_FromGin_NilContextStillSafe(t *testing.T) {
 	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: false}}
-	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
+	apiKey := &service.APIKey{GroupID: testInt64Ptr(7)}
 
 	cls := classifyNoAccountErrorFromGin(nil, fd, apiKey, "gpt-5", "gpt-5", service.PlatformOpenAI)
 
