@@ -22,7 +22,7 @@
 
         <div class="rounded-lg bg-white p-6 shadow">
           <div class="text-sm text-gray-600">Balance</div>
-          <div class="text-2xl font-bold text-indigo-600">${{ balance }}</div>
+          <div class="text-2xl font-bold text-indigo-600">￥{{ balance }}</div>
         </div>
 
         <div class="rounded-lg bg-white p-6 shadow">
@@ -262,7 +262,7 @@ const apiKeys = ref<ApiKey[]>([])
                   {{ user.role }}
                 </span>
                 <span class="text-sm font-medium text-gray-700">
-                  ${{ user.balance.toFixed(2) }}
+                  ￥{{ user.balance.toFixed(2) }}
                 </span>
                 <button class="text-sm text-indigo-600 hover:text-indigo-800">Edit</button>
               </div>
@@ -335,7 +335,7 @@ const users = ref<User[]>([])
           <div>
             <label class="mb-1 block text-sm font-medium text-gray-700"> Balance </label>
             <div class="rounded-lg bg-gray-50 px-3 py-2 font-semibold text-indigo-600">
-              ${{ user?.balance.toFixed(2) }}
+              ￥{{ user?.balance.toFixed(2) }}
             </div>
           </div>
         </div>

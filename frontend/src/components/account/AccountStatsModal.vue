@@ -608,7 +608,7 @@ const lineChartOptions = computed(() => ({
           const label = context.dataset.label || ''
           const value = context.raw
           if (label.includes('USD')) {
-            return `${label}: $${formatCost(value)}`
+            return `${label}: ￥${formatCost(value)}`
           }
           return `${label}: ${formatNumber(value)}`
         }

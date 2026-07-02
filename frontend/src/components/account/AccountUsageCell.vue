@@ -361,7 +361,7 @@
               {{ formatWindowTokens(grokLocalUsage) }}
             </span>
             <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">
-              A ${{ formatWindowCost(grokLocalUsage) }}
+              A ￥{{ formatWindowCost(grokLocalUsage) }}
             </span>
           </div>
         </div>
