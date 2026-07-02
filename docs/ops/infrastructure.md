@@ -4,7 +4,7 @@
 
 - **Upstream**: [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api)
 - **Fork**: [Ranshen1209/sub2api](https://github.com/Ranshen1209/sub2api), branch `theme/monet-purple`
-- **Production**: `sub.sakrylle.com` (app), `api.sakrylle.com` (API), `doc.sakrylle.com` (docs), `status.sakrylle.com` (monitor)
+- **Production**: `ai1.sakrylle.com` (app), `api.sakrylle.com` (API), `doc.sakrylle.com` (docs), `status.sakrylle.com` (monitor)
 - **Server**: `cliproxyapi-jp` (`154.36.159.42`, SSH alias `ssh-tokyo`)
 - **Architecture**: `Public 443 -> Nginx stream (ssl_preread) -> {TLS: 127.0.0.1:8443 Nginx http -> upstream container | SSH: 172.18.0.1:22 host sshd}`. Port 80 goes to Nginx directly.
 
@@ -31,7 +31,7 @@ Push to `theme/monet-purple` to trigger GitHub Actions and publish `ghcr.io/rans
 ```bash
 git push origin theme/monet-purple
 ssh ssh-tokyo 'docker pull ghcr.io/ranshen1209/sakrylle-api:purple && cd /opt/stack && docker compose up -d sub2api'
-curl -sS https://sub.sakrylle.com/health
+curl -sS https://ai1.sakrylle.com/health
 ```
 
 Local preview needs:
@@ -50,7 +50,7 @@ Default local URL: `http://localhost:18080`.
 | `doc.sakrylle.com` | VitePress docs | external private docs repo | `try_files` must include `$uri.html` before fallback for `cleanUrls: true`. |
 | `automatic-delivery.sakrylle.com` | Agiso Xianyu auto-delivery bridge | `nginx/conf.d/sakrylle-automatic-delivery.conf` | Root webhook only: `POST /integrations/agiso/delivery` plus `/health`; all other paths 404. |
 | `status.sakrylle.com` | relay-pulse fork | `Ranshen1209/relay-pulse` `theme/sakrylle` | 7 probes at 3 minute cadence, about $0.51/month. Config hot-reloads. |
-| `sakrylle.com` / `www` | 301 redirect | `nginx/conf.d/sakrylle-redirect.conf` | Redirects to `https://sub.sakrylle.com/`. |
+| `sakrylle.com` / `www` | 301 redirect | `nginx/conf.d/sakrylle-redirect.conf` | Redirects to `https://ai1.sakrylle.com/`. |
 
 Locked docs policies for `doc.sakrylle.com`: refund is 3 days, SLA is best-effort, no age limit, reselling needs written permission, `codex-auto-review` docs alias is `gpt-5.4`, and group names use `Claude-Kiro`, `GPT-Pro`, `GPT-Plus`.
 

@@ -66,7 +66,7 @@ Manage via direct SQL when needed.
 
 ## Password Reset
 
-Password reset requires `frontend_url=https://sub.sakrylle.com` in settings. Missing setting causes 500.
+Password reset requires `frontend_url=https://ai1.sakrylle.com` in settings. Missing setting causes 500.
 
 ## Sakrylle Web OIDC SSO
 
