@@ -1167,6 +1167,74 @@ func TestExtractOpenAIImagesBillableCountFromJSONBytes_CompletedEvent(t *testing
 	require.Equal(t, 1, extractOpenAIImagesBillableCountFromJSONBytes(body))
 }
 
+func TestOpenAIGatewayServiceForwardImages_APIKeyGrokEditConvertsMultipartToXAIJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-image-lite"))
+	require.NoError(t, writer.WriteField("prompt", "make it cinematic"))
+	require.NoError(t, writer.WriteField("response_format", "b64_json"))
+	partHeader := textproto.MIMEHeader{}
+	partHeader.Set("Content-Disposition", `form-data; name="image"; filename="source.png"`)
+	partHeader.Set("Content-Type", "image/png")
+	imagePart, err := writer.CreatePart(partHeader)
+	require.NoError(t, err)
+	_, err = imagePart.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a})
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_grok_img_edit_apikey"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"created":1710000009,"data":[{"b64_json":"Z3Jvay1lZGl0ZWQ="}]}`)),
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body.Bytes())
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       8,
+		Name:     "grok-openai-compatible-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://api.x.ai/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body.Bytes(), parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://api.x.ai/v1/images/edits", upstream.lastReq.URL.String())
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
+	require.True(t, gjson.ValidBytes(upstream.lastBody))
+	require.Equal(t, "grok-imagine-image-lite", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "make it cinematic", gjson.GetBytes(upstream.lastBody, "prompt").String())
+	require.Equal(t, "b64_json", gjson.GetBytes(upstream.lastBody, "response_format").String())
+	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "image.type").String())
+	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "image.url").String(), "data:image/png;base64,"))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "image.image_url").Exists())
+	require.Equal(t, "Z3Jvay1lZGl0ZWQ=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyEditUsesConfiguredV1BaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

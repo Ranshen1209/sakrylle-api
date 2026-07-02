@@ -402,7 +402,7 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
 	for _, imageURL := range info.InputImageURLs {
 		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
-			images = append(images, map[string]string{"image_url": imageURL})
+			images = append(images, xaiImageURLRef(imageURL))
 		}
 	}
 	for _, upload := range info.Uploads {
@@ -410,7 +410,7 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 		if err != nil {
 			return nil, "", err
 		}
-		images = append(images, map[string]string{"image_url": dataURL})
+		images = append(images, xaiImageURLRef(dataURL))
 	}
 	if len(images) > 0 {
 		payload["image"] = images[0]
@@ -428,7 +428,7 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 		maskImageURL = dataURL
 	}
 	if maskImageURL != "" {
-		payload["mask"] = map[string]string{"image_url": maskImageURL}
+		payload["mask"] = xaiImageURLRef(maskImageURL)
 	}
 
 	out, err := marshalOpenAIUpstreamJSON(payload)

@@ -413,7 +413,9 @@ func TestForwardGrokMediaImagesEditMultipartConvertsToJSON(t *testing.T) {
 	require.True(t, json.Valid(upstream.lastBody))
 	require.Equal(t, "grok-imagine-edit", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "edit this private image", gjson.GetBytes(upstream.lastBody, "prompt").String())
-	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "image.image_url").String(), "data:image/png;base64,"))
+	require.Equal(t, "image_url", gjson.GetBytes(upstream.lastBody, "image.type").String())
+	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "image.url").String(), "data:image/png;base64,"))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "image.image_url").Exists())
 }
 
 func TestForwardGrokMediaImagesEditMultipartPreservesResponseFormatAndNormalizesURL(t *testing.T) {
@@ -469,7 +471,9 @@ func TestForwardGrokMediaImagesEditMultipartPreservesResponseFormatAndNormalizes
 	require.NoError(t, err)
 	require.Len(t, upstream.bodies, 1)
 	require.Equal(t, "b64_json", gjson.GetBytes(upstream.bodies[0], "response_format").String())
-	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.bodies[0], "image.image_url").String(), "data:image/png;base64,"))
+	require.Equal(t, "image_url", gjson.GetBytes(upstream.bodies[0], "image.type").String())
+	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.bodies[0], "image.url").String(), "data:image/png;base64,"))
+	require.False(t, gjson.GetBytes(upstream.bodies[0], "image.image_url").Exists())
 	require.Equal(t, base64.StdEncoding.EncodeToString(imageBytes), gjson.Get(recorder.Body.String(), "data.0.b64_json").String())
 	require.False(t, gjson.Get(recorder.Body.String(), "data.0.url").Exists())
 }

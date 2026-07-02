@@ -478,6 +478,10 @@ func validateOpenAIImagesModel(model string) error {
 	return fmt.Errorf("images endpoint requires an image model, got %q", model)
 }
 
+func isGrokImagineImageModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-imagine-image")
+}
+
 func normalizeOpenAIImagesEndpointPath(path string) string {
 	trimmed := strings.TrimSpace(path)
 	switch {
@@ -601,7 +605,14 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			body = injected
 		}
 	}
-	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
+	var forwardBody []byte
+	var forwardContentType string
+	var err error
+	if shouldRewriteOpenAIImagesGrokEditToXAIJSON(parsed, upstreamModel) {
+		forwardBody, forwardContentType, err = rewriteOpenAIImagesGrokEditToXAIJSON(parsed, upstreamModel)
+	} else {
+		forwardBody, forwardContentType, err = rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -816,6 +827,79 @@ func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]
 		return nil, "", fmt.Errorf("rewrite image request model: %w", err)
 	}
 	return rewritten, contentType, nil
+}
+
+func shouldRewriteOpenAIImagesGrokEditToXAIJSON(parsed *OpenAIImagesRequest, model string) bool {
+	return parsed != nil && parsed.Endpoint == openAIImagesEditsEndpoint && isGrokImagineImageModel(model)
+}
+
+func rewriteOpenAIImagesGrokEditToXAIJSON(parsed *OpenAIImagesRequest, model string) ([]byte, string, error) {
+	if parsed == nil {
+		return nil, "", fmt.Errorf("parsed images request is required")
+	}
+
+	payload := make(map[string]any)
+	if model = strings.TrimSpace(model); model != "" {
+		payload["model"] = model
+	}
+	if prompt := strings.TrimSpace(parsed.Prompt); prompt != "" {
+		payload["prompt"] = prompt
+	}
+	if parsed.N > 1 {
+		payload["n"] = parsed.N
+	}
+	if size := strings.TrimSpace(parsed.Size); size != "" {
+		payload["size"] = size
+	}
+	if responseFormat := strings.TrimSpace(parsed.ResponseFormat); responseFormat != "" {
+		payload["response_format"] = responseFormat
+	}
+
+	images := make([]map[string]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads))
+	for _, imageURL := range parsed.InputImageURLs {
+		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
+			images = append(images, xaiImageURLRef(imageURL))
+		}
+	}
+	for _, upload := range parsed.Uploads {
+		dataURL, err := openAIImageUploadToDataURL(upload)
+		if err != nil {
+			return nil, "", err
+		}
+		images = append(images, xaiImageURLRef(dataURL))
+	}
+	if len(images) == 0 {
+		return nil, "", fmt.Errorf("image is required")
+	}
+	payload["image"] = images[0]
+	if len(images) > 1 {
+		payload["images"] = images
+	}
+
+	maskImageURL := strings.TrimSpace(parsed.MaskImageURL)
+	if parsed.MaskUpload != nil {
+		dataURL, err := openAIImageUploadToDataURL(*parsed.MaskUpload)
+		if err != nil {
+			return nil, "", err
+		}
+		maskImageURL = dataURL
+	}
+	if maskImageURL != "" {
+		payload["mask"] = xaiImageURLRef(maskImageURL)
+	}
+
+	out, err := marshalOpenAIUpstreamJSON(payload)
+	if err != nil {
+		return nil, "", err
+	}
+	return out, "application/json", nil
+}
+
+func xaiImageURLRef(imageURL string) map[string]string {
+	return map[string]string{
+		"url":  strings.TrimSpace(imageURL),
+		"type": "image_url",
+	}
 }
 
 func rewriteOpenAIImagesMultipartModel(body []byte, contentType string, model string) ([]byte, string, error) {
