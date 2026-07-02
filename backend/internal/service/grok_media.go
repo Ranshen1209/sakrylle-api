@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type GrokMediaEndpoint string
@@ -47,6 +49,7 @@ type GrokMediaRequestInfo struct {
 	N              int
 	Size           string
 	SizeTier       string
+	ResponseFormat string
 	InputImageURLs []string
 	MaskImageURL   string
 	Uploads        []OpenAIImagesUpload
@@ -112,6 +115,7 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Model = strings.TrimSpace(info.Model)
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
+	info.ResponseFormat = strings.ToLower(strings.TrimSpace(info.ResponseFormat))
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
 	if info.N <= 0 {
 		info.N = 1
@@ -126,6 +130,7 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
+	info.ResponseFormat = strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "response_format").String()))
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
 	}
@@ -225,6 +230,8 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Prompt = value
 		case "size":
 			info.Size = value
+		case "response_format":
+			info.ResponseFormat = strings.ToLower(value)
 		case "n":
 			if n, err := strconv.Atoi(value); err == nil {
 				info.N = n
@@ -343,8 +350,12 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if err != nil {
 		return nil, err
 	}
-	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
-	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
+	responseBody, err := s.normalizeGrokImageResponse(ctx, endpoint, account, respBody, requestInfo.ResponseFormat)
+	if err != nil {
+		return nil, err
+	}
+	writeGrokMediaResponse(c, resp, responseBody, s.responseHeaderFilter)
+	usage := grokMediaUsageFromResponse(endpoint, requestInfo, responseBody)
 	return &OpenAIForwardResult{
 		RequestID:        requestIDHeader,
 		ResponseID:       usage.ResponseID,
@@ -384,6 +395,9 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	if info.Size != "" {
 		payload["size"] = info.Size
 	}
+	if info.ResponseFormat != "" {
+		payload["response_format"] = info.ResponseFormat
+	}
 
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
 	for _, imageURL := range info.InputImageURLs {
@@ -422,6 +436,172 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 		return nil, "", err
 	}
 	return out, "application/json", nil
+}
+
+func (s *OpenAIGatewayService) normalizeGrokImageResponse(
+	ctx context.Context,
+	endpoint GrokMediaEndpoint,
+	account *Account,
+	body []byte,
+	responseFormat string,
+) ([]byte, error) {
+	if endpoint != GrokMediaEndpointImagesGenerations && endpoint != GrokMediaEndpointImagesEdits {
+		return body, nil
+	}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, nil
+	}
+	data := gjson.GetBytes(body, "data")
+	if !data.IsArray() {
+		return body, nil
+	}
+
+	format := strings.ToLower(strings.TrimSpace(responseFormat))
+	if format == "" {
+		format = "b64_json"
+	}
+	out := append([]byte(nil), body...)
+	changed := false
+	for idx, item := range data.Array() {
+		imageB64 := normalizeOpenAIImageBase64(item.Get("b64_json").String())
+		mimeType := grokImageMIMETypeFromDataURL(item.Get("url").String())
+		if imageB64 == "" {
+			imageURL := strings.TrimSpace(item.Get("url").String())
+			if imageURL == "" {
+				continue
+			}
+			if normalized := normalizeOpenAIImageBase64(imageURL); normalized != "" {
+				imageB64 = normalized
+			} else {
+				downloaded, contentType, err := s.downloadGrokImageURL(ctx, account, imageURL)
+				if err != nil {
+					return nil, err
+				}
+				imageB64 = base64.StdEncoding.EncodeToString(downloaded)
+				mimeType = normalizeGrokImageMIMEType(contentType, downloaded)
+			}
+		}
+		if imageB64 == "" {
+			continue
+		}
+		if mimeType == "" {
+			mimeType = "image/png"
+		}
+		path := fmt.Sprintf("data.%d", idx)
+		if format == "url" {
+			out, _ = sjson.SetBytes(out, path+".url", "data:"+mimeType+";base64,"+imageB64)
+			out, _ = sjson.DeleteBytes(out, path+".b64_json")
+		} else {
+			out, _ = sjson.SetBytes(out, path+".b64_json", imageB64)
+			out, _ = sjson.DeleteBytes(out, path+".url")
+		}
+		changed = true
+	}
+	if !changed {
+		return body, nil
+	}
+	return out, nil
+}
+
+func (s *OpenAIGatewayService) downloadGrokImageURL(ctx context.Context, account *Account, rawURL string) ([]byte, string, error) {
+	if s == nil || s.httpUpstream == nil {
+		return nil, "", fmt.Errorf("grok image downloader is not configured")
+	}
+	downloadURL := normalizeGrokImageDownloadURL(rawURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Accept", "image/*,*/*;q=0.8")
+	req.Header.Set("User-Agent", "sub2api-grok/1.0")
+
+	accountID := int64(0)
+	concurrency := 1
+	proxyURL := ""
+	if account != nil {
+		accountID = account.ID
+		if account.Concurrency > 0 {
+			concurrency = account.Concurrency
+		}
+		if account.ProxyID != nil && account.Proxy != nil {
+			proxyURL = account.Proxy.URL()
+		}
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, accountID, concurrency)
+	if err != nil {
+		return nil, "", err
+	}
+	if resp == nil {
+		return nil, "", fmt.Errorf("download image bytes failed: empty response")
+	}
+	defer func() {
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("download image bytes failed: status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, openAIImageMaxDownloadBytes+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(data) > openAIImageMaxDownloadBytes {
+		return nil, "", fmt.Errorf("download image bytes failed: image exceeds %d bytes", openAIImageMaxDownloadBytes)
+	}
+	if !isGrokDownloadedImage(resp.Header.Get("Content-Type"), data) {
+		return nil, "", fmt.Errorf("download image bytes failed: non-image response content_type=%q", resp.Header.Get("Content-Type"))
+	}
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
+func isGrokDownloadedImage(contentType string, data []byte) bool {
+	if mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType)); err == nil {
+		if strings.HasPrefix(strings.ToLower(mediaType), "image/") {
+			return true
+		}
+	}
+	if len(data) == 0 {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(http.DetectContentType(data)), "image/")
+}
+
+func normalizeGrokImageDownloadURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	lower := strings.ToLower(trimmed)
+	switch {
+	case strings.HasPrefix(lower, "http://"), strings.HasPrefix(lower, "https://"):
+		return trimmed
+	case strings.HasPrefix(trimmed, "//"):
+		return "https:" + trimmed
+	default:
+		return "https://" + trimmed
+	}
+}
+
+func grokImageMIMETypeFromDataURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(strings.ToLower(raw), "data:") {
+		return ""
+	}
+	semi := strings.Index(raw, ";")
+	if semi <= len("data:") {
+		return ""
+	}
+	return strings.TrimSpace(raw[len("data:"):semi])
+}
+
+func normalizeGrokImageMIMEType(contentType string, data []byte) string {
+	if mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType)); err == nil && strings.HasPrefix(strings.ToLower(mediaType), "image/") {
+		return mediaType
+	}
+	if len(data) > 0 {
+		if detected := http.DetectContentType(data); strings.HasPrefix(strings.ToLower(detected), "image/") {
+			return detected
+		}
+	}
+	return "image/png"
 }
 
 type grokMediaUsageMetadata struct {
