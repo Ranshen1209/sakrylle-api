@@ -455,10 +455,10 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 	})
 }
 
-func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
+func TestOpenAIGatewayMessagesDispatchGateAllowsOpenAICompatibleGroups(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	t.Run("openai_group_without_dispatch_flag_is_rejected", func(t *testing.T) {
+	t.Run("openai_group_without_dispatch_flag_reaches_gateway_dependencies", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(rec)
 		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
@@ -478,9 +478,9 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 		h := &OpenAIGatewayHandler{}
 		h.Messages(c)
 
-		require.Equal(t, http.StatusForbidden, rec.Code)
-		require.Equal(t, "permission_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-		require.Contains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+		require.NotContains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
 	})
 
 	t.Run("grok_group_without_dispatch_flag_reaches_gateway_dependencies", func(t *testing.T) {
@@ -506,6 +506,50 @@ func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 		require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
 		require.NotContains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+	})
+}
+
+func TestAllowsOpenAICompatibleMessagesDispatch(t *testing.T) {
+	t.Run("openai_group_allowed_even_when_flag_false", func(t *testing.T) {
+		group := &service.Group{
+			Platform:              service.PlatformOpenAI,
+			AllowMessagesDispatch: false,
+		}
+
+		require.True(t, allowsOpenAICompatibleMessagesDispatch(group))
+	})
+
+	t.Run("openai_group_allowed_when_flag_true", func(t *testing.T) {
+		group := &service.Group{
+			Platform:              service.PlatformOpenAI,
+			AllowMessagesDispatch: true,
+		}
+
+		require.True(t, allowsOpenAICompatibleMessagesDispatch(group))
+	})
+
+	t.Run("grok_group_allowed_even_when_flag_false", func(t *testing.T) {
+		group := &service.Group{
+			Platform:              service.PlatformGrok,
+			AllowMessagesDispatch: false,
+		}
+
+		require.True(t, allowsOpenAICompatibleMessagesDispatch(group))
+	})
+
+	t.Run("nil_and_non_openai_compatible_groups_not_allowed_by_default", func(t *testing.T) {
+		require.False(t, allowsOpenAICompatibleMessagesDispatch(nil))
+		require.False(t, allowsOpenAICompatibleMessagesDispatch(&service.Group{
+			Platform:              service.PlatformAnthropic,
+			AllowMessagesDispatch: false,
+		}))
+	})
+
+	t.Run("non_openai_compatible_group_can_still_opt_in", func(t *testing.T) {
+		require.True(t, allowsOpenAICompatibleMessagesDispatch(&service.Group{
+			Platform:              service.PlatformAnthropic,
+			AllowMessagesDispatch: true,
+		}))
 	})
 }
 
