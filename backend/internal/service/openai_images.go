@@ -14,6 +14,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -608,7 +609,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	var forwardBody []byte
 	var forwardContentType string
 	var err error
-	if shouldRewriteOpenAIImagesGrokEditToXAIJSON(parsed, upstreamModel) {
+	baseURL := account.GetOpenAIBaseURL()
+	if shouldRewriteOpenAIImagesGrok2APIEditToMultipart(parsed, upstreamModel, baseURL) {
+		forwardBody, forwardContentType, err = rewriteOpenAIImagesGrok2APIEditMultipart(body, parsed.ContentType, upstreamModel)
+	} else if shouldRewriteOpenAIImagesGrokEditToXAIJSON(parsed, upstreamModel, baseURL) {
 		forwardBody, forwardContentType, err = rewriteOpenAIImagesGrokEditToXAIJSON(parsed, upstreamModel)
 	} else {
 		forwardBody, forwardContentType, err = rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
@@ -829,8 +833,47 @@ func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]
 	return rewritten, contentType, nil
 }
 
-func shouldRewriteOpenAIImagesGrokEditToXAIJSON(parsed *OpenAIImagesRequest, model string) bool {
-	return parsed != nil && parsed.Endpoint == openAIImagesEditsEndpoint && isGrokImagineImageModel(model)
+func shouldRewriteOpenAIImagesGrok2APIEditToMultipart(parsed *OpenAIImagesRequest, model string, baseURL string) bool {
+	return parsed != nil &&
+		parsed.Endpoint == openAIImagesEditsEndpoint &&
+		isGrokImagineImageModel(model) &&
+		isGrok2APIBaseURL(baseURL)
+}
+
+func shouldRewriteOpenAIImagesGrokEditToXAIJSON(parsed *OpenAIImagesRequest, model string, baseURL string) bool {
+	return parsed != nil &&
+		parsed.Endpoint == openAIImagesEditsEndpoint &&
+		isGrokImagineImageModel(model) &&
+		isXAIOpenAIImagesBaseURL(baseURL)
+}
+
+func isGrok2APIBaseURL(baseURL string) bool {
+	host := normalizedOpenAIImagesBaseURLHost(baseURL)
+	return host == "grok2api.sakrylle.com"
+}
+
+func isXAIOpenAIImagesBaseURL(baseURL string) bool {
+	host := normalizedOpenAIImagesBaseURLHost(baseURL)
+	return host == "api.x.ai"
+}
+
+func normalizedOpenAIImagesBaseURLHost(baseURL string) string {
+	raw := strings.TrimSpace(baseURL)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err == nil && parsed.Hostname() != "" {
+		return strings.ToLower(parsed.Hostname())
+	}
+	trimmed := strings.TrimPrefix(strings.TrimPrefix(raw, "https://"), "http://")
+	if i := strings.Index(trimmed, "/"); i >= 0 {
+		trimmed = trimmed[:i]
+	}
+	if host, _, found := strings.Cut(trimmed, ":"); found {
+		trimmed = host
+	}
+	return strings.ToLower(strings.TrimSpace(trimmed))
 }
 
 func rewriteOpenAIImagesGrokEditToXAIJSON(parsed *OpenAIImagesRequest, model string) ([]byte, string, error) {
@@ -900,6 +943,77 @@ func xaiImageURLRef(imageURL string) map[string]string {
 		"url":  strings.TrimSpace(imageURL),
 		"type": "image_url",
 	}
+}
+
+func rewriteOpenAIImagesGrok2APIEditMultipart(body []byte, contentType string, model string) ([]byte, string, error) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse multipart content-type: %w", err)
+	}
+	boundary := strings.TrimSpace(params["boundary"])
+	if boundary == "" {
+		return nil, "", fmt.Errorf("multipart boundary is required")
+	}
+
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	modelWritten := false
+
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, "", fmt.Errorf("read multipart body: %w", err)
+		}
+
+		formName := strings.TrimSpace(part.FormName())
+		fileName := strings.TrimSpace(part.FileName())
+		partHeader := cloneMultipartHeader(part.Header)
+		if fileName != "" && isOpenAIImagesImageMultipartField(formName) {
+			partHeader.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{
+				"name":     "image[]",
+				"filename": fileName,
+			}))
+		}
+
+		target, err := writer.CreatePart(partHeader)
+		if err != nil {
+			_ = part.Close()
+			return nil, "", fmt.Errorf("create multipart part: %w", err)
+		}
+
+		if formName == "model" && fileName == "" {
+			if _, err := target.Write([]byte(model)); err != nil {
+				_ = part.Close()
+				return nil, "", fmt.Errorf("rewrite multipart model: %w", err)
+			}
+			modelWritten = true
+			_ = part.Close()
+			continue
+		}
+		if _, err := io.Copy(target, part); err != nil {
+			_ = part.Close()
+			return nil, "", fmt.Errorf("copy multipart part: %w", err)
+		}
+		_ = part.Close()
+	}
+
+	if !modelWritten {
+		if err := writer.WriteField("model", model); err != nil {
+			return nil, "", fmt.Errorf("append multipart model field: %w", err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("finalize multipart body: %w", err)
+	}
+	return buffer.Bytes(), writer.FormDataContentType(), nil
+}
+
+func isOpenAIImagesImageMultipartField(name string) bool {
+	return name == "image" || strings.HasPrefix(name, "image[")
 }
 
 func rewriteOpenAIImagesMultipartModel(body []byte, contentType string, model string) ([]byte, string, error) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -1233,6 +1234,97 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGrokEditConvertsMultipartToXAIJ
 	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "image.url").String(), "data:image/png;base64,"))
 	require.False(t, gjson.GetBytes(upstream.lastBody, "image.image_url").Exists())
 	require.Equal(t, "Z3Jvay1lZGl0ZWQ=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+}
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyGrok2APIEditUsesImageArrayMultipart(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "grok-imagine-image-lite"))
+	require.NoError(t, writer.WriteField("prompt", "make it cinematic"))
+	require.NoError(t, writer.WriteField("response_format", "b64_json"))
+	partHeader := textproto.MIMEHeader{}
+	partHeader.Set("Content-Disposition", `form-data; name="image"; filename="source.png"`)
+	partHeader.Set("Content-Type", "image/png")
+	imagePart, err := writer.CreatePart(partHeader)
+	require.NoError(t, err)
+	_, err = imagePart.Write([]byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a})
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Request-Id": []string{"req_grok2api_img_edit_apikey"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"created":1710000010,"data":[{"b64_json":"Z3JvazJhcGktZWRpdGVk"}]}`)),
+		},
+	}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body.Bytes())
+	require.NoError(t, err)
+
+	account := &Account{
+		ID:       9,
+		Name:     "grok2api-openai-compatible-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://grok2api.sakrylle.com/v1",
+		},
+	}
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body.Bytes(), parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://grok2api.sakrylle.com/v1/images/edits", upstream.lastReq.URL.String())
+	require.Contains(t, upstream.lastReq.Header.Get("Content-Type"), "multipart/form-data")
+
+	mediaType, params, err := mime.ParseMediaType(upstream.lastReq.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	require.Equal(t, "multipart/form-data", mediaType)
+	reader := multipart.NewReader(bytes.NewReader(upstream.lastBody), params["boundary"])
+	seenFields := map[string]string{}
+	var imageArrayPart bool
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		data, err := io.ReadAll(part)
+		require.NoError(t, err)
+		if part.FileName() == "" {
+			seenFields[part.FormName()] = string(data)
+			continue
+		}
+		if part.FormName() == "image[]" {
+			imageArrayPart = true
+			require.Equal(t, "source.png", part.FileName())
+			require.Equal(t, "image/png", part.Header.Get("Content-Type"))
+			require.Equal(t, []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}, data)
+		}
+	}
+	require.Equal(t, "grok-imagine-image-lite", seenFields["model"])
+	require.Equal(t, "make it cinematic", seenFields["prompt"])
+	require.Equal(t, "b64_json", seenFields["response_format"])
+	require.True(t, imageArrayPart)
+	require.Equal(t, "Z3JvazJhcGktZWRpdGVk", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyEditUsesConfiguredV1BaseURL(t *testing.T) {
