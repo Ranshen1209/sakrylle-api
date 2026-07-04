@@ -1291,6 +1291,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGrok2APIEditUsesImageArrayMulti
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, "grok-imagine-image-edit", result.UpstreamModel)
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, "https://grok2api.sakrylle.com/v1/images/edits", upstream.lastReq.URL.String())
 	require.Contains(t, upstream.lastReq.Header.Get("Content-Type"), "multipart/form-data")
@@ -1320,7 +1321,7 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyGrok2APIEditUsesImageArrayMulti
 			require.Equal(t, []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}, data)
 		}
 	}
-	require.Equal(t, "grok-imagine-image-lite", seenFields["model"])
+	require.Equal(t, "grok-imagine-image-edit", seenFields["model"])
 	require.Equal(t, "make it cinematic", seenFields["prompt"])
 	require.Equal(t, "b64_json", seenFields["response_format"])
 	require.True(t, imageArrayPart)

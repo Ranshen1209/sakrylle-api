@@ -41,6 +41,7 @@ const (
 	openAIImageMaxDownloadBytes    = 20 << 20 // 20MB per image download
 	openAIImageMaxUploadPartSize   = 20 << 20 // 20MB per multipart upload part
 	openAIImagesResponsesMainModel = "gpt-5.4-mini"
+	openAIImagesGrok2APIEditModel  = "grok-imagine-image-edit"
 )
 
 type OpenAIImagesCapability string
@@ -586,7 +587,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err := validateOpenAIImagesModelForAccount(requestModel, account); err != nil {
 		return nil, err
 	}
+	baseURL := account.GetOpenAIBaseURL()
 	upstreamModel := account.GetMappedModel(requestModel)
+	upstreamModel = resolveOpenAIImagesGrok2APIEditModel(parsed, upstreamModel, baseURL)
 	if err := validateOpenAIImagesModelForAccount(upstreamModel, account); err != nil {
 		return nil, err
 	}
@@ -609,7 +612,6 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	var forwardBody []byte
 	var forwardContentType string
 	var err error
-	baseURL := account.GetOpenAIBaseURL()
 	if shouldRewriteOpenAIImagesGrok2APIEditToMultipart(parsed, upstreamModel, baseURL) {
 		forwardBody, forwardContentType, err = rewriteOpenAIImagesGrok2APIEditMultipart(body, parsed.ContentType, upstreamModel)
 	} else if shouldRewriteOpenAIImagesGrokEditToXAIJSON(parsed, upstreamModel, baseURL) {
@@ -838,6 +840,13 @@ func shouldRewriteOpenAIImagesGrok2APIEditToMultipart(parsed *OpenAIImagesReques
 		parsed.Endpoint == openAIImagesEditsEndpoint &&
 		isGrokImagineImageModel(model) &&
 		isGrok2APIBaseURL(baseURL)
+}
+
+func resolveOpenAIImagesGrok2APIEditModel(parsed *OpenAIImagesRequest, model string, baseURL string) string {
+	if shouldRewriteOpenAIImagesGrok2APIEditToMultipart(parsed, model, baseURL) {
+		return openAIImagesGrok2APIEditModel
+	}
+	return model
 }
 
 func shouldRewriteOpenAIImagesGrokEditToXAIJSON(parsed *OpenAIImagesRequest, model string, baseURL string) bool {
