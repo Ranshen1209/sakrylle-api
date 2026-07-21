@@ -359,30 +359,30 @@ func (s *stubAPIKeyRepo) GetRateLimitData(_ context.Context, _ int64) (*APIKeyRa
 	return &APIKeyRateLimitData{}, nil
 }
 
-type stubSettingRepo struct {
+type stubOAuthSettingRepo struct {
 	values map[string]string
 }
 
-func (s *stubSettingRepo) Get(_ context.Context, key string) (*Setting, error) {
+func (s *stubOAuthSettingRepo) Get(_ context.Context, key string) (*Setting, error) {
 	if v, ok := s.values[key]; ok {
 		return &Setting{Key: key, Value: v}, nil
 	}
 	return nil, errors.New("not found")
 }
 
-func (s *stubSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+func (s *stubOAuthSettingRepo) GetValue(_ context.Context, key string) (string, error) {
 	if v, ok := s.values[key]; ok {
 		return v, nil
 	}
 	return "", errors.New("not found")
 }
 
-func (s *stubSettingRepo) Set(_ context.Context, key, value string) error {
+func (s *stubOAuthSettingRepo) Set(_ context.Context, key, value string) error {
 	s.values[key] = value
 	return nil
 }
 
-func (s *stubSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+func (s *stubOAuthSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
 	out := map[string]string{}
 	for _, k := range keys {
 		if v, ok := s.values[k]; ok {
@@ -392,14 +392,14 @@ func (s *stubSettingRepo) GetMultiple(_ context.Context, keys []string) (map[str
 	return out, nil
 }
 
-func (s *stubSettingRepo) SetMultiple(_ context.Context, settings map[string]string) error {
+func (s *stubOAuthSettingRepo) SetMultiple(_ context.Context, settings map[string]string) error {
 	for k, v := range settings {
 		s.values[k] = v
 	}
 	return nil
 }
 
-func (s *stubSettingRepo) GetAll(_ context.Context) (map[string]string, error) {
+func (s *stubOAuthSettingRepo) GetAll(_ context.Context) (map[string]string, error) {
 	out := make(map[string]string, len(s.values))
 	for k, v := range s.values {
 		out[k] = v
@@ -407,7 +407,7 @@ func (s *stubSettingRepo) GetAll(_ context.Context) (map[string]string, error) {
 	return out, nil
 }
 
-func (s *stubSettingRepo) Delete(_ context.Context, key string) error {
+func (s *stubOAuthSettingRepo) Delete(_ context.Context, key string) error {
 	delete(s.values, key)
 	return nil
 }
@@ -452,7 +452,7 @@ func newServiceUnderTest(t *testing.T) (*OAuthProviderService, *stubAPIKeyRepo, 
 	}}
 	apiKeyRepo := newStubAPIKeyRepo()
 	refreshRepo := newStubRefreshRepo()
-	settingRepo := &stubSettingRepo{values: map[string]string{
+	settingRepo := &stubOAuthSettingRepo{values: map[string]string{
 		"oauth_provider_enabled": "true",
 		"oauth_default_group_id": "5",
 	}}
@@ -959,20 +959,20 @@ func TestProviderDisabled(t *testing.T) {
 	if !svc.IsEnabled(context.Background()) {
 		t.Fatal("expected enabled when oauth_provider_enabled=true")
 	}
-	repo := &stubSettingRepo{values: map[string]string{"oauth_provider_enabled": "false"}}
+	repo := &stubOAuthSettingRepo{values: map[string]string{"oauth_provider_enabled": "false"}}
 	svc.settingRepo = repo
 	if svc.IsEnabled(context.Background()) {
 		t.Fatal("expected disabled when oauth_provider_enabled=false")
 	}
 
 	// FIX M1: fail closed on missing setting (no row at all).
-	svc.settingRepo = &stubSettingRepo{values: map[string]string{}}
+	svc.settingRepo = &stubOAuthSettingRepo{values: map[string]string{}}
 	if svc.IsEnabled(context.Background()) {
 		t.Fatal("expected disabled when oauth_provider_enabled is missing (fail closed)")
 	}
 
 	// FIX M1: fail closed on unparseable / unrecognized value.
-	svc.settingRepo = &stubSettingRepo{values: map[string]string{"oauth_provider_enabled": "garbage"}}
+	svc.settingRepo = &stubOAuthSettingRepo{values: map[string]string{"oauth_provider_enabled": "garbage"}}
 	if svc.IsEnabled(context.Background()) {
 		t.Fatal("expected disabled when oauth_provider_enabled is unparseable (fail closed)")
 	}
@@ -1009,7 +1009,7 @@ func newConfidentialServiceUnderTest(t *testing.T, secret string) *OAuthProvider
 	}}
 	apiKeyRepo := newStubAPIKeyRepo()
 	refreshRepo := newStubRefreshRepo()
-	settingRepo := &stubSettingRepo{values: map[string]string{
+	settingRepo := &stubOAuthSettingRepo{values: map[string]string{
 		"oauth_provider_enabled": "true",
 		"oauth_default_group_id": "5",
 	}}
@@ -1422,7 +1422,7 @@ func TestRevokeUserGrant_PublishesCacheInvalidationForEveryToken(t *testing.T) {
 	}}
 	apiKeyRepo := newStubAPIKeyRepo()
 	refreshRepo := newStubRefreshRepo()
-	settingRepo := &stubSettingRepo{values: map[string]string{
+	settingRepo := &stubOAuthSettingRepo{values: map[string]string{
 		"oauth_provider_enabled": "true",
 		"oauth_default_group_id": "5",
 	}}
@@ -1505,7 +1505,7 @@ func TestRevokeUserGrant_InvalidatesCacheEvenWhenAPIKeyUpdateFails(t *testing.T)
 	apiKeyRepo := &updateFailingAPIKeyRepo{stubAPIKeyRepo: baseAPIKeyRepo}
 	refreshRepo := newStubRefreshRepo()
 	cache := &recordingAuthCacheInvalidator{}
-	svc := newStubOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, &stubSettingRepo{values: map[string]string{}}, cache)
+	svc := newStubOAuthProviderService(clientRepo, newStubCodeRepo(), refreshRepo, apiKeyRepo, nil, &stubOAuthSettingRepo{values: map[string]string{}}, cache)
 
 	ctx := context.Background()
 	const userID int64 = 99
@@ -1682,7 +1682,7 @@ func TestIntrospectToken_RejectsCrossClient(t *testing.T) {
 	baseAPIKeyRepo := newStubAPIKeyRepo()
 	apiKeyRepo := &keyLookupAPIKeyRepo{stubAPIKeyRepo: baseAPIKeyRepo}
 	accessRepo := newStubAccessRepo()
-	settingRepo := &stubSettingRepo{values: map[string]string{
+	settingRepo := &stubOAuthSettingRepo{values: map[string]string{
 		"oauth_provider_enabled":          "true",
 		"oauth_scope_enforcement_enabled": "true",
 		"oauth_issuer":                    "https://sub.sakrylle.example",

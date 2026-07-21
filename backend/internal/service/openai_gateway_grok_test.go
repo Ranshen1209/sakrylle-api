@@ -784,7 +784,7 @@ func TestForwardGrokMediaImagesGenerationNormalizesImagineAlias(t *testing.T) {
 			"Content-Type":   []string{"application/json"},
 			"Xai-Request-Id": []string{"xai-image-req"},
 		},
-		Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"https://images.test/cat.png"}]}`)),
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"iVBORw0KGgo="}]}`)),
 	}}
 	svc := &OpenAIGatewayService{httpUpstream: upstream}
 
@@ -798,7 +798,7 @@ func TestForwardGrokMediaImagesGenerationNormalizesImagineAlias(t *testing.T) {
 	require.NotEqual(t, grokUpstreamUserAgent, upstream.lastReq.Header.Get("User-Agent"))
 	require.JSONEq(t, `{"model":"grok-imagine-image-quality","prompt":"draw a cat"}`, string(upstream.lastBody))
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.JSONEq(t, `{"data":[{"url":"https://images.test/cat.png"}]}`, recorder.Body.String())
+	require.JSONEq(t, `{"data":[{"b64_json":"iVBORw0KGgo="}]}`, recorder.Body.String())
 	require.Equal(t, "xai-image-req", result.RequestID)
 	require.Equal(t, "grok-imagine-image-quality", result.Model)
 	require.Equal(t, "grok-imagine-image-quality", result.BillingModel)
@@ -830,7 +830,7 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			wantRequestModel: "grok-imagine-image-quality",
 			wantUpstream:     "vendor-image-model",
 			wantBody:         `{"model":"vendor-image-model","prompt":"draw a cat"}`,
-			responseBody:     `{"data":[{"url":"https://images.test/mapped.png"}]}`,
+			responseBody:     `{"data":[{"b64_json":"iVBORw0KGgo="}]}`,
 		},
 		{
 			name:             "video generation maps text-only fallback model",
@@ -863,7 +863,7 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			wantRequestModel: "grok-imagine-image-quality",
 			wantUpstream:     "vendor-image-model",
 			wantBody:         `{"model":"vendor-image-model","prompt":"draw"}`,
-			responseBody:     `{"data":[{"url":"https://images.test/mapped.png"}]}`,
+			responseBody:     `{"data":[{"b64_json":"iVBORw0KGgo="}]}`,
 		},
 		{
 			name:             "whitespace mapping target safely preserves normalized model",
@@ -874,7 +874,7 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			wantRequestModel: "grok-imagine-image-quality",
 			wantUpstream:     "grok-imagine-image-quality",
 			wantBody:         `{"model":"grok-imagine-image-quality","prompt":"draw"}`,
-			responseBody:     `{"data":[{"url":"https://images.test/mapped.png"}]}`,
+			responseBody:     `{"data":[{"b64_json":"iVBORw0KGgo="}]}`,
 		},
 	}
 
@@ -979,7 +979,7 @@ func TestForwardGrokMediaImagesGenerationStripsUnsupportedSize(t *testing.T) {
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"https://images.test/cat.png"}]}`)),
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"iVBORw0KGgo="}]}`)),
 	}}
 	svc := &OpenAIGatewayService{httpUpstream: upstream}
 
@@ -1029,7 +1029,7 @@ func TestForwardGrokMediaImagesEditMultipartConvertsToJSON(t *testing.T) {
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"https://images.test/edited.png"}]}`)),
+		Body: io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"iVBORw0KGgo="}]}`)),
 	}}
 	svc := &OpenAIGatewayService{httpUpstream: upstream}
 
