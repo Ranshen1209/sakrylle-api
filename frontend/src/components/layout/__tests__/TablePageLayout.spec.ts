@@ -23,4 +23,10 @@ describe('TablePageLayout responsive table scrolling', () => {
       true
     )
   })
+
+  it('proxies wheel input from the page chrome to the table wrapper', () => {
+    expect(componentSource).toContain('@wheel="onWheel"')
+    expect(componentSource).toContain('event.preventDefault()')
+    expect(componentSource).toContain("querySelector<HTMLElement>('.table-wrapper')")
+  })
 })

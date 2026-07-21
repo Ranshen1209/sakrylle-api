@@ -21,7 +21,7 @@
       </div>
     </section>
 
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-[260px_1fr]">
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
       <PlazaSidebar
         :models="plazaModels"
         :platform="filterPlatform"
@@ -32,7 +32,7 @@
         @update:billing="filterBilling = $event"
       />
 
-      <div class="flex flex-col gap-4">
+      <div class="flex min-w-0 flex-col gap-4">
         <!-- Toolbar -->
         <div
           class="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-3 dark:border-dark-700 dark:bg-dark-800 sm:flex-row sm:items-center sm:gap-4"
@@ -90,7 +90,7 @@
         </div>
 
         <!-- Cards grid -->
-        <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div v-else class="plaza-model-grid grid gap-4">
           <PlazaModelCard
             v-for="model in filteredModels"
             :key="model.id"
@@ -178,3 +178,11 @@ async function loadAll() {
 
 onMounted(loadAll)
 </script>
+
+<style scoped>
+.plaza-model-grid {
+  /* Keep cards readable while filling every available width. The min() guard
+     lets a single card shrink to the viewport on narrow layouts. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+</style>

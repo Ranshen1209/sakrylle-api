@@ -1,15 +1,15 @@
 <template>
-  <div class="flex items-baseline justify-between gap-3 text-sm">
+  <div class="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
     <span class="whitespace-nowrap text-gray-500 dark:text-gray-400">{{ label }}</span>
-    <span class="flex items-baseline gap-2 font-mono">
+    <span class="flex min-w-0 flex-1 flex-wrap items-baseline justify-end gap-x-2 font-mono text-right">
       <span
         v-if="showOriginal && originalText !== '-'"
-        class="text-xs text-gray-400 line-through dark:text-gray-500"
+        class="whitespace-nowrap text-xs text-gray-400 line-through dark:text-gray-500"
       >
         {{ originalText }}
       </span>
-      <span class="text-gray-900 dark:text-gray-100">{{ effectiveText }}</span>
-      <span v-if="unit" class="whitespace-nowrap text-xs text-gray-400 dark:text-gray-500">{{ unit }}</span>
+      <span class="whitespace-nowrap text-gray-900 dark:text-gray-100">{{ effectiveText }}</span>
+      <span v-if="unit" class="whitespace-normal text-xs text-gray-400 dark:text-gray-500">{{ unit }}</span>
     </span>
   </div>
 </template>
