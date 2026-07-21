@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/imroc/req/v3"
 )
 
 // ErrSparkShadowResetNotSupported is returned when ResetCredit is called on a
@@ -23,8 +25,10 @@ var ErrSparkShadowResetNotSupported = infraerrors.New(http.StatusConflict, "SPAR
 // Endpoints used by the OpenAI/ChatGPT/Codex quota query and reset feature.
 const (
 	chatGPTUsageURL             = "https://chatgpt.com/backend-api/wham/usage"
+	chatGPTRateLimitCreditsURL  = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 	chatGPTRateLimitResetURL    = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume"
 	openaiQuotaUpstreamTimeout  = 20 * time.Second
+	openaiQuotaCodexBeta        = "codex-1"
 	openaiQuotaCodexOriginator  = "Codex Desktop"
 	openaiQuotaCodexLanguageTag = "zh-CN"
 	openaiQuotaSecFetchSite     = "none"
@@ -57,10 +61,17 @@ type OpenAIAdditionalRateLimit struct {
 	RateLimit      *OpenAIRateLimit `json:"rate_limit,omitempty"`
 }
 
+// OpenAIRateLimitResetCreditDetail is the sanitized metadata surfaced for one
+// available reset credit. Do not add upstream ids or tokens here.
+type OpenAIRateLimitResetCreditDetail struct {
+	ExpiresAt string `json:"expires_at,omitempty"`
+}
+
 // OpenAIRateLimitResetCredits captures the "available_count" surfaced for the
 // rate_limit_reset_credit grant type, which the reset action consumes.
 type OpenAIRateLimitResetCredits struct {
-	AvailableCount int `json:"available_count"`
+	AvailableCount int                                `json:"available_count"`
+	Credits        []OpenAIRateLimitResetCreditDetail `json:"credits,omitempty"`
 }
 
 // OpenAIQuotaUsage is the typed projection of /wham/usage we expose to the UI.
@@ -106,6 +117,8 @@ type OpenAIQuotaService struct {
 	proxyRepo            ProxyRepository
 	tokenProvider        *OpenAITokenProvider
 	privacyClientFactory PrivacyClientFactory
+	agentIdentityTaskMu  sync.Mutex
+	agentIdentityWS      agentIdentityWSConnectionInvalidator
 }
 
 // NewOpenAIQuotaService constructs a quota service. token provider is required —
@@ -141,25 +154,88 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
+	agentIdentity := s.isAgentIdentityAccount(ctx, accountID)
 
 	var payload OpenAIQuotaUsage
-	resp, err := client.R().
-		SetContext(callCtx).
-		SetHeaders(buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)).
-		SetSuccessResult(&payload).
-		Get(chatGPTUsageURL)
-	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_REQUEST_FAILED", "upstream request failed: %v", err)
-	}
-	if !resp.IsSuccessState() {
-		status := resp.StatusCode
-		body := truncate(resp.String(), 240)
-		slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "body", body)
-		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
+	for recovered := false; ; {
+		quotaHeaders, expectedTaskID, headerErr := s.buildCodexQuotaHeaders(callCtx, accountID, accessToken, chatGPTAccountID, fedRAMP)
+		if headerErr != nil {
+			return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to build upstream authentication: %v", headerErr)
+		}
+		resp, err := client.R().
+			SetContext(callCtx).
+			SetHeaders(quotaHeaders).
+			SetSuccessResult(&payload).
+			Get(chatGPTUsageURL)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_REQUEST_FAILED", "upstream request failed: %v", err)
+		}
+		if !resp.IsSuccessState() {
+			if agentIdentity && !recovered && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, []byte(resp.String())) {
+				recovered = true
+				if err := s.recoverAgentIdentityTask(ctx, accountID, expectedTaskID); err != nil {
+					return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "agent identity task recovery failed: %v", err)
+				}
+				continue
+			}
+			status := resp.StatusCode
+			body := truncate(s.redactQuotaErrorBody(ctx, accountID, resp.String()), 240)
+			slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "body", body)
+			return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
+		}
+		break
 	}
 
 	payload.FetchedAt = time.Now().Unix()
+	details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
+	if details != nil {
+		hasDetailCount := details.AvailableCount != nil
+		if payload.RateLimitResetCredits == nil {
+			payload.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}
+		}
+		if details.CreditListPresent {
+			payload.RateLimitResetCredits.Credits = details.Credits
+		}
+		switch {
+		case hasDetailCount:
+			payload.RateLimitResetCredits.AvailableCount = *details.AvailableCount
+		case details.CreditListPresent:
+			payload.RateLimitResetCredits.AvailableCount = details.AvailableCreditCount
+		}
+	}
 	return &payload, nil
+}
+
+func (s *OpenAIQuotaService) queryResetCreditDetails(ctx context.Context, client *req.Client, accessToken, chatGPTAccountID string, fedRAMP bool, accountID int64) *openAIRateLimitResetCreditDetails {
+	quotaHeaders, _, headerErr := s.buildCodexQuotaHeaders(ctx, accountID, accessToken, chatGPTAccountID, fedRAMP)
+	if headerErr != nil {
+		slog.Warn("openai_quota_reset_credit_details_auth_failed", "account_id", accountID, "error", headerErr)
+		return nil
+	}
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeaders(quotaHeaders).
+		Get(chatGPTRateLimitCreditsURL)
+	if err != nil {
+		slog.Warn("openai_quota_reset_credit_details_failed", "account_id", accountID, "error", err)
+		return nil
+	}
+	if !resp.IsSuccessState() {
+		slog.Warn("openai_quota_reset_credit_details_failed", "account_id", accountID, "status", resp.StatusCode)
+		return nil
+	}
+
+	details, err := parseOpenAIRateLimitResetCreditDetails(resp.Bytes())
+	if err != nil {
+		slog.Warn("openai_quota_reset_credit_details_parse_failed", "account_id", accountID, "error", err)
+		if details.AvailableCount == nil {
+			return nil
+		}
+	}
+	if details.AvailableCount == nil && !details.CreditListPresent {
+		return nil
+	}
+	return &details
 }
 
 // ResetCredit consumes one rate_limit_reset_credit for the given OpenAI account.
@@ -201,25 +277,38 @@ func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (
 
 	callCtx, cancel := context.WithTimeout(ctx, openaiQuotaUpstreamTimeout)
 	defer cancel()
-
-	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)
-	headers["content-type"] = "application/json"
+	agentIdentity := s.isAgentIdentityAccount(ctx, accountID)
 
 	var payload OpenAIQuotaResetResult
-	resp, err := client.R().
-		SetContext(callCtx).
-		SetHeaders(headers).
-		SetBody(map[string]string{"redeem_request_id": redeemRequestID}).
-		SetSuccessResult(&payload).
-		Post(chatGPTRateLimitResetURL)
-	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_RESET_REQUEST_FAILED", "upstream request failed: %v", err)
-	}
-	if !resp.IsSuccessState() {
-		status := resp.StatusCode
-		body := truncate(resp.String(), 240)
-		slog.Warn("openai_quota_reset_failed", "account_id", accountID, "status", status, "body", body)
-		return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_RESET_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
+	for recovered := false; ; {
+		headers, expectedTaskID, headerErr := s.buildCodexQuotaHeaders(callCtx, accountID, accessToken, chatGPTAccountID, fedRAMP)
+		if headerErr != nil {
+			return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "failed to build upstream authentication: %v", headerErr)
+		}
+		headers["content-type"] = "application/json"
+		resp, err := client.R().
+			SetContext(callCtx).
+			SetHeaders(headers).
+			SetBody(map[string]string{"redeem_request_id": redeemRequestID}).
+			SetSuccessResult(&payload).
+			Post(chatGPTRateLimitResetURL)
+		if err != nil {
+			return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_RESET_REQUEST_FAILED", "upstream request failed: %v", err)
+		}
+		if !resp.IsSuccessState() {
+			if agentIdentity && !recovered && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, []byte(resp.String())) {
+				recovered = true
+				if err := s.recoverAgentIdentityTask(ctx, accountID, expectedTaskID); err != nil {
+					return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_AUTH_FAILED", "agent identity task recovery failed: %v", err)
+				}
+				continue
+			}
+			status := resp.StatusCode
+			body := truncate(s.redactQuotaErrorBody(callCtx, accountID, resp.String()), 240)
+			slog.Warn("openai_quota_reset_failed", "account_id", accountID, "status", status, "body", body)
+			return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_RESET_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
+		}
+		break
 	}
 
 	slog.Info("openai_quota_reset_success",
@@ -234,7 +323,7 @@ func (s *OpenAIQuotaService) ResetCredit(ctx context.Context, accountID int64) (
 // token via the shared TokenProvider, and resolves the chatgpt-account-id and
 // proxy URL. Centralized so QueryUsage / ResetCredit share validation.
 func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID int64) (accessToken, chatGPTAccountID, proxyURL string, fedRAMP bool, err error) {
-	if s == nil || s.accountRepo == nil || s.tokenProvider == nil || s.privacyClientFactory == nil {
+	if s == nil || s.accountRepo == nil || s.privacyClientFactory == nil {
 		return "", "", "", false, infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota service is not configured")
 	}
 
@@ -272,12 +361,17 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 		return "", "", "", false, infraerrors.New(http.StatusBadRequest, "OPENAI_QUOTA_MISSING_ACCOUNT_ID", "chatgpt_account_id is missing; please re-authorize this account")
 	}
 
-	accessToken, err = s.tokenProvider.GetAccessToken(ctx, account)
-	if err != nil {
-		return "", "", "", false, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
-	}
-	if strings.TrimSpace(accessToken) == "" {
-		return "", "", "", false, infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
+	if !account.IsOpenAIAgentIdentity() {
+		if s.tokenProvider == nil {
+			return "", "", "", false, infraerrors.New(http.StatusInternalServerError, "OPENAI_QUOTA_NOT_CONFIGURED", "openai quota token provider is not configured")
+		}
+		accessToken, err = s.tokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return "", "", "", false, infraerrors.Newf(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "failed to acquire access token: %v", err)
+		}
+		if strings.TrimSpace(accessToken) == "" {
+			return "", "", "", false, infraerrors.New(http.StatusBadGateway, "OPENAI_QUOTA_TOKEN_UNAVAILABLE", "access token is empty")
+		}
 	}
 	fedRAMP = account.IsChatGPTAccountFedRAMP()
 
@@ -300,12 +394,98 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 	return accessToken, chatGPTAccountID, proxyURL, fedRAMP, nil
 }
 
+func (s *OpenAIQuotaService) recoverAgentIdentityTask(ctx context.Context, accountID int64, expectedTaskID string) error {
+	if s == nil || s.accountRepo == nil {
+		return fmt.Errorf("account repository is unavailable")
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return fmt.Errorf("account is unavailable")
+	}
+	if account.IsShadow() {
+		account, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil || account == nil {
+			return fmt.Errorf("credential account is unavailable")
+		}
+	}
+	if !account.IsOpenAIAgentIdentity() {
+		return nil
+	}
+	return ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, account, expectedTaskID)
+}
+
+func (s *OpenAIQuotaService) isAgentIdentityAccount(ctx context.Context, accountID int64) bool {
+	if s == nil || s.accountRepo == nil {
+		return false
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return false
+	}
+	if account.IsShadow() {
+		account, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil || account == nil {
+			return false
+		}
+	}
+	return account.IsOpenAIAgentIdentity()
+}
+
+func (s *OpenAIQuotaService) buildCodexQuotaHeaders(ctx context.Context, accountID int64, accessToken, chatGPTAccountID string, fedRAMP bool) (map[string]string, string, error) {
+	headers := buildCodexCommonHeaders(accessToken, chatGPTAccountID, fedRAMP)
+	if s == nil || s.accountRepo == nil {
+		return headers, "", nil
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		if strings.TrimSpace(accessToken) == "" {
+			return nil, "", fmt.Errorf("agent identity account credentials are unavailable")
+		}
+		return headers, "", nil
+	}
+	if account.IsShadow() {
+		if resolved, resolveErr := resolveCredentialAccount(ctx, s.accountRepo, account); resolveErr == nil && resolved != nil {
+			account = resolved
+		} else if strings.TrimSpace(accessToken) == "" {
+			return nil, "", fmt.Errorf("agent identity shadow credentials are unavailable")
+		}
+	}
+	if !account.IsOpenAIAgentIdentity() {
+		return headers, "", nil
+	}
+	if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, account, ""); err != nil {
+		return nil, "", err
+	}
+	key, err := agentIdentityKeyFromAccount(account)
+	if err != nil {
+		return nil, "", err
+	}
+	assertion, err := buildAgentAssertion(key, time.Now())
+	if err != nil {
+		return nil, "", err
+	}
+	headers["authorization"] = assertion
+	return headers, key.taskID, nil
+}
+
+func (s *OpenAIQuotaService) redactQuotaErrorBody(ctx context.Context, accountID int64, body string) string {
+	if s == nil || s.accountRepo == nil {
+		return body
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return body
+	}
+	return string(redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, account, []byte(body)))
+}
+
 // buildCodexCommonHeaders sets the request headers expected by the chatgpt.com
 // backend so calls succeed past Cloudflare/WASM checks.
 func buildCodexCommonHeaders(accessToken, chatGPTAccountID string, fedRAMP bool) map[string]string {
 	headers := map[string]string{
 		"authorization":      "Bearer " + accessToken,
 		"chatgpt-account-id": chatGPTAccountID,
+		"openai-beta":        openaiQuotaCodexBeta,
 		"oai-language":       openaiQuotaCodexLanguageTag,
 		"originator":         openaiQuotaCodexOriginator,
 		"accept":             "application/json",

@@ -189,8 +189,8 @@ const emit = defineEmits<{
 
 const paymentAmountSymbol = computed(() => currencySymbol(props.order?.currency))
 
-function creditedAmountSymbol(order: PaymentOrder | null | undefined): string {
-  return order?.order_type === 'balance' ? '￥' : '¥'
+function creditedAmountSymbol(_order: PaymentOrder | null | undefined): string {
+  return '￥'
 }
 
 const form = reactive({

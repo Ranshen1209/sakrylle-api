@@ -103,7 +103,7 @@ const cancelling = ref(false)
 const success = ref(false)
 const ready = ref(false)
 const selectedType = ref('')
-const creditedAmountSymbol = computed(() => props.orderType === 'balance' ? '￥' : '¥')
+const creditedAmountSymbol = computed(() => '￥')
 const paymentAmountSymbol = computed(() => currencySymbol(props.currency))
 
 let stripeInstance: Stripe | null = null
@@ -111,7 +111,7 @@ let elementsInstance: StripeElements | null = null
 
 onMounted(async () => {
   try {
-    const { loadStripe } = await import('@stripe/stripe-js')
+    const { loadStripe } = await import('@stripe/stripe-js/pure')
     const stripe = await loadStripe(props.publishableKey)
     if (!stripe) { initError.value = t('payment.stripeLoadFailed'); return }
 

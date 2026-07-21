@@ -50,6 +50,20 @@ func TestResolveMessagesDispatchModelExactMappingsOverrideClaudeDefaults(t *test
 	require.Equal(t, "gpt-5.5", group.ResolveMessagesDispatchModel("claude-sonnet-4-5-20250929"))
 }
 
+func TestResolveMessagesDispatchModelExactMappingsSupportCustomClaudeFamilies(t *testing.T) {
+	t.Parallel()
+
+	group := &Group{
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			ExactModelMappings: map[string]string{
+				"claude-fable-5": "gpt-5.6-sol",
+			},
+		},
+	}
+
+	require.Equal(t, "gpt-5.6-sol", group.ResolveMessagesDispatchModel("claude-fable-5"))
+}
+
 func TestResolveMessagesDispatchModelLeavesGPTModelsUnmapped(t *testing.T) {
 	t.Parallel()
 
@@ -72,9 +86,31 @@ func TestGroupResolveMessagesDispatchModel_GrokMapsClaudeFamilyToGrok(t *testing
 
 	group := &Group{Platform: PlatformGrok}
 
-	require.Equal(t, "grok-4.3", group.ResolveMessagesDispatchModel("claude-sonnet-4-5"))
-	require.Equal(t, "grok-4.3", group.ResolveMessagesDispatchModel("claude-opus-4-6"))
-	require.Equal(t, "grok-4.3", group.ResolveMessagesDispatchModel("claude-haiku-4-5"))
+	require.Equal(t, "grok-4.5", group.ResolveMessagesDispatchModel("claude-sonnet-4-5"))
+	require.Equal(t, "grok-4.5", group.ResolveMessagesDispatchModel("claude-opus-4-6"))
+	require.Equal(t, "grok-4.5", group.ResolveMessagesDispatchModel("claude-haiku-4-5"))
 	require.Empty(t, group.ResolveMessagesDispatchModel("grok"))
 	require.Empty(t, group.ResolveMessagesDispatchModel("gpt-5.4"))
+}
+
+func TestSanitizeGroupMessagesDispatchFields_ClearsNonOpenAIPlatform(t *testing.T) {
+	t.Parallel()
+
+	group := &Group{
+		Platform:              PlatformAnthropic,
+		AllowMessagesDispatch: true,
+		DefaultMappedModel:    "gpt-5.6-sol",
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			SonnetMappedModel: "gpt-5.3-codex",
+			ExactModelMappings: map[string]string{
+				"claude-fable-5": "gpt-5.6-sol",
+			},
+		},
+	}
+
+	sanitizeGroupMessagesDispatchFields(group)
+
+	require.False(t, group.AllowMessagesDispatch)
+	require.Empty(t, group.DefaultMappedModel)
+	require.Equal(t, OpenAIMessagesDispatchModelConfig{}, group.MessagesDispatchModelConfig)
 }

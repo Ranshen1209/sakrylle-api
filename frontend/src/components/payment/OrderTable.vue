@@ -57,8 +57,8 @@ const props = defineProps<{
 
 function formatDate(dateStr: string) { return new Date(dateStr).toLocaleString() }
 
-function creditedAmountSymbol(order: PaymentOrder): string {
-  return order.order_type === 'balance' ? '￥' : '¥'
+function creditedAmountSymbol(_order: PaymentOrder): string {
+  return '￥'
 }
 
 function paymentAmountSymbol(order: PaymentOrder): string {

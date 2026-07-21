@@ -173,8 +173,8 @@ function paymentAmountSymbol(order: PaymentOrder): string {
   return currencySymbol(order.currency)
 }
 
-function creditedAmountSymbol(order: PaymentOrder): string {
-  return order.order_type === 'balance' ? '￥' : '¥'
+function creditedAmountSymbol(_order: PaymentOrder): string {
+  return '￥'
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null

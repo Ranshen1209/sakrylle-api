@@ -5,8 +5,10 @@
 ```bash
 git fetch upstream
 git checkout theme/monet-purple
-git rebase upstream/main
+git merge --no-ff upstream/main
 ```
+
+This long-lived fork must use a merge by default. Do not rebase it unless explicitly requested: replaying hundreds of local commits repeats equivalent conflicts and consumes excessive time and review tokens. Resolve each conflict once in the merge commit, preserving both new upstream behavior and the Sakrylle constraints below.
 
 Likely conflicts:
 

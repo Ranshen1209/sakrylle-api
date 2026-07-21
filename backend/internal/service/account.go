@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
@@ -70,16 +71,43 @@ type Account struct {
 	modelMappingCacheRawPtr         uintptr
 	modelMappingCacheRawLen         int
 	modelMappingCacheRawSig         uint64
+
+	// header_overrides 热路径缓存（非持久化字段，同 model_mapping 缓存先例）
+	headerOverrideCache               map[string]string
+	headerOverrideCacheReady          bool
+	headerOverrideCacheCredentialsPtr uintptr
+	headerOverrideCacheRawPtr         uintptr
+	headerOverrideCacheRawLen         int
+	headerOverrideCacheRawSig         uint64
 }
 
 type OpenAIEndpointCapability string
 
+const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
+
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
+	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
+	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
+	// away from Grok accounts that are explicitly disabled or whose billing
+	// entitlement probe was forbidden. Video status lookups intentionally do not
+	// require this capability so already-submitted requests remain queryable.
+	OpenAIEndpointCapabilityGrokMediaGeneration OpenAIEndpointCapability = "grok_media_generation"
+	// OpenAIEndpointCapabilityResponses 表示上游确实提供 /v1/responses 端点。
+	// 与其他能力不同：支持状态来自 accounts.extra 的自动探测标记
+	// （openai_responses_supported / openai_responses_mode），而非
+	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
+	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
+	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+
+// GrokMediaEligibleExtraKey is an optional per-account override stored in
+// accounts.extra. true forces media routing on, false disables it, and an
+// absent/null value uses provider observations.
+const GrokMediaEligibleExtraKey = "grok_media_eligible"
 
 const (
 	OpenAIAuthModePersonalAccessToken = "personalAccessToken"
@@ -580,6 +608,7 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 				"gemini-3.1-pro-high",
 				"gemini-3.1-pro-low",
 			})
+			applyAntigravityGemini31ProAliases(result)
 		}
 		return result
 	}
@@ -646,6 +675,61 @@ func ensureAntigravityDefaultPassthroughs(mapping map[string]string, models []st
 	}
 }
 
+func applyAntigravityGemini31ProAliases(mapping map[string]string) {
+	target := strings.TrimSpace(mapping[domain.AntigravityGemini31ProAgentModel])
+	if target == "" {
+		return
+	}
+
+	aliases := []struct {
+		model         string
+		legacyTargets map[string]struct{}
+	}{
+		{
+			model: "gemini-3.1-pro",
+			legacyTargets: map[string]struct{}{
+				"gemini-3.1-pro": {},
+			},
+		},
+		{
+			model: "gemini-3.1-pro-high",
+			legacyTargets: map[string]struct{}{
+				"gemini-3.1-pro-high": {},
+			},
+		},
+		{
+			model: "gemini-3.1-pro-preview",
+			legacyTargets: map[string]struct{}{
+				"gemini-3.1-pro-preview": {},
+				"gemini-3.1-pro-high":    {},
+			},
+		},
+	}
+
+	for _, alias := range aliases {
+		current, exists := mapping[alias.model]
+		if exists {
+			if _, legacy := alias.legacyTargets[current]; legacy {
+				mapping[alias.model] = target
+			}
+			continue
+		}
+		if mappingHasWildcardForModel(mapping, alias.model) {
+			continue
+		}
+		mapping[alias.model] = target
+	}
+}
+
+func mappingHasWildcardForModel(mapping map[string]string, model string) bool {
+	for pattern := range mapping {
+		if matchWildcard(pattern, model) {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	trimmed := strings.TrimSpace(requestedModel)
 	if trimmed == "" {
@@ -686,10 +770,19 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 }
 
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
-// 如果未配置 mapping，返回 true（允许所有模型）
+// 如果未配置 mapping，返回 true（允许所有模型）。
+//
+// 例外：OpenAI OAuth 账号（Codex 上游）的空映射会排除明确属于其他厂商
+// 家族的模型（deepseek-*/glm-* 等）——转发阶段 normalizeOpenAIModelForUpstream
+// 会把未知模型原样透传，Codex 上游对这类模型必然返回不可重试的 400，导致
+// 请求卡死在该账号上、无法 failover 到真正支持该模型的 API Key 账号（#3662）。
+// 未知/自定义别名仍保持允许（兼容渠道级映射），见 isOpenAIOAuthServableModel。
 func (a *Account) IsModelSupported(requestedModel string) bool {
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
+		if a.IsOpenAIOAuth() && !a.IsOpenAIPassthroughEnabled() {
+			return isOpenAIOAuthServableModel(requestedModel)
+		}
 		return true // 无映射 = 允许所有
 	}
 	if mappingSupportsRequestedModel(mapping, requestedModel) {
@@ -1118,12 +1211,32 @@ func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
 }
 
+func (a *Account) IsOpenAILongContextBillingEnabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra[openAILongContextBillingEnabledKey].(bool)
+	return ok && enabled
+}
+
 func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
 }
 
 func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
+}
+
+func (a *Account) IsOpenAIChatGPTSubscription() bool {
+	if !a.IsOpenAIOAuth() {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(a.GetCredential("plan_type"))) {
+	case "", "free", "abnormal":
+		return false
+	default:
+		return true
+	}
 }
 
 func (a *Account) IsOpenAIPersonalAccessToken() bool {
@@ -1165,15 +1278,50 @@ func (a *Account) GetOpenAIRefreshToken() string {
 	return a.GetCredential("refresh_token")
 }
 
+// GetGrokBaseURL selects the upstream used by Grok text and Responses traffic.
+// Grok media traffic has a different transport contract and must use
+// GetGrokMediaBaseURL instead.
+//
+// The stored base_url only rewrites forwarding endpoints. Credential lifecycle
+// traffic (OAuth authorization and token refresh) always uses the official
+// auth endpoints regardless of this value.
 func (a *Account) GetGrokBaseURL() string {
 	if !a.IsGrok() {
 		return ""
 	}
-	baseURL := a.GetCredential("base_url")
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if a.IsGrokOAuth() {
+		// Operators switch subscription traffic between the official CLI
+		// gateway, the official/regional API hosts and third-party relays
+		// (individual endpoints go down from time to time), so a stored
+		// value is always honored as-is. Only empty or unparseable values
+		// fall back to the default CLI gateway.
+		if baseURL == "" || !xai.IsParseableBaseURL(baseURL) {
+			return xai.DefaultCLIBaseURL
+		}
+		return baseURL
+	}
 	if baseURL != "" {
 		return baseURL
 	}
 	return xai.DefaultBaseURL
+}
+
+// GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
+// The subscription CLI gateway enforces a small request-body limit that
+// rejects large Base64 media payloads, so OAuth media leaves for api.x.ai
+// whenever text traffic resolves to the CLI gateway. Every other manually
+// selected endpoint (official/regional API hosts or custom relays) serves
+// media as-is.
+func (a *Account) GetGrokMediaBaseURL() string {
+	if !a.IsGrok() {
+		return ""
+	}
+	baseURL := a.GetGrokBaseURL()
+	if a.IsGrokOAuth() && isGrokCLIProxyTarget(baseURL) {
+		return xai.DefaultBaseURL
+	}
+	return baseURL
 }
 
 func (a *Account) GetGrokAccessToken() string {
@@ -1271,10 +1419,41 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		return false
 	}
 	if a.IsGrok() {
-		return capability == OpenAIEndpointCapabilityChatCompletions
+		switch capability {
+		case OpenAIEndpointCapabilityChatCompletions:
+			return true
+		case OpenAIEndpointCapabilityGrokMediaGeneration:
+			eligible, reason := a.GrokMediaGenerationEligibility()
+			// Unobserved OAuth accounts remain scheduler candidates only so the
+			// request path can run the billing probe before forwarding. The
+			// forwarding gate itself fails closed if that probe is unavailable or
+			// cannot produce positive paid-entitlement evidence.
+			return eligible || reason == "billing_unobserved"
+		default:
+			return false
+		}
 	}
 	switch capability {
 	case OpenAIEndpointCapabilityChatCompletions:
+	case OpenAIEndpointCapabilityResponses:
+		// Responses 支持状态由 accounts.extra 的自动探测标记决定，而非
+		// credentials 能力集。已探测确认不支持 /v1/responses 的 APIKey 上游
+		// 必须排除——否则会在 forward 阶段被静默降级为 Chat Completions，
+		// 无法完成生图（#4417）。未探测/OAuth 账号保留旧行为（不排除）。
+		if a.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(a.Extra) {
+			return false
+		}
+		// 支持 Responses 的上游同样需具备 chat 能力：复用下方 chat_completions
+		// 配置集校验。
+		capability = OpenAIEndpointCapabilityChatCompletions
+	case OpenAIEndpointCapabilityAlphaSearch:
+		// alpha/search 的转发按账号类型分流：OAuth/PAT 走
+		// chatgpt.com/backend-api/codex/alpha/search，API key 走
+		// {base_url}/v1/alpha/search（见 openAIAlphaSearchURL），两类账号
+		// 都可承接独立搜索请求。上游不支持该端点时由转发层 failover 兜底。
+		if a.Type != AccountTypeOAuth && a.Type != AccountTypeAPIKey {
+			return false
+		}
 	case OpenAIEndpointCapabilityEmbeddings:
 		if a.Type != AccountTypeAPIKey {
 			return false
@@ -1287,7 +1466,56 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 	if !found {
 		return true
 	}
+	if capability == OpenAIEndpointCapabilityAlphaSearch && configured[string(OpenAIEndpointCapabilityChatCompletions)] {
+		return true
+	}
 	return configured[string(capability)]
+}
+
+// GrokMediaGenerationEligibility reports whether a Grok account may receive
+// new image/video generation requests. OAuth media fails closed unless billing
+// observations provide positive paid-entitlement evidence. An explicit
+// operator override takes precedence over probe data.
+func (a *Account) GrokMediaGenerationEligibility() (bool, string) {
+	if a == nil || !a.IsGrok() {
+		return false, "not_grok"
+	}
+	if override, ok := grokMediaEligibilityOverride(a.Extra); ok {
+		if override {
+			return true, "override_enabled"
+		}
+		return false, "override_disabled"
+	}
+	if a.Type != AccountTypeOAuth {
+		return true, "non_oauth"
+	}
+
+	billing, err := grokBillingSnapshotFromExtra(a.Extra)
+	if err != nil || billing == nil {
+		return false, "billing_unobserved"
+	}
+	if billing.StatusCode == 403 || billing.WeeklyStatusCode == 403 || billing.MonthlyStatusCode == 403 {
+		return false, "billing_forbidden"
+	}
+	if isKnownGrokFreeAccount(a) {
+		return false, "billing_free_tier"
+	}
+	if !grokBillingHasAuthoritativeQuota(billing) {
+		return false, "billing_inconclusive"
+	}
+	return true, "eligible"
+}
+
+func grokMediaEligibilityOverride(extra map[string]any) (bool, bool) {
+	if extra == nil {
+		return false, false
+	}
+	raw, exists := extra[GrokMediaEligibleExtraKey]
+	if !exists || raw == nil {
+		return false, false
+	}
+	value, ok := raw.(bool)
+	return value, ok
 }
 
 func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
@@ -1474,6 +1702,7 @@ const (
 	OpenAIWSIngressModeDedicated   = "dedicated"
 	OpenAIWSIngressModeCtxPool     = "ctx_pool"
 	OpenAIWSIngressModePassthrough = "passthrough"
+	OpenAIWSIngressModeHTTPBridge  = "http_bridge"
 )
 
 func normalizeOpenAIWSIngressMode(mode string) string {
@@ -1484,6 +1713,8 @@ func normalizeOpenAIWSIngressMode(mode string) string {
 		return OpenAIWSIngressModeCtxPool
 	case OpenAIWSIngressModePassthrough:
 		return OpenAIWSIngressModePassthrough
+	case OpenAIWSIngressModeHTTPBridge:
+		return OpenAIWSIngressModeHTTPBridge
 	case OpenAIWSIngressModeShared:
 		return OpenAIWSIngressModeShared
 	case OpenAIWSIngressModeDedicated:

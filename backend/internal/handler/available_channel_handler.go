@@ -72,6 +72,7 @@ type userSupportedModelPricing struct {
 	OutputPrice      *float64                 `json:"output_price"`
 	CacheWritePrice  *float64                 `json:"cache_write_price"`
 	CacheReadPrice   *float64                 `json:"cache_read_price"`
+	ImageInputPrice  *float64                 `json:"image_input_price"`
 	ImageOutputPrice *float64                 `json:"image_output_price"`
 	PerRequestPrice  *float64                 `json:"per_request_price"`
 	ImageInputRatio  *float64                 `json:"image_input_ratio"`
@@ -288,6 +289,7 @@ func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *flo
 		OutputPrice:      p.OutputPrice,
 		CacheWritePrice:  p.CacheWritePrice,
 		CacheReadPrice:   p.CacheReadPrice,
+		ImageInputPrice:  p.ImageInputPrice,
 		ImageOutputPrice: p.ImageOutputPrice,
 		PerRequestPrice:  p.PerRequestPrice,
 		ImageInputRatio:  imageInputRatio,

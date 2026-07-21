@@ -14,7 +14,7 @@ Do not load every referenced document by default. Open the smallest relevant fil
 | groups, channels, pricing, billing source, model mappings, Codex 403, Deepseek, GPT-Plus-Special | `docs/ops/channels-and-billing.md` |
 | group 21, channel 13, `gpt-image-2-async`, 12ai async image billing | `docs/ops/async-image-bridge.md` |
 | admin password rotation, Cloudflare DNS, `sub.sakrylle.com` China access | `docs/ops/admin-dns.md` |
-| upstream sync, rebases, Wire regeneration, recurring merge conflicts, pricing drift, test stubs | `docs/ops/upstream-sync.md` |
+| upstream sync, merges, Wire regeneration, recurring merge conflicts, pricing drift, test stubs | `docs/ops/upstream-sync.md` |
 | local setup, build/test commands, pnpm, Ent, Wire, dev pitfalls | `docs/development.md` |
 | docs organization rules | `docs/ops/README.md` |
 
@@ -34,6 +34,7 @@ Quick commands (full list in `docs/development.md`): `make build`, `make test-ba
 
 ## Always-On Constraints
 
+- Sync upstream with `git merge --no-ff upstream/main`; do not rebase this long-lived fork unless the user explicitly requests it. Replaying hundreds of commits causes repeated conflicts and excessive time/token usage.
 - Never drive public 443 edge changes through SSH-over-443; use direct port 22.
 - Do not reintroduce default model-list fallback in `/v1/models`.
 - Currency is display-only `￥`; do not convert stored numeric values.

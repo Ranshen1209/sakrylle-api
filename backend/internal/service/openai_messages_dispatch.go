@@ -76,27 +76,25 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 	}
 
 	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)
-	switch claudeMessagesDispatchFamily(requestedModel) {
-	case "opus":
+	family := claudeMessagesDispatchFamily(requestedModel)
+	if family != "" || strings.HasPrefix(strings.ToLower(requestedModel), "claude") {
 		if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
 			return mappedModel
 		}
+	}
+
+	switch family {
+	case "opus":
 		if mappedModel := strings.TrimSpace(cfg.OpusMappedModel); mappedModel != "" {
 			return mappedModel
 		}
 		return defaultOpenAIMessagesDispatchOpusMappedModel
 	case "sonnet":
-		if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
-			return mappedModel
-		}
 		if mappedModel := strings.TrimSpace(cfg.SonnetMappedModel); mappedModel != "" {
 			return mappedModel
 		}
 		return defaultOpenAIMessagesDispatchSonnetMappedModel
 	case "haiku":
-		if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
-			return mappedModel
-		}
 		if mappedModel := strings.TrimSpace(cfg.HaikuMappedModel); mappedModel != "" {
 			return mappedModel
 		}
