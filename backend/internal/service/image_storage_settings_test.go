@@ -14,36 +14,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubSettingRepo struct {
+type stubImageStorageSettingRepo struct {
 	mu     sync.Mutex
 	values map[string]string
 }
 
-func newStubSettingRepo() *stubSettingRepo {
-	return &stubSettingRepo{values: map[string]string{}}
+func newStubImageStorageSettingRepo() *stubImageStorageSettingRepo {
+	return &stubImageStorageSettingRepo{values: map[string]string{}}
 }
 
-func (r *stubSettingRepo) Get(context.Context, string) (*Setting, error) { return nil, nil }
-func (r *stubSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+func (r *stubImageStorageSettingRepo) Get(context.Context, string) (*Setting, error) { return nil, nil }
+func (r *stubImageStorageSettingRepo) GetValue(_ context.Context, key string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.values[key], nil
 }
 
-func (r *stubSettingRepo) Set(_ context.Context, key, value string) error {
+func (r *stubImageStorageSettingRepo) Set(_ context.Context, key, value string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.values[key] = value
 	return nil
 }
-func (r *stubSettingRepo) GetMultiple(context.Context, []string) (map[string]string, error) {
+func (r *stubImageStorageSettingRepo) GetMultiple(context.Context, []string) (map[string]string, error) {
 	return map[string]string{}, nil
 }
-func (r *stubSettingRepo) SetMultiple(context.Context, map[string]string) error { return nil }
-func (r *stubSettingRepo) GetAll(context.Context) (map[string]string, error) {
+func (r *stubImageStorageSettingRepo) SetMultiple(context.Context, map[string]string) error {
+	return nil
+}
+func (r *stubImageStorageSettingRepo) GetAll(context.Context) (map[string]string, error) {
 	return map[string]string{}, nil
 }
-func (r *stubSettingRepo) Delete(context.Context, string) error { return nil }
+func (r *stubImageStorageSettingRepo) Delete(context.Context, string) error { return nil }
 
 // reversibleEncryptor stands in for AES: prefixed so a test can tell ciphertext
 // from plaintext, and so decrypting a plaintext value fails like the real one.
@@ -68,13 +70,13 @@ func (s *recordingStorage) Save(_ context.Context, key, _ string, _ []byte) (str
 	return "https://cdn.example.com/" + key, nil
 }
 
-func newImageStorageFixture(t *testing.T, fallback config.ImageStorageConfig) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {
+func newImageStorageFixture(t *testing.T, fallback config.ImageStorageConfig) (*ImageStorageSettingService, *stubImageStorageSettingRepo, *[]config.ImageStorageConfig) {
 	return newImageStorageFixtureWithKey(t, fallback, true)
 }
 
-func newImageStorageFixtureWithKey(t *testing.T, fallback config.ImageStorageConfig, encryptionKeyConfigured bool) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {
+func newImageStorageFixtureWithKey(t *testing.T, fallback config.ImageStorageConfig, encryptionKeyConfigured bool) (*ImageStorageSettingService, *stubImageStorageSettingRepo, *[]config.ImageStorageConfig) {
 	t.Helper()
-	repo := newStubSettingRepo()
+	repo := newStubImageStorageSettingRepo()
 	encryptor := reversibleEncryptor{}
 	backup := NewBackupService(repo, &config.Config{
 		Totp: config.TotpConfig{EncryptionKeyConfigured: encryptionKeyConfigured},
@@ -88,7 +90,7 @@ func newImageStorageFixtureWithKey(t *testing.T, fallback config.ImageStorageCon
 	return NewImageStorageSettingService(repo, encryptor, backup, factory, fallback), repo, &built
 }
 
-func seedBackupS3(t *testing.T, repo *stubSettingRepo, cfg BackupS3Config) {
+func seedBackupS3(t *testing.T, repo *stubImageStorageSettingRepo, cfg BackupS3Config) {
 	t.Helper()
 	cfg.SecretAccessKey = "enc:" + cfg.SecretAccessKey
 	data, err := json.Marshal(cfg)
