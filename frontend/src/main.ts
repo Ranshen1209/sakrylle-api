@@ -28,6 +28,20 @@ function initThemeClass() {
     savedTheme === 'dark' ||
     (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', shouldUseDark)
+
+  const syncBrowserThemeColor = () => {
+    const dark = document.documentElement.classList.contains('dark')
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+    document
+      .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+      ?.setAttribute('content', dark ? '#020617' : '#f9fafb')
+  }
+
+  syncBrowserThemeColor()
+  new MutationObserver(syncBrowserThemeColor).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class']
+  })
 }
 
 async function bootstrap() {

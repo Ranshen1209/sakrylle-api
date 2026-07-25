@@ -6,6 +6,8 @@ Sakrylle API is a visual rebrand plus backend behavior changes. Core gateway log
 
 The brand color is Monet purple `#9181bd` (upstream teal was `#14b8a6`). Search `frontend/tailwind.config.js` and `frontend/src/` when extending theme usage.
 
+The `primary-*` Tailwind palette is backed by CSS variables in `frontend/src/style.css`. Light mode uses the canonical palette; dark mode shifts the purple scale lighter for contrast. Keep new brand styling on `primary-*` utilities so it follows the active light/dark class automatically. `frontend/src/main.ts` also synchronizes native control and browser chrome colors whenever the root theme class changes.
+
 ## Backend Behavior
 
 - `/v1/models` never falls back to `claude.DefaultModels` or `openai.DefaultModels`, preventing leakage of unconfigured models.

@@ -224,6 +224,8 @@ func RegisterGatewayRoutes(
 		// requireOAuthScope already lets it through because §7.3 lists it
 		// with three valid scopes — see service.OAuthScopePolicyForRequest.
 		gateway.GET("/me", h.Account.Me)
+		gateway.POST("/live", h.OpenAIGateway.Live)
+		gateway.GET("/live/:call_id", h.OpenAIGateway.LiveSideband)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
 			if isOpenAIResponsesCompatibleGatewayPlatform(c) {
@@ -334,6 +336,8 @@ func RegisterGatewayRoutes(
 	// default; manual keys still pass.
 	codexDirect.Use(bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, rejectOAuthUnlisted)
 	{
+		codexDirect.POST("/realtime/calls", h.OpenAIGateway.Live)
+		codexDirect.GET("/:call_id", h.OpenAIGateway.LiveSideband)
 		codexDirect.POST("/responses", responsesHandler)
 		codexDirect.POST("/responses/*subpath", responsesHandler)
 		codexDirect.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)

@@ -299,6 +299,8 @@ var oauthScopePolicies = []scopePolicyEntry{
 
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
 	{method: "GET", pattern: regexp.MustCompile(`^/v1/responses(/.*)?$`), required: []string{ScopeResponsesCreate}},
+	{method: "POST", pattern: regexp.MustCompile(`^/v1/live/?$`), required: []string{ScopeResponsesCreate}},
+	{method: "GET", pattern: regexp.MustCompile(`^/v1/live/[^/]+/?$`), required: []string{ScopeResponsesCreate}},
 	// FIX M5: cover the rest of the mutating verbs on /v1/responses so a
 	// future DELETE /v1/responses/:id (cancellation) or PATCH /v1/responses
 	// /:id (metadata edit) can't sneak past with sk_oauth_ tokens that lack

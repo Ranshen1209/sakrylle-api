@@ -126,6 +126,8 @@ func TestOAuthScopePolicyForRequest(t *testing.T) {
 		{"POST", "/chat/completions", true, ScopeChatCompletionsCreate},
 		{"POST", "/v1/responses", true, ScopeResponsesCreate},
 		{"POST", "/v1/responses/abc/cancel", true, ScopeResponsesCreate},
+		{"POST", "/v1/live", true, ScopeResponsesCreate},
+		{"GET", "/v1/live/call_abc", true, ScopeResponsesCreate},
 		{"POST", "/v1/codex/responses", true, ScopeResponsesCreate},
 		{"POST", "/v1/codex/responses/abc", true, ScopeResponsesCreate},
 		{"POST", "/v1/messages", true, ScopeMessagesCreate},

@@ -5,19 +5,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        // 主色调 - Monet Purple 莫奈紫（低饱和水彩薰衣草调）
+        // Monet Purple is backed by CSS variables so the palette can adapt
+        // when the root dark-mode class changes.
         primary: {
-          50: '#f8f6fc',
-          100: '#f0ecf8',
-          200: '#e2daf2',
-          300: '#cfc2e8',
-          400: '#b5a3d9',
-          500: '#9181bd',
-          600: '#7b6aab',
-          700: '#6b5b95',
-          800: '#584b7a',
-          900: '#4a3f66',
-          950: '#2d2640'
+          50: 'rgb(var(--color-primary-50) / <alpha-value>)',
+          100: 'rgb(var(--color-primary-100) / <alpha-value>)',
+          200: 'rgb(var(--color-primary-200) / <alpha-value>)',
+          300: 'rgb(var(--color-primary-300) / <alpha-value>)',
+          400: 'rgb(var(--color-primary-400) / <alpha-value>)',
+          500: 'rgb(var(--color-primary-500) / <alpha-value>)',
+          600: 'rgb(var(--color-primary-600) / <alpha-value>)',
+          700: 'rgb(var(--color-primary-700) / <alpha-value>)',
+          800: 'rgb(var(--color-primary-800) / <alpha-value>)',
+          900: 'rgb(var(--color-primary-900) / <alpha-value>)',
+          950: 'rgb(var(--color-primary-950) / <alpha-value>)'
         },
         // 辅助色 - 深蓝灰
         accent: {
@@ -67,20 +68,21 @@ export default {
       boxShadow: {
         glass: '0 8px 32px rgba(0, 0, 0, 0.08)',
         'glass-sm': '0 4px 16px rgba(0, 0, 0, 0.06)',
-        glow: '0 0 20px rgba(145, 129, 189, 0.25)',
-        'glow-lg': '0 0 40px rgba(145, 129, 189, 0.35)',
+        glow: '0 0 20px rgb(var(--color-primary-500) / 0.25)',
+        'glow-lg': '0 0 40px rgb(var(--color-primary-500) / 0.35)',
         card: '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06)',
         'card-hover': '0 10px 40px rgba(0, 0, 0, 0.08)',
         'inner-glow': 'inset 0 1px 0 rgba(255, 255, 255, 0.1)'
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(135deg, #9181bd 0%, #7b6aab 100%)',
+        'gradient-primary':
+          'linear-gradient(135deg, rgb(var(--color-primary-500)) 0%, rgb(var(--color-primary-600)) 100%)',
         'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
         'gradient-glass':
           'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
         'mesh-gradient':
-          'radial-gradient(at 40% 20%, rgba(145, 129, 189, 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(123, 106, 171, 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(145, 129, 189, 0.08) 0px, transparent 50%)'
+          'radial-gradient(at 40% 20%, rgb(var(--color-primary-500) / 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, rgb(var(--color-primary-600) / 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, rgb(var(--color-primary-500) / 0.08) 0px, transparent 50%)'
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out',
@@ -118,8 +120,8 @@ export default {
           '100%': { backgroundPosition: '200% 0' }
         },
         glow: {
-          '0%': { boxShadow: '0 0 20px rgba(145, 129, 189, 0.25)' },
-          '100%': { boxShadow: '0 0 30px rgba(145, 129, 189, 0.4)' }
+          '0%': { boxShadow: '0 0 20px rgb(var(--color-primary-500) / 0.25)' },
+          '100%': { boxShadow: '0 0 30px rgb(var(--color-primary-500) / 0.4)' }
         }
       },
       backdropBlur: {
