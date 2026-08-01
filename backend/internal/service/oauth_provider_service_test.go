@@ -297,7 +297,7 @@ func (s *stubAPIKeyRepo) GetByID(_ context.Context, id int64) (*APIKey, error) {
 	return &cp, nil
 }
 
-func (s *stubAPIKeyRepo) Update(_ context.Context, k *APIKey) error {
+func (s *stubAPIKeyRepo) Update(_ context.Context, k *APIKey, _ APIKeyUpdateFields) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.rows[k.ID]; !ok {
@@ -350,7 +350,16 @@ func (s *stubAPIKeyRepo) ListKeysByGroupID(_ context.Context, _ int64) ([]string
 func (s *stubAPIKeyRepo) IncrementQuotaUsed(_ context.Context, _ int64, _ float64) (float64, error) {
 	return 0, nil
 }
-func (s *stubAPIKeyRepo) UpdateLastUsed(_ context.Context, _ int64, _ time.Time) error { return nil }
+func (s *stubAPIKeyRepo) UpdateLastUsed(_ context.Context, id int64, usedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.rows[id]
+	if !ok {
+		return ErrAPIKeyNotFound
+	}
+	row.LastUsedAt = &usedAt
+	return nil
+}
 func (s *stubAPIKeyRepo) IncrementRateLimitUsage(_ context.Context, _ int64, _ float64) error {
 	return nil
 }
@@ -522,7 +531,7 @@ func (a *testAPIKeyRepoAdapter) DisableAPIKeysByIDsReturningKeys(ctx context.Con
 			continue
 		}
 		key.Status = StatusAPIKeyDisabled
-		_ = a.Update(ctx, key)
+		_ = a.Update(ctx, key, APIKeyUpdateFields{Status: true})
 	}
 	return out, nil
 }
@@ -1153,8 +1162,7 @@ func TestListUserGrants_GroupsByClientAndUnionsScopes(t *testing.T) {
 		t.Fatalf("create api_key 2: %v", err)
 	}
 	lastUsed := now.Add(-15 * time.Minute)
-	apiKey2.LastUsedAt = &lastUsed
-	if err := apiKeyRepo.Update(ctx, apiKey2); err != nil {
+	if err := apiKeyRepo.UpdateLastUsed(ctx, apiKey2.ID, lastUsed); err != nil {
 		t.Fatalf("update api_key 2: %v", err)
 	}
 
@@ -1485,7 +1493,7 @@ type updateFailingAPIKeyRepo struct {
 	*stubAPIKeyRepo
 }
 
-func (r *updateFailingAPIKeyRepo) Update(_ context.Context, _ *APIKey) error {
+func (r *updateFailingAPIKeyRepo) Update(_ context.Context, _ *APIKey, _ APIKeyUpdateFields) error {
 	return errors.New("simulated update failure")
 }
 

@@ -58,6 +58,7 @@ type Handlers struct {
 	OpenAIGateway    *OpenAIGatewayHandler
 	Setting          *SettingHandler
 	Totp             *TotpHandler
+	Passkey          *PasskeyHandler
 	Payment          *PaymentHandler
 	PaymentWebhook   *PaymentWebhookHandler
 	AgisoDelivery    *AgisoDeliveryHandler
@@ -65,6 +66,7 @@ type Handlers struct {
 	OAuthProvider    *OAuthProviderHandler
 	OAuthDevice      *OAuthDeviceHandler
 	Account          *AccountInfoHandler
+	ModelPlaza       *ModelPlazaHandler
 	AsyncImage       *AsyncImageHandler
 	BatchImage       *BatchImageHandler
 }

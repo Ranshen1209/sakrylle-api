@@ -150,7 +150,9 @@ func (middlewareAPIKeyRepoStub) Create(_ context.Context, _ *service.APIKey) err
 func (middlewareAPIKeyRepoStub) GetByID(_ context.Context, _ int64) (*service.APIKey, error) {
 	return nil, service.ErrAPIKeyNotFound
 }
-func (middlewareAPIKeyRepoStub) Update(_ context.Context, _ *service.APIKey) error { return nil }
+func (middlewareAPIKeyRepoStub) Update(_ context.Context, _ *service.APIKey, _ service.APIKeyUpdateFields) error {
+	return nil
+}
 func (middlewareAPIKeyRepoStub) GetKeyAndOwnerID(_ context.Context, _ int64) (string, int64, error) {
 	return "", 0, nil
 }

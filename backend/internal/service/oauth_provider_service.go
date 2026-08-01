@@ -1212,7 +1212,7 @@ func (s *OAuthProviderService) RefreshAccessToken(
 	// Disable the old access_token api_keys row + invalidate cache.
 	if oldKey, gerr := s.apiKeyRepo.GetByID(ctx, oldToken.APIKeyID); gerr == nil && oldKey != nil {
 		oldKey.Status = StatusAPIKeyDisabled
-		_ = s.apiKeyRepo.Update(ctx, oldKey)
+		_ = s.apiKeyRepo.Update(ctx, oldKey, APIKeyUpdateFields{Status: true})
 		if s.authCache != nil {
 			s.authCache.InvalidateAuthCacheByKey(ctx, oldKey.Key)
 		}
@@ -1408,7 +1408,7 @@ func (s *OAuthProviderService) disableAndInvalidate(ctx context.Context, ids []i
 			s.authCache.InvalidateAuthCacheByKey(ctx, key.Key)
 		}
 		key.Status = StatusAPIKeyDisabled
-		_ = s.apiKeyRepo.Update(ctx, key)
+		_ = s.apiKeyRepo.Update(ctx, key, APIKeyUpdateFields{Status: true})
 	}
 }
 
@@ -1768,7 +1768,7 @@ func (s *OAuthProviderService) RevokeUserGrant(ctx context.Context, userID int64
 			s.authCache.InvalidateAuthCacheByKey(ctx, apiKey.Key)
 		}
 		apiKey.Status = StatusAPIKeyDisabled
-		if uerr := s.apiKeyRepo.Update(ctx, apiKey); uerr != nil {
+		if uerr := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{Status: true}); uerr != nil {
 			slog.Warn("oauth: disable api_key during revocation failed",
 				"api_key_id", tok.APIKeyID, "err", uerr)
 		}

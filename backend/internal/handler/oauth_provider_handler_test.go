@@ -290,7 +290,7 @@ func (a *oauthHandlerAPIKeyOAuthAdapter) DisableAPIKeysByIDsReturningKeys(ctx co
 			continue
 		}
 		key.Status = service.StatusAPIKeyDisabled
-		_ = a.Update(ctx, key)
+		_ = a.Update(ctx, key, service.APIKeyUpdateFields{Status: true})
 	}
 	return out, nil
 }
@@ -326,7 +326,7 @@ func (s *oauthHandlerAPIKeyRepoStub) GetByID(_ context.Context, id int64) (*serv
 	return &cp, nil
 }
 
-func (s *oauthHandlerAPIKeyRepoStub) Update(_ context.Context, k *service.APIKey) error {
+func (s *oauthHandlerAPIKeyRepoStub) Update(_ context.Context, k *service.APIKey, _ service.APIKeyUpdateFields) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.rows[k.ID]; !ok {
