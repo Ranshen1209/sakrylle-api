@@ -75,14 +75,14 @@ func newTestAgisoClient(fn func(*http.Request) *http.Response) *AgisoClient {
 	}
 	return &AgisoClient{
 		cfg:        config.AgisoConfig{AppSecret: "secret", AccessToken: "token", APIBase: "https://agiso.test"},
-		httpClient: &http.Client{Transport: roundTripFunc(fn)},
+		httpClient: &http.Client{Transport: agisoRoundTripFunc(fn)},
 		limiter:    limiter,
 	}
 }
 
-type roundTripFunc func(*http.Request) *http.Response
+type agisoRoundTripFunc func(*http.Request) *http.Response
 
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+func (f agisoRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r), nil
 }
 

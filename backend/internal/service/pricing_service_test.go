@@ -531,7 +531,7 @@ func TestDefaultPricingIncludesGemini36FlashRates(t *testing.T) {
 	}
 }
 
-func TestDefaultPricingIncludesCodexAutoReview(t *testing.T) {
+func TestDefaultPricingUsesCurrentCodexAutoReviewBaseRates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
 	require.NoError(t, err)
 
