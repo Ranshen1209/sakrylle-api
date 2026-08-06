@@ -43,7 +43,7 @@
           <button
             class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800"
             :title="isDark ? t('home.switchToLight') : t('home.switchToDark')"
-            @click="toggleTheme"
+            @click="toggleTheme($event)"
           >
             <Icon v-if="isDark" name="sun" size="md" />
             <Icon v-else name="moon" size="md" />
@@ -465,11 +465,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { useTheme } from '@/composables/useTheme'
 import { sanitizeUrl } from '@/utils/url'
 
 const { t } = useI18n()
@@ -492,8 +493,7 @@ const isHomeContentUrl = computed(() => {
   return content.startsWith('http://') || content.startsWith('https://')
 })
 
-// Theme
-const isDark = ref(document.documentElement.classList.contains('dark'))
+const { isDark, toggleTheme } = useTheme()
 
 // GitHub URL
 const githubUrl = 'https://github.com/Ranshen1209/sub2api'
@@ -511,54 +511,7 @@ const userInitial = computed(() => {
 // Current year for footer
 const currentYear = computed(() => new Date().getFullYear())
 
-// Toggle theme with Telegram-style circular reveal animation
-function toggleTheme(event?: MouseEvent) {
-  const x = event?.clientX ?? window.innerWidth / 2
-  const y = event?.clientY ?? window.innerHeight / 2
-  const endRadius = Math.hypot(
-    Math.max(x, window.innerWidth - x),
-    Math.max(y, window.innerHeight - y)
-  )
-
-  const supportsViewTransition = 'startViewTransition' in document
-  if (!supportsViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    applyTheme()
-    return
-  }
-
-  const transition = (document as any).startViewTransition(() => {
-    applyTheme()
-  })
-
-  transition.ready.then(() => {
-    document.documentElement.animate(
-      { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`] },
-      { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
-    )
-  })
-}
-
-function applyTheme() {
-  isDark.value = !isDark.value
-  document.documentElement.classList.toggle('dark', isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-}
-
-// Initialize theme
-function initTheme() {
-  const savedTheme = localStorage.getItem('theme')
-  if (
-    savedTheme === 'dark' ||
-    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  ) {
-    isDark.value = true
-    document.documentElement.classList.add('dark')
-  }
-}
-
 onMounted(() => {
-  initTheme()
-
   // Check auth state
   authStore.checkAuth()
 

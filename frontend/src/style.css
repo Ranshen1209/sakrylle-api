@@ -7,12 +7,20 @@
 ::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
+  height: 100%;
+  width: 100%;
 }
 ::view-transition-old(root) {
   z-index: 1;
 }
 ::view-transition-new(root) {
   z-index: 9999;
+}
+
+/* Suppress Tailwind/component color transitions while the VT theme swap runs */
+html.theme-toggling,
+html.theme-toggling * {
+  transition: none !important;
 }
 
 @layer base {

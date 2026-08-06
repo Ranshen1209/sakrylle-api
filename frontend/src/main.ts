@@ -29,19 +29,11 @@ function initThemeClass() {
     (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', shouldUseDark)
 
-  const syncBrowserThemeColor = () => {
-    const dark = document.documentElement.classList.contains('dark')
-    document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
-    document
-      .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-      ?.setAttribute('content', dark ? '#020617' : '#f9fafb')
-  }
-
-  syncBrowserThemeColor()
-  new MutationObserver(syncBrowserThemeColor).observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class']
-  })
+  // theme-color only. Do not set inline color-scheme — CSS :root / :root.dark
+  // owns it. Writing color-scheme mid View Transition corrupts the painted UI.
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute('content', shouldUseDark ? '#020617' : '#f9fafb')
 }
 
 async function bootstrap() {

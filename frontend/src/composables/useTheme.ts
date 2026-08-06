@@ -1,15 +1,56 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, readonly } from 'vue'
 
-const isDark = ref(false)
+const isDark = ref(
+  typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+)
+
+let mediaQueryInitialized = false
+let activeTransition: { finished: Promise<void> } | null = null
+
+function syncBrowserChrome(dark: boolean) {
+  // Do NOT set documentElement.style.colorScheme here.
+  // Inline color-scheme during View Transitions corrupts the painted snapshots
+  // (DOM ends up light while form controls / overlays still look dark, or vice versa).
+  // CSS already sets color-scheme on :root / :root.dark.
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute('content', dark ? '#020617' : '#f9fafb')
+}
 
 function applyTheme(dark: boolean) {
   isDark.value = dark
   document.documentElement.classList.toggle('dark', dark)
+  syncBrowserChrome(dark)
+}
+
+function commitToggle() {
+  const next = !isDark.value
+  applyTheme(next)
+  localStorage.setItem('theme', next ? 'dark' : 'light')
+}
+
+function ensureSystemThemeListener() {
+  if (mediaQueryInitialized || typeof window === 'undefined') return
+  mediaQueryInitialized = true
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem('theme')) {
+      applyTheme(e.matches)
+    }
+  })
+}
+
+/**
+ * Sync the shared ref from the current DOM class (main.ts may have applied it already).
+ */
+function syncFromDom() {
+  if (typeof document === 'undefined') return
+  isDark.value = document.documentElement.classList.contains('dark')
 }
 
 export function useTheme() {
-  let mediaQuery: MediaQueryList | null = null
-  let mediaHandler: ((e: MediaQueryListEvent) => void) | null = null
+  ensureSystemThemeListener()
+  syncFromDom()
 
   function toggleTheme(event?: MouseEvent) {
     const x = event?.clientX ?? window.innerWidth / 2
@@ -20,56 +61,63 @@ export function useTheme() {
     )
 
     const supportsViewTransition = 'startViewTransition' in document
-    if (!supportsViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (
+      !supportsViewTransition ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      activeTransition
+    ) {
       commitToggle()
       return
     }
 
-    const transition = (document as any).startViewTransition(() => {
+    document.documentElement.classList.add('theme-toggling')
+
+    try {
+      const transition = (
+        document as Document & {
+          startViewTransition: (cb: () => void) => {
+            ready: Promise<void>
+            finished: Promise<void>
+          }
+        }
+      ).startViewTransition(() => {
+        commitToggle()
+      })
+
+      activeTransition = transition
+
+      transition.ready
+        .then(() => {
+          document.documentElement.animate(
+            {
+              clipPath: [
+                `circle(0px at ${x}px ${y}px)`,
+                `circle(${endRadius}px at ${x}px ${y}px)`
+              ]
+            },
+            {
+              duration: 500,
+              easing: 'ease-in-out',
+              pseudoElement: '::view-transition-new(root)'
+            }
+          )
+        })
+        .catch(() => {
+          // Transition was skipped; theme already applied in the callback.
+        })
+
+      transition.finished
+        .catch(() => {})
+        .finally(() => {
+          activeTransition = null
+          document.documentElement.classList.remove('theme-toggling')
+        })
+    } catch {
+      activeTransition = null
+      document.documentElement.classList.remove('theme-toggling')
       commitToggle()
-    })
-
-    transition.ready.then(() => {
-      document.documentElement.animate(
-        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${endRadius}px at ${x}px ${y}px)`] },
-        { duration: 500, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' }
-      )
-    })
-  }
-
-  function commitToggle() {
-    const newDark = !isDark.value
-    applyTheme(newDark)
-    localStorage.setItem('theme', newDark ? 'dark' : 'light')
-  }
-
-  function initTheme() {
-    const savedTheme = localStorage.getItem('theme')
-    if (savedTheme === 'dark') {
-      applyTheme(true)
-    } else if (savedTheme === 'light') {
-      applyTheme(false)
-    } else {
-      applyTheme(window.matchMedia('(prefers-color-scheme: dark)').matches)
-    }
-
-    mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    mediaHandler = (e: MediaQueryListEvent) => {
-      if (!localStorage.getItem('theme')) {
-        applyTheme(e.matches)
-      }
-    }
-    mediaQuery.addEventListener('change', mediaHandler)
-  }
-
-  function cleanupTheme() {
-    if (mediaQuery && mediaHandler) {
-      mediaQuery.removeEventListener('change', mediaHandler)
     }
   }
 
-  onMounted(initTheme)
-  onUnmounted(cleanupTheme)
-
-  return { isDark, toggleTheme, initTheme }
+  return { isDark: readonly(isDark), toggleTheme, applyTheme }
 }
