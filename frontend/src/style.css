@@ -2,13 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Telegram-style dark mode circular reveal transition */
+/* Telegram-style circular theme reveal.
+   Keep group duration in sync with the JS clip-path animation, kill the
+   default old/new crossfade (that flash on dark→light), and hold opacity at 1. */
+::view-transition-group(root) {
+  animation-duration: 500ms;
+  animation-timing-function: ease-in-out;
+}
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
+  opacity: 1;
   height: 100%;
   width: 100%;
+  object-fit: cover;
 }
 ::view-transition-old(root) {
   z-index: 1;
@@ -17,7 +25,11 @@
   z-index: 9999;
 }
 
-/* Suppress Tailwind/component color transitions while the VT theme swap runs */
+/* Suppress Tailwind color transitions; fill gaps under the reveal with the
+   destination theme background to avoid a white flash on dark→light. */
+html.theme-toggling {
+  background-color: var(--theme-transition-bg, #f9fafb);
+}
 html.theme-toggling,
 html.theme-toggling * {
   transition: none !important;

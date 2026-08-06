@@ -6,12 +6,13 @@ const isDark = ref(
 
 let mediaQueryInitialized = false
 let activeTransition: { finished: Promise<void> } | null = null
+let transitionSafetyTimer: ReturnType<typeof setTimeout> | null = null
+
+const TRANSITION_MS = 500
 
 function syncBrowserChrome(dark: boolean) {
-  // Do NOT set documentElement.style.colorScheme here.
-  // Inline color-scheme during View Transitions corrupts the painted snapshots
-  // (DOM ends up light while form controls / overlays still look dark, or vice versa).
-  // CSS already sets color-scheme on :root / :root.dark.
+  // Do NOT set documentElement.style.colorScheme — CSS :root / :root.dark owns it.
+  // Writing inline color-scheme during View Transitions corrupts painted snapshots.
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
     ?.setAttribute('content', dark ? '#020617' : '#f9fafb')
@@ -40,12 +41,19 @@ function ensureSystemThemeListener() {
   })
 }
 
-/**
- * Sync the shared ref from the current DOM class (main.ts may have applied it already).
- */
 function syncFromDom() {
   if (typeof document === 'undefined') return
   isDark.value = document.documentElement.classList.contains('dark')
+}
+
+function clearTransitionLock() {
+  if (transitionSafetyTimer) {
+    clearTimeout(transitionSafetyTimer)
+    transitionSafetyTimer = null
+  }
+  activeTransition = null
+  document.documentElement.classList.remove('theme-toggling')
+  document.documentElement.style.removeProperty('--theme-transition-bg')
 }
 
 export function useTheme() {
@@ -60,16 +68,30 @@ export function useTheme() {
       Math.max(y, window.innerHeight - y)
     )
 
+    const goingDark = !isDark.value
     const supportsViewTransition = 'startViewTransition' in document
+
     if (
       !supportsViewTransition ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
       activeTransition
     ) {
+      document.documentElement.classList.add('theme-toggling')
       commitToggle()
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          document.documentElement.classList.remove('theme-toggling')
+        })
+      })
       return
     }
 
+    // Destination page color under the reveal — prevents a 1-frame white/dark flash
+    // between the DOM theme swap and the clip-path animation starting.
+    document.documentElement.style.setProperty(
+      '--theme-transition-bg',
+      goingDark ? '#020617' : '#f9fafb'
+    )
     document.documentElement.classList.add('theme-toggling')
 
     try {
@@ -85,9 +107,12 @@ export function useTheme() {
       })
 
       activeTransition = transition
+      transitionSafetyTimer = setTimeout(clearTransitionLock, TRANSITION_MS + 250)
 
       transition.ready
         .then(() => {
+          // Always expand the NEW theme from the click point (both directions).
+          // Shrinking the old layer on lighten races Chromium's default fade and flashes.
           document.documentElement.animate(
             {
               clipPath: [
@@ -96,25 +121,28 @@ export function useTheme() {
               ]
             },
             {
-              duration: 500,
+              duration: TRANSITION_MS,
               easing: 'ease-in-out',
+              // Apply the 0-radius keyframe immediately so the new layer never
+              // paints full-bleed for a frame before the reveal starts.
+              fill: 'both',
               pseudoElement: '::view-transition-new(root)'
             }
           )
         })
         .catch(() => {
-          // Transition was skipped; theme already applied in the callback.
+          // Transition skipped; theme already applied in the callback.
         })
 
       transition.finished
         .catch(() => {})
         .finally(() => {
-          activeTransition = null
-          document.documentElement.classList.remove('theme-toggling')
+          document.documentElement.style.removeProperty('--theme-transition-bg')
+          clearTransitionLock()
         })
     } catch {
-      activeTransition = null
-      document.documentElement.classList.remove('theme-toggling')
+      document.documentElement.style.removeProperty('--theme-transition-bg')
+      clearTransitionLock()
       commitToggle()
     }
   }

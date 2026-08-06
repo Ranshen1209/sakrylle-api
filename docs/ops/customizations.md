@@ -6,7 +6,7 @@ Sakrylle API is a visual rebrand plus backend behavior changes. Core gateway log
 
 The brand color is Monet purple `#9181bd` (upstream teal was `#14b8a6`). Search `frontend/tailwind.config.js` and `frontend/src/` when extending theme usage.
 
-The `primary-*` Tailwind palette is backed by CSS variables in `frontend/src/style.css`. Light mode uses the canonical palette; dark mode shifts the purple scale lighter for contrast. Keep new brand styling on `primary-*` utilities so it follows the active light/dark class automatically. Theme toggles go through `frontend/src/composables/useTheme.ts` (View Transition circular reveal). `color-scheme` is owned by CSS `:root` / `:root.dark` only — do not write inline `color-scheme` during toggles, or the painted UI can desync from the DOM class.
+The `primary-*` Tailwind palette is backed by CSS variables in `frontend/src/style.css`. Light mode uses the canonical palette; dark mode shifts the purple scale lighter for contrast. Keep new brand styling on `primary-*` utilities so it follows the active light/dark class automatically. Theme toggles go through `frontend/src/composables/useTheme.ts` with a Telegram-style View Transition circular reveal (new theme always expands from the click point). `color-scheme` is owned by CSS `:root` / `:root.dark` only — do not write inline `color-scheme` during toggles. Keep `::view-transition-group(root)` duration aligned with the JS clip-path animation, force `opacity: 1` on old/new layers, and use `fill: both` so dark→light does not flash.
 
 ## Backend Behavior
 
