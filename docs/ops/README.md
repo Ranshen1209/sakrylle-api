@@ -1,6 +1,6 @@
 # Operations Docs
 
-This directory holds Sakrylle API operational facts, gotchas, and "why" decisions. Keep `CLAUDE.md` as a short index and put long notes here.
+This directory holds Sakrylle API operational facts, gotchas, and "why" decisions. Keep `CLAUDE.md` (Claude Code) and `.cursor/rules/` (Cursor) as short indexes and put long notes here.
 
 ## Index
 

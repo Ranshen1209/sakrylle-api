@@ -1,0 +1,24 @@
+---
+description: Ops/docs routing index — open the smallest relevant doc for the task, never the full set
+alwaysApply: true
+---
+
+# Context Routing
+
+Sakrylle API fork of sub2api. This is a routing index, not a required reading list.
+
+Do not load every referenced document by default. Open the smallest relevant file only when the current task matches its scope.
+
+| When the task touches... | Read |
+| --- | --- |
+| production topology, deploy commands, compose, domains, companion services, SSH, common ops | `docs/ops/infrastructure.md` |
+| Sakrylle fork behavior, visual theme, model-list fallback, currency display | `docs/ops/customizations.md` |
+| SMTP, OAuth/OIDC, clients, scopes, Sakrylle Web SSO, notification email templates | `docs/ops/identity-email.md` |
+| groups, channels, pricing, billing source, model mappings, Codex 403, Deepseek, GPT-Plus-Special | `docs/ops/channels-and-billing.md` |
+| group 21, channel 13, `gpt-image-2-async`, 12ai async image billing | `docs/ops/async-image-bridge.md` |
+| admin password rotation, Cloudflare DNS, `sub.sakrylle.com` China access | `docs/ops/admin-dns.md` |
+| upstream sync, merges, Wire regeneration, recurring merge conflicts, pricing drift, test stubs | `docs/ops/upstream-sync.md` |
+| local setup, build/test commands, pnpm, Ent, Wire, dev pitfalls | `docs/development.md` |
+| docs organization rules | `docs/ops/README.md` |
+
+For "what changed", use `git log` / `git diff upstream/main`. For operational "why", update the matching doc under `docs/ops/`.

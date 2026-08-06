@@ -1,0 +1,18 @@
+---
+description: Monorepo layout and backend Wire layering overview
+alwaysApply: true
+---
+
+# Architecture At A Glance
+
+Monorepo: Go backend (`backend/`), Vue 3 + Vite panel (`frontend/`), deploy assets (`deploy/`), ops docs (`docs/`).
+
+Backend is layered and wired with Google Wire. Provider sets compose in this dependency order (`backend/cmd/server/wire.go`): `config` → `repository` → `service` → `payment` → `middleware` → `handler` → `server`. Entry point is `backend/cmd/server/main.go`; `wire_gen.go` is committed and regenerated via `go generate` after provider changes.
+
+- `internal/handler/` — Gin HTTP handlers (auth/OAuth/OIDC, admin, user, payment, and the `gateway_handler*` request path that proxies `/v1/*` to upstream AI providers).
+- `internal/service/` — business logic: billing/pricing, account pooling & scheduling, gateway relay, OAuth token refresh, background workers (most own a `Stop()` consumed by `provideCleanup` in `wire.go`).
+- `internal/repository/` — Ent-backed persistence plus Redis caches (e.g. `api_key_cache`); AES encryption for stored credentials.
+- `ent/` — generated schema/client; `migrations/` — Atlas migration files. Both committed.
+- `internal/server/routes/` — route registration grouped by surface (`gateway.go`, `admin.go`, `auth.go`, `oauth.go`, `payment.go`, `user.go`).
+
+Quick commands (full list in `docs/development.md`): `make build`, `make test-backend`, `make test-frontend`. Backend tests run `go test ./...` + `golangci-lint`; frontend critical specs are pinned in the root `Makefile`.
