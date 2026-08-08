@@ -16,6 +16,9 @@ export interface PlazaOfficialPricing {
   /** 1h 缓存写入（LiteLLM cache_creation_above_1hr），多数模型缺失。 */
   cache_write_1h_price?: number | null
   cache_read_price: number | null
+  long_context_threshold?: number
+  long_context_input_multiplier?: number
+  long_context_output_multiplier?: number
 }
 
 export interface PlazaModel {

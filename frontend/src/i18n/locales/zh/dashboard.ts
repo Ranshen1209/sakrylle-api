@@ -570,7 +570,9 @@ export default {
       perUnitRequest: '/ 次',
       perUnitImage: '/ 张',
       perRequest: '按次计费',
-      perImage: '按图片计费'
+      perImage: '按图片计费',
+      standard: '标准',
+      longContext: '长上下文'
     },
     nav: {
       login: '登录',

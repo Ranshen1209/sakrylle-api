@@ -37,11 +37,14 @@ func NewModelPlazaHandler(
 
 // modelPlazaOfficialPricing LiteLLM 官方参考价（USD per token）。
 type modelPlazaOfficialPricing struct {
-	InputPrice        *float64 `json:"input_price"`
-	OutputPrice       *float64 `json:"output_price"`
-	CacheWritePrice   *float64 `json:"cache_write_price"`
-	CacheWrite1hPrice *float64 `json:"cache_write_1h_price,omitempty"`
-	CacheReadPrice    *float64 `json:"cache_read_price"`
+	InputPrice                  *float64 `json:"input_price"`
+	OutputPrice                 *float64 `json:"output_price"`
+	CacheWritePrice             *float64 `json:"cache_write_price"`
+	CacheWrite1hPrice           *float64 `json:"cache_write_1h_price,omitempty"`
+	CacheReadPrice              *float64 `json:"cache_read_price"`
+	LongContextThreshold        *int     `json:"long_context_threshold,omitempty"`
+	LongContextInputMultiplier  *float64 `json:"long_context_input_multiplier,omitempty"`
+	LongContextOutputMultiplier *float64 `json:"long_context_output_multiplier,omitempty"`
 }
 
 // modelPlazaModel 广场模型条目：渠道定价（白名单形态）+ 官方参考价。
@@ -195,10 +198,13 @@ func toModelPlazaOfficialPricing(p *service.PlazaOfficialPricing) *modelPlazaOff
 		return nil
 	}
 	return &modelPlazaOfficialPricing{
-		InputPrice:        p.InputPrice,
-		OutputPrice:       p.OutputPrice,
-		CacheWritePrice:   p.CacheWritePrice,
-		CacheWrite1hPrice: p.CacheWrite1hPrice,
-		CacheReadPrice:    p.CacheReadPrice,
+		InputPrice:                  p.InputPrice,
+		OutputPrice:                 p.OutputPrice,
+		CacheWritePrice:             p.CacheWritePrice,
+		CacheWrite1hPrice:           p.CacheWrite1hPrice,
+		CacheReadPrice:              p.CacheReadPrice,
+		LongContextThreshold:        p.LongContextThreshold,
+		LongContextInputMultiplier:  p.LongContextInputMultiplier,
+		LongContextOutputMultiplier: p.LongContextOutputMultiplier,
 	}
 }

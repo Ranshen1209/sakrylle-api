@@ -74,8 +74,11 @@ func TestToModelPlazaGroupDTO_UserRateAndFieldWhitelist(t *testing.T) {
 				InputPrice:  testPtr(3e-6),
 			},
 			OfficialPricing: &service.PlazaOfficialPricing{
-				InputPrice:     testPtr(3e-6),
-				CacheReadPrice: testPtr(3e-7),
+				InputPrice:                  testPtr(3e-6),
+				CacheReadPrice:              testPtr(3e-7),
+				LongContextThreshold:        testIntPtr(272000),
+				LongContextInputMultiplier:  testPtr(2),
+				LongContextOutputMultiplier: testPtr(1.5),
 			},
 		}},
 	}
@@ -107,6 +110,9 @@ func TestToModelPlazaGroupDTO_UserRateAndFieldWhitelist(t *testing.T) {
 	official := model["official_pricing"].(map[string]any)
 	require.Contains(t, official, "input_price")
 	require.Contains(t, official, "cache_read_price")
+	require.Equal(t, float64(272000), official["long_context_threshold"])
+	require.Equal(t, 2.0, official["long_context_input_multiplier"])
+	require.Equal(t, 1.5, official["long_context_output_multiplier"])
 	_, has1h := official["cache_write_1h_price"]
 	require.False(t, has1h, "1h 缓存写价为 nil 时应 omitempty")
 
@@ -125,3 +131,4 @@ func TestToModelPlazaOfficialPricing_NilPassthrough(t *testing.T) {
 }
 
 func testPtr(v float64) *float64 { return &v }
+func testIntPtr(v int) *int      { return &v }

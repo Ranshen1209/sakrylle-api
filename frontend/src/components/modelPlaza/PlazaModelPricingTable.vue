@@ -1,5 +1,34 @@
 <template>
   <div class="plaza-pricing-table overflow-x-auto" :style="accentStyle">
+    <div
+      v-if="hasLongContextPricing"
+      class="flex min-w-[860px] justify-end border-b border-gray-100 px-5 py-2 dark:border-dark-700/60"
+    >
+      <div
+        class="inline-flex h-8 items-center rounded-md border border-gray-200 bg-gray-50 p-0.5 text-xs font-medium dark:border-dark-600 dark:bg-dark-900"
+        role="group"
+        :aria-label="t('modelPlaza.table.longContext')"
+      >
+        <button
+          type="button"
+          class="h-7 rounded px-3 transition-colors"
+          :class="pricingMode === 'standard' ? modeActiveClass : modeInactiveClass"
+          :aria-pressed="pricingMode === 'standard'"
+          @click="pricingMode = 'standard'"
+        >
+          {{ t('modelPlaza.table.standard') }}
+        </button>
+        <button
+          type="button"
+          class="h-7 rounded px-3 transition-colors"
+          :class="pricingMode === 'long_context' ? modeActiveClass : modeInactiveClass"
+          :aria-pressed="pricingMode === 'long_context'"
+          @click="pricingMode = 'long_context'"
+        >
+          {{ t('modelPlaza.table.longContext') }}
+        </button>
+      </div>
+    </div>
     <table class="w-full min-w-[860px] table-fixed border-collapse text-sm tabular-nums">
       <colgroup>
         <col class="w-[22%]" />
@@ -81,6 +110,12 @@
               >
                 {{ billingModeLabel(m) }}
               </span>
+              <span
+                v-if="pricingMode === 'long_context' && supportsLongContext(m)"
+                class="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+              >
+                &gt;{{ formatTokenCount(longContextThreshold(m)) }}
+              </span>
             </div>
           </td>
 
@@ -97,7 +132,7 @@
                   {{ paidPerMillion(iv.input_price) }}
                 </div>
               </template>
-              <template v-else>{{ paidPerMillion(m.pricing?.input_price) }}</template>
+              <template v-else>{{ paidTokenPerMillion(m, m.pricing?.input_price, 'input') }}</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
               <template v-if="tokenIntervals(m).length">
@@ -110,7 +145,7 @@
                   {{ paidPerMillion(iv.output_price) }}
                 </div>
               </template>
-              <template v-else>{{ paidPerMillion(m.pricing?.output_price) }}</template>
+              <template v-else>{{ paidTokenPerMillion(m, m.pricing?.output_price, 'output') }}</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle">
               <div
@@ -119,11 +154,11 @@
               >
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWrite') }}</span>
-                  {{ paidPerMillion(m.pricing?.cache_write_price) }}
+                  {{ paidTokenPerMillion(m, m.pricing?.cache_write_price, 'input') }}
                 </div>
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') }}</span>
-                  {{ paidPerMillion(m.pricing?.cache_read_price) }}
+                  {{ paidTokenPerMillion(m, m.pricing?.cache_read_price, 'input') }}
                 </div>
               </div>
               <span v-else class="text-gray-400 dark:text-dark-500">-</span>
@@ -161,10 +196,10 @@
           <td
             class="border-l border-gray-100 px-3 py-2.5 align-middle font-mono text-xs text-gray-500 dark:border-dark-700/60 dark:text-dark-400"
           >
-            {{ official(m.official_pricing?.input_price) }}
+            {{ officialTokenPrice(m, m.official_pricing?.input_price, 'input') }}
           </td>
           <td class="px-3 py-2.5 align-middle font-mono text-xs text-gray-500 dark:text-dark-400">
-            {{ official(m.official_pricing?.output_price) }}
+            {{ officialTokenPrice(m, m.official_pricing?.output_price, 'output') }}
           </td>
           <td class="px-3 py-2.5 align-middle">
             <div
@@ -173,15 +208,15 @@
             >
               <div>
                 <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWrite') }}</span>
-                {{ official(m.official_pricing.cache_write_price)
+                {{ officialTokenPrice(m, m.official_pricing.cache_write_price, 'input')
                 }}<template v-if="m.official_pricing.cache_write_1h_price != null"
-                  ><span class="font-sans text-gray-400 dark:text-dark-500"> (1h </span>{{ official(m.official_pricing.cache_write_1h_price)
+                  ><span class="font-sans text-gray-400 dark:text-dark-500"> (1h </span>{{ officialTokenPrice(m, m.official_pricing.cache_write_1h_price, 'input')
                   }}<span class="font-sans text-gray-400 dark:text-dark-500">)</span></template
                 >
               </div>
               <div>
                 <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') }}</span>
-                {{ official(m.official_pricing.cache_read_price) }}
+                {{ officialTokenPrice(m, m.official_pricing.cache_read_price, 'input') }}
               </div>
             </div>
             <span v-else class="text-gray-400 dark:text-dark-500">-</span>
@@ -209,7 +244,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatScaled } from '@/utils/pricing'
 import { platformAccentColor, platformBadgeLightClass, platformLabel } from '@/utils/platformColors'
@@ -235,6 +270,9 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const pricingMode = ref<'standard' | 'long_context'>('standard')
+const modeActiveClass = 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+const modeInactiveClass = 'text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-100'
 
 /** 实付分区只从平台拿一个主色,浅底/标题/下划线全部由 scoped CSS 用 color-mix 派生。 */
 const accentStyle = computed(() => ({ '--plaza-accent': platformAccentColor(props.platform ?? '') }))
@@ -265,6 +303,7 @@ const effectiveRate = computed(() => props.userRateMultiplier ?? props.rateMulti
 const hasCustomRate = computed(
   () => props.userRateMultiplier != null && props.userRateMultiplier !== props.rateMultiplier
 )
+const hasLongContextPricing = computed(() => props.models.some(supportsLongContext))
 
 function billingMode(m: PlazaModel): BillingMode {
   return (m.pricing?.billing_mode || BILLING_MODE_TOKEN) as BillingMode
@@ -283,6 +322,35 @@ const MIN_DECIMALS = 2
 function paidPerMillion(value: number | null | undefined): string {
   if (value == null) return '-'
   return formatScaled(value * effectiveRate.value, PER_MILLION, MIN_DECIMALS)
+}
+
+function supportsLongContext(m: PlazaModel): boolean {
+  const p = m.official_pricing
+  return billingMode(m) === BILLING_MODE_TOKEN &&
+    tokenIntervals(m).length === 0 &&
+    (p?.long_context_threshold ?? 0) > 0 &&
+    (p?.long_context_input_multiplier ?? 0) > 1 &&
+    (p?.long_context_output_multiplier ?? 0) > 1
+}
+
+function longContextMultiplier(m: PlazaModel, side: 'input' | 'output'): number {
+  if (pricingMode.value !== 'long_context' || !supportsLongContext(m)) return 1
+  return side === 'input'
+    ? (m.official_pricing?.long_context_input_multiplier ?? 1)
+    : (m.official_pricing?.long_context_output_multiplier ?? 1)
+}
+
+function longContextThreshold(m: PlazaModel): number {
+  return m.official_pricing?.long_context_threshold ?? 0
+}
+
+function paidTokenPerMillion(
+  m: PlazaModel,
+  value: number | null | undefined,
+  side: 'input' | 'output'
+): string {
+  if (value == null) return '-'
+  return paidPerMillion(value * longContextMultiplier(m, side))
 }
 
 /** 图片计费模型且分组开启生图独立倍率:实付倍率取独立倍率,与计费口径一致。 */
@@ -305,6 +373,15 @@ function paidRequestPrice(m: PlazaModel, value: number | null | undefined): stri
 function official(value: number | null | undefined): string {
   if (value == null) return '-'
   return formatScaled(value, PER_MILLION, MIN_DECIMALS)
+}
+
+function officialTokenPrice(
+  m: PlazaModel,
+  value: number | null | undefined,
+  side: 'input' | 'output'
+): string {
+  if (value == null) return '-'
+  return official(value * longContextMultiplier(m, side))
 }
 
 /** 非 token 计费的单位后缀:按图片 → “/ 张”,按次 → “/ 次”。 */

@@ -207,17 +207,23 @@ func TestListPlazaGroups_OfficialPricingFill(t *testing.T) {
 			CacheCreationInputTokenCostAbove1hr: 6e-6,
 			CacheReadInputTokenCost:             3e-7,
 		},
+		"gpt-5.4-mini": {
+			Mode:                    "chat",
+			InputCostPerToken:       7.5e-7,
+			OutputCostPerToken:      4.5e-6,
+			CacheReadInputTokenCost: 7.5e-8,
+		},
 		"token-absent": {Mode: "image_generation", TokenPricingAbsent: true, OutputCostPerImage: 0.04},
 	})
 	channels := []Channel{
-		plazaPricedChannel(1, "ch", []int64{10}, "anthropic", "claude-sonnet", "unknown-model", "token-absent"),
+		plazaPricedChannel(1, "ch", []int64{10}, "anthropic", "claude-sonnet", "gpt-5.4-mini", "unknown-model", "token-absent"),
 	}
 	groups := []Group{{ID: 10, Name: "g", Platform: "anthropic", RateMultiplier: 1}}
 	svc := newPlazaChannelService(channels, groups, pricingSvc)
 	out, err := svc.ListPlazaGroups(context.Background())
 	require.NoError(t, err)
 	require.Len(t, out, 1)
-	require.Len(t, out[0].Models, 3)
+	require.Len(t, out[0].Models, 4)
 
 	byName := map[string]PlazaModel{}
 	for _, m := range out[0].Models {
@@ -229,6 +235,12 @@ func TestListPlazaGroups_OfficialPricingFill(t *testing.T) {
 	require.InDelta(t, 3e-6, *official.InputPrice, 1e-12)
 	require.InDelta(t, 6e-6, *official.CacheWrite1hPrice, 1e-12)
 	require.InDelta(t, 3e-7, *official.CacheReadPrice, 1e-12)
+	// GPT-5 模型即使远程价格未带动态计费字段，也与实际计费策略使用同一默认阈值和倍率。
+	gptOfficial := byName["gpt-5.4-mini"].OfficialPricing
+	require.NotNil(t, gptOfficial)
+	require.Equal(t, 272000, *gptOfficial.LongContextThreshold)
+	require.InDelta(t, 2.0, *gptOfficial.LongContextInputMultiplier, 1e-12)
+	require.InDelta(t, 1.5, *gptOfficial.LongContextOutputMultiplier, 1e-12)
 	// 未命中:nil(GetModelPricing 的 claude 系列模糊匹配对非 claude 名不生效)
 	require.Nil(t, byName["unknown-model"].OfficialPricing)
 	// TokenPricingAbsent 条目不作为官方 token 价展示
