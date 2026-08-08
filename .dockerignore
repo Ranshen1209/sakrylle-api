@@ -34,6 +34,9 @@ build/
 # Node modules (will be installed in container)
 frontend/node_modules/
 node_modules/
+# Local pnpm workspace metadata is not part of the project and makes pnpm 9
+# treat the frontend as an incomplete workspace inside the image.
+frontend/pnpm-workspace.yaml
 
 # Go build cache (will be built in container)
 backend/vendor/
