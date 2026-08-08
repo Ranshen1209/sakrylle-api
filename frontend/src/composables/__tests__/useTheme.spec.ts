@@ -20,6 +20,7 @@ describe('useTheme', () => {
   beforeEach(() => {
     vi.resetModules()
     localStorage.clear()
+    document.body.innerHTML = ''
     document.documentElement.className = ''
     document.documentElement.style.removeProperty('--theme-transition-bg')
     installMatchMedia()
@@ -41,10 +42,11 @@ describe('useTheme', () => {
     const finished = new Promise<void>((resolve) => {
       finishTransition = resolve
     })
+    let updateCallbackResult: unknown
     Object.defineProperty(document, 'startViewTransition', {
       configurable: true,
       value: vi.fn((callback: () => void) => {
-        callback()
+        updateCallbackResult = callback()
         return { ready: Promise.resolve(), finished }
       })
     })
@@ -69,6 +71,8 @@ describe('useTheme', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(false)
     expect(isDark.value).toBe(false)
     expect(localStorage.getItem('theme')).toBe('light')
+    expect(updateCallbackResult).toBeInstanceOf(Promise)
+    await updateCallbackResult
     expect(document.documentElement.style.getPropertyValue('--theme-transition-bg')).toBe('#f9fafb')
     expect(animate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -138,6 +142,68 @@ describe('useTheme', () => {
         clipPath: [
           'circle(0px at 124px 504px)',
           expect.stringMatching(/^circle\(.+px at 124px 504px\)$/)
+        ]
+      }),
+      expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })
+    )
+    finishTransition()
+    await finished
+  })
+
+  it('ignores an off-screen sidebar toggle after refresh', async () => {
+    const { useTheme } = await import('../useTheme')
+
+    const animate = vi.fn()
+    Object.defineProperty(document.documentElement, 'animate', { configurable: true, value: animate })
+    let finishTransition: () => void = () => {}
+    const finished = new Promise<void>((resolve) => {
+      finishTransition = resolve
+    })
+    Object.defineProperty(document, 'startViewTransition', {
+      configurable: true,
+      value: vi.fn((callback: () => void) => {
+        callback()
+        return { ready: Promise.resolve(), finished }
+      })
+    })
+
+    const visibleButton = document.createElement('button')
+    visibleButton.dataset.themeToggle = ''
+    vi.spyOn(visibleButton, 'getBoundingClientRect').mockReturnValue({
+      left: 560,
+      top: 20,
+      width: 40,
+      height: 40,
+      right: 600,
+      bottom: 60,
+      x: 560,
+      y: 20,
+      toJSON: () => ({})
+    })
+    document.body.appendChild(visibleButton)
+
+    const offscreenButton = document.createElement('button')
+    offscreenButton.dataset.themeToggle = ''
+    vi.spyOn(offscreenButton, 'getBoundingClientRect').mockReturnValue({
+      left: -244,
+      top: 480,
+      width: 231,
+      height: 40,
+      right: -13,
+      bottom: 520,
+      x: -244,
+      y: 480,
+      toJSON: () => ({})
+    })
+    offscreenButton.addEventListener('click', useTheme().toggleTheme)
+    offscreenButton.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
+    await Promise.resolve()
+
+    expect(animate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clipPath: [
+          'circle(0px at 580px 40px)',
+          expect.stringMatching(/^circle\(.+px at 580px 40px\)$/)
         ]
       }),
       expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })

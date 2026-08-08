@@ -1,5 +1,27 @@
 import { DriveStep } from 'driver.js'
 
+const DECORATIVE_EMOJI_PATTERN = /\p{Extended_Pictographic}(?:\uFE0E|\uFE0F)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0E|\uFE0F)?)*\s?/gu
+
+const removeDecorativeEmoji = (value: string | undefined) =>
+  value?.replace(DECORATIVE_EMOJI_PATTERN, '')
+
+const withoutDecorativeEmoji = (steps: DriveStep[]): DriveStep[] =>
+  steps.map((step) => {
+    if (!step.popover) return step
+
+    return {
+      ...step,
+      popover: {
+        ...step.popover,
+        title: removeDecorativeEmoji(step.popover.title),
+        description: removeDecorativeEmoji(step.popover.description),
+        nextBtnText: removeDecorativeEmoji(step.popover.nextBtnText),
+        prevBtnText: removeDecorativeEmoji(step.popover.prevBtnText),
+        doneBtnText: removeDecorativeEmoji(step.popover.doneBtnText)
+      }
+    }
+  })
+
 /**
  * 管理员完整引导流程
  * 交互式引导：指引用户实际操作
@@ -228,7 +250,7 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
 
   // 简易模式下过滤分组相关步骤
   if (isSimpleMode) {
-    return allSteps.filter(step => {
+    return withoutDecorativeEmoji(allSteps.filter(step => {
       const element = step.element as string | undefined
       // 过滤掉分组管理和账号分组选择相关步骤
       return !element || (
@@ -237,16 +259,16 @@ export const getAdminSteps = (t: (key: string) => string, isSimpleMode = false):
         !element.includes('group-form-') &&
         !element.includes('account-form-groups')
       )
-    })
+    }))
   }
 
-  return allSteps
+  return withoutDecorativeEmoji(allSteps)
 }
 
 /**
  * 普通用户引导流程
  */
-export const getUserSteps = (t: (key: string) => string): DriveStep[] => [
+export const getUserSteps = (t: (key: string) => string): DriveStep[] => withoutDecorativeEmoji([
   {
     popover: {
       title: t('onboarding.user.welcome.title'),
@@ -306,4 +328,4 @@ export const getUserSteps = (t: (key: string) => string): DriveStep[] => [
       showButtons: ['close']
     }
   }
-]
+])

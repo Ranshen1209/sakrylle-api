@@ -23,6 +23,8 @@ function initIOSViewportZoomFix() {
 }
 
 function initThemeClass() {
+  // index.html applies this before the first style calculation. Keep this
+  // idempotent pass as a fallback when storage access or the inline script is blocked.
   const savedTheme = localStorage.getItem('theme')
   const shouldUseDark =
     savedTheme === 'dark' ||
@@ -37,7 +39,7 @@ function initThemeClass() {
 }
 
 async function bootstrap() {
-  // Apply theme class globally before app mount to keep all routes consistent.
+  // Reconcile the early document theme before mounting the application.
   initThemeClass()
   initIOSViewportZoomFix()
 

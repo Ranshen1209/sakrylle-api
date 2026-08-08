@@ -6,6 +6,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f9fafb" />
+    <script nonce="__CSP_NONCE_VALUE__">
+      ;(() => {
+        try {
+          const savedTheme = localStorage.getItem('theme')
+          const dark =
+            savedTheme === 'dark' ||
+            (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', dark)
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute('content', dark ? '#020617' : '#f9fafb')
+        } catch {
+          // main.ts retries theme initialization once the application loads.
+        }
+      })()
+    </script>
     <title>Sakrylle API - AI API Gateway</title>
   </head>
   <body>

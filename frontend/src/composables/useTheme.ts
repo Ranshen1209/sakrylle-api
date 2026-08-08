@@ -1,4 +1,4 @@
-import { ref, readonly } from 'vue'
+import { nextTick, ref, readonly } from 'vue'
 
 const isDark = ref(
   typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
@@ -25,9 +25,8 @@ function applyTheme(dark: boolean) {
 }
 
 function commitToggle() {
-  // The module is evaluated before main.ts restores the saved theme on refresh.
-  // Read the painted DOM state at click time so the first toggle cannot use a
-  // stale module-level ref and animate toward the theme that is already active.
+  // Read the painted DOM state at click time so a blocked early initializer
+  // cannot leave the module-level ref stale on the first toggle.
   const next = !document.documentElement.classList.contains('dark')
   applyTheme(next)
   localStorage.setItem('theme', next ? 'dark' : 'light')
@@ -59,39 +58,69 @@ function clearTransitionLock() {
   document.documentElement.style.removeProperty('--theme-transition-bg')
 }
 
-function getTransitionOrigin(event?: MouseEvent) {
-  const trigger = event?.currentTarget
-  if (trigger instanceof HTMLElement) {
-    const rect = trigger.getBoundingClientRect()
-    if (rect.width > 0 && rect.height > 0) {
-      return {
-        x: Math.min(window.innerWidth, Math.max(0, rect.left + rect.width / 2)),
-        y: Math.min(window.innerHeight, Math.max(0, rect.top + rect.height / 2))
-      }
-    }
-  }
+type TransitionOrigin = { x: number; y: number }
 
-  // The first click after boot can arrive before the event target has a
-  // usable layout box. Find the visible theme control instead of using a
-  // browser-supplied zero coordinate in that case.
-  const visibleTrigger = Array.from(document.querySelectorAll<HTMLElement>('[data-theme-toggle]')).find(
-    (element) => {
-      const rect = element.getBoundingClientRect()
-      return rect.width > 0 && rect.height > 0
-    }
-  )
-  if (visibleTrigger) {
-    const rect = visibleTrigger.getBoundingClientRect()
-    return {
-      x: Math.min(window.innerWidth, Math.max(0, rect.left + rect.width / 2)),
-      y: Math.min(window.innerHeight, Math.max(0, rect.top + rect.height / 2))
-    }
+function getVisibleRect(element: HTMLElement) {
+  const rect = element.getBoundingClientRect()
+  const left = Math.max(0, rect.left)
+  const right = Math.min(window.innerWidth, rect.right)
+  const top = Math.max(0, rect.top)
+  const bottom = Math.min(window.innerHeight, rect.bottom)
+
+  if (rect.width <= 0 || rect.height <= 0 || right <= left || bottom <= top) return null
+  return { left, right, top, bottom }
+}
+
+function getPointerOrigin(event?: MouseEvent): TransitionOrigin | null {
+  if (!event || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null
+  if (
+    event.clientX < 0 ||
+    event.clientX > window.innerWidth ||
+    event.clientY < 0 ||
+    event.clientY > window.innerHeight
+  ) {
+    return null
+  }
+  return { x: event.clientX, y: event.clientY }
+}
+
+function resolveElementOrigin(element: HTMLElement, pointer: TransitionOrigin | null) {
+  const visibleRect = getVisibleRect(element)
+  if (!visibleRect) return null
+
+  if (
+    pointer &&
+    pointer.x >= visibleRect.left &&
+    pointer.x <= visibleRect.right &&
+    pointer.y >= visibleRect.top &&
+    pointer.y <= visibleRect.bottom
+  ) {
+    return pointer
   }
 
   return {
-    x: event?.clientX || window.innerWidth / 2,
-    y: event?.clientY || window.innerHeight / 2
+    x: (visibleRect.left + visibleRect.right) / 2,
+    y: (visibleRect.top + visibleRect.bottom) / 2
   }
+}
+
+function getTransitionOrigin(event?: MouseEvent): TransitionOrigin {
+  const pointer = getPointerOrigin(event)
+  const trigger = event?.currentTarget
+  if (trigger instanceof HTMLElement) {
+    const origin = resolveElementOrigin(trigger, pointer)
+    if (origin) return origin
+  }
+
+  // Responsive sidebars remain laid out while translated off-screen. Only use
+  // a theme control that actually intersects the viewport; clamping an
+  // off-screen center produces the erroneous left-edge reveal after refresh.
+  for (const element of document.querySelectorAll<HTMLElement>('[data-theme-toggle]')) {
+    const origin = resolveElementOrigin(element, pointer)
+    if (origin) return origin
+  }
+
+  return pointer ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
 }
 
 export function useTheme() {
@@ -136,13 +165,16 @@ export function useTheme() {
     try {
       const transition = (
         document as Document & {
-          startViewTransition: (cb: () => void) => {
+          startViewTransition: (cb: () => Promise<void>) => {
             ready: Promise<void>
             finished: Promise<void>
           }
         }
-      ).startViewTransition(() => {
+      ).startViewTransition(async () => {
         commitToggle()
+        // View Transitions waits for this promise before capturing the new
+        // snapshot. Flush theme-driven icons, labels, charts, and layout first.
+        await nextTick()
       })
 
       activeTransition = transition
