@@ -268,6 +268,33 @@ func TestCalculateCost_OpenAIGPT54MiniLongContextAppliesInputCacheAndOutputMulti
 	require.True(t, cost.LongContextBillingApplied)
 }
 
+func TestCalculateCost_CodexAutoReviewLongContextAppliesGPTMultipliers(t *testing.T) {
+	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"codex-auto-review": {
+			InputCostPerToken:           2.5e-6,
+			OutputCostPerToken:          15e-6,
+			CacheCreationInputTokenCost: 2.5e-6,
+			CacheReadInputTokenCost:     0.25e-6,
+		},
+	}}
+	svc := NewBillingService(&config.Config{}, pricingSvc)
+
+	tokens := UsageTokens{
+		InputTokens:         200000,
+		OutputTokens:        4000,
+		CacheCreationTokens: 40000,
+		CacheReadTokens:     40000,
+	}
+	cost, err := svc.CalculateCost("codex-auto-review", tokens, 1.0)
+	require.NoError(t, err)
+
+	require.InDelta(t, float64(tokens.InputTokens)*2.5e-6*2.0, cost.InputCost, 1e-10)
+	require.InDelta(t, float64(tokens.CacheCreationTokens)*2.5e-6*2.0, cost.CacheCreationCost, 1e-10)
+	require.InDelta(t, float64(tokens.CacheReadTokens)*0.25e-6*2.0, cost.CacheReadCost, 1e-10)
+	require.InDelta(t, float64(tokens.OutputTokens)*15e-6*1.5, cost.OutputCost, 1e-10)
+	require.True(t, cost.LongContextBillingApplied)
+}
+
 func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -893,8 +920,8 @@ func TestComputeTokenBreakdown_GptImage2ImageEditIssue4386(t *testing.T) {
 
 	cost := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
 
-	wantTextInput := float64(19) * 5e-6    // 0.000095
-	wantImageInput := float64(352) * 8e-6  // 0.002816
+	wantTextInput := float64(19) * 5e-6     // 0.000095
+	wantImageInput := float64(352) * 8e-6   // 0.002816
 	wantImageOutput := float64(439) * 30e-6 // 0.013170
 	require.InDelta(t, wantTextInput, cost.InputCost, 1e-15, "InputCost 仅含文本输入")
 	require.InDelta(t, wantImageInput, cost.ImageInputCost, 1e-15, "图片输入按 $8/1M 独立计费")

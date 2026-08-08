@@ -1262,7 +1262,7 @@ func (s *BillingService) shouldApplySessionLongContextPricing(tokens UsageTokens
 }
 
 func usesOpenAIGPT5LongContextPricing(normalized string) bool {
-	return strings.HasPrefix(normalized, "gpt-5")
+	return strings.HasPrefix(normalized, "gpt-5") || normalized == "codex-auto-review"
 }
 
 // CalculateCostWithConfig 使用配置中的默认倍率计算费用
