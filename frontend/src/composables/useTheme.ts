@@ -25,7 +25,10 @@ function applyTheme(dark: boolean) {
 }
 
 function commitToggle() {
-  const next = !isDark.value
+  // The module is evaluated before main.ts restores the saved theme on refresh.
+  // Read the painted DOM state at click time so the first toggle cannot use a
+  // stale module-level ref and animate toward the theme that is already active.
+  const next = !document.documentElement.classList.contains('dark')
   applyTheme(next)
   localStorage.setItem('theme', next ? 'dark' : 'light')
 }
@@ -68,7 +71,7 @@ export function useTheme() {
       Math.max(y, window.innerHeight - y)
     )
 
-    const goingDark = !isDark.value
+    const goingDark = !document.documentElement.classList.contains('dark')
     const supportsViewTransition = 'startViewTransition' in document
 
     if (
