@@ -44,7 +44,7 @@
       <template v-if="isToken">
         <PlazaPriceRow
           :label="t('plaza.pricing.input')"
-          :value="model.pricing.input_price"
+          :value="longContextValue(model.pricing.input_price, 'input')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -53,7 +53,7 @@
         <PlazaPriceRow
           v-if="model.pricing.image_input_ratio != null && model.pricing.input_price != null"
           :label="t('plaza.pricing.imageInput')"
-          :value="imageInputPrice"
+          :value="longContextValue(imageInputPrice, 'input')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -61,7 +61,7 @@
         />
         <PlazaPriceRow
           :label="t('plaza.pricing.output')"
-          :value="model.pricing.output_price"
+          :value="longContextValue(model.pricing.output_price, 'output')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -70,7 +70,7 @@
         <PlazaPriceRow
           v-if="model.pricing.cache_read_price != null"
           :label="t('plaza.pricing.cacheRead')"
-          :value="model.pricing.cache_read_price"
+          :value="longContextValue(model.pricing.cache_read_price, 'input')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -79,7 +79,7 @@
         <PlazaPriceRow
           v-if="model.pricing.cache_write_price != null"
           :label="t('plaza.pricing.cacheWrite')"
-          :value="model.pricing.cache_write_price"
+          :value="longContextValue(model.pricing.cache_write_price, 'input')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -114,6 +114,12 @@
     <!-- Footer: billing badge + this card's group -->
     <footer class="flex flex-wrap items-center gap-1.5">
       <span
+        v-if="longContext && longContextPricing"
+        class="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+      >
+        {{ t('plaza.longContextBadge', { threshold: formatThreshold(longContextPricing.long_context_threshold) }) }}
+      </span>
+      <span
         class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium"
         :class="[billingBadgeClass]"
       >
@@ -139,6 +145,7 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import PlazaPriceRow from './PlazaPriceRow.vue'
 import type { PlazaModel } from '@/utils/modelPlaza'
+import type { PlazaOfficialPricing } from '@/api/modelPlaza'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBorderClass, platformTextClass } from '@/utils/platformColors'
 import {
@@ -152,8 +159,10 @@ const props = withDefaults(
     model: PlazaModel
     /** Show original strikethrough price beside the discounted price. */
     showOriginal?: boolean
+    longContextPricing?: PlazaOfficialPricing
+    longContext?: boolean
   }>(),
-  { showOriginal: true },
+  { showOriginal: true, longContext: false },
 )
 
 const { t } = useI18n()
@@ -170,6 +179,19 @@ const billingMode = computed(() => props.model.pricing?.billing_mode ?? BILLING_
 const isToken = computed(() => billingMode.value === BILLING_MODE_TOKEN)
 const isPerRequest = computed(() => billingMode.value === BILLING_MODE_PER_REQUEST)
 const isImage = computed(() => billingMode.value === BILLING_MODE_IMAGE)
+
+function longContextValue(value: number | null, side: 'input' | 'output'): number | null {
+  if (value == null || !props.longContext || props.longContextPricing == null) return value
+  const multiplier = side === 'input'
+    ? props.longContextPricing.long_context_input_multiplier
+    : props.longContextPricing.long_context_output_multiplier
+  return value * (multiplier ?? 1)
+}
+
+function formatThreshold(value: number | undefined): string {
+  if (value == null) return '272K'
+  return value >= 1000 && value % 1000 === 0 ? `${value / 1000}K` : String(value)
+}
 
 const billingLabel = computed(() => {
   if (isPerRequest.value) return t('plaza.billing.perRequest')

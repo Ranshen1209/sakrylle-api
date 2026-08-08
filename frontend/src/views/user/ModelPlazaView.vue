@@ -58,6 +58,32 @@
             {{ t('plaza.showOriginal') }}
           </label>
 
+          <div
+            v-if="hasLongContextPricing"
+            class="inline-flex h-9 flex-shrink-0 items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs font-medium dark:border-dark-700 dark:bg-dark-900"
+            role="group"
+            :aria-label="t('plaza.longContext')"
+          >
+            <button
+              type="button"
+              class="h-8 rounded-md px-3 transition-colors"
+              :class="pricingMode === 'standard' ? pricingModeActiveClass : pricingModeInactiveClass"
+              :aria-pressed="pricingMode === 'standard'"
+              @click="pricingMode = 'standard'"
+            >
+              {{ t('plaza.standard') }}
+            </button>
+            <button
+              type="button"
+              class="h-8 rounded-md px-3 transition-colors"
+              :class="pricingMode === 'long_context' ? pricingModeActiveClass : pricingModeInactiveClass"
+              :aria-pressed="pricingMode === 'long_context'"
+              @click="pricingMode = 'long_context'"
+            >
+              {{ t('plaza.longContext') }}
+            </button>
+          </div>
+
           <button
             type="button"
             class="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200 dark:hover:bg-dark-700"
@@ -96,6 +122,8 @@
             :key="model.id"
             :model="model"
             :show-original="showOriginal"
+            :long-context-pricing="longContextPricingByModel[model.name]"
+            :long-context="pricingMode === 'long_context'"
           />
         </div>
       </div>
@@ -112,6 +140,7 @@ import PlazaSidebar from '@/components/plaza/PlazaSidebar.vue'
 import PlazaModelCard from '@/components/plaza/PlazaModelCard.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
+import { getModelPlaza, type PlazaOfficialPricing } from '@/api/modelPlaza'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { flattenChannelsToPlaza, type PlazaModel } from '@/utils/modelPlaza'
@@ -131,6 +160,10 @@ const filterPlatform = ref('')
 const filterGroup = ref('')
 const filterBilling = ref('')
 const showOriginal = ref(true)
+const pricingMode = ref<'standard' | 'long_context'>('standard')
+const pricingModeActiveClass = 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+const pricingModeInactiveClass = 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
+const longContextPricingByModel = ref<Record<string, PlazaOfficialPricing>>({})
 
 // Derived
 const plazaModels = computed<PlazaModel[]>(() =>
@@ -154,21 +187,40 @@ const filteredModels = computed<PlazaModel[]>(() => {
   })
 })
 
+const hasLongContextPricing = computed(() =>
+  plazaModels.value.some((model) => longContextPricingByModel.value[model.name] != null),
+)
+
 async function loadAll() {
   loading.value = true
   try {
     // User group rates failure must not block the plaza — without overrides,
     // PlazaGroupAccess.effectiveRate falls back to the group's default
     // multiplier, which is still a usable view of the prices.
-    const [list, rates] = await Promise.all([
+    const [list, rates, catalog] = await Promise.all([
       userChannelsAPI.getAvailable(),
       userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
         console.error('Failed to load user group rates:', err)
         return {} as Record<number, number>
       }),
+      getModelPlaza().catch(() => null),
     ])
     channels.value = list
     userGroupRates.value = rates
+    const longContextPricing: Record<string, PlazaOfficialPricing> = {}
+    for (const group of catalog?.groups ?? []) {
+      for (const model of group.models) {
+        const official = model.official_pricing
+        if (
+          official?.long_context_threshold != null &&
+          official.long_context_input_multiplier != null &&
+          official.long_context_output_multiplier != null
+        ) {
+          longContextPricing[model.name] = official
+        }
+      }
+    }
+    longContextPricingByModel.value = longContextPricing
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
