@@ -24,6 +24,10 @@ describe('useTheme', () => {
     document.documentElement.className = ''
     document.documentElement.style.removeProperty('--theme-transition-bg')
     installMatchMedia()
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0)
+      return 0
+    })
   })
 
   it('uses the restored DOM theme for the first toggle after refresh', async () => {
@@ -66,6 +70,8 @@ describe('useTheme', () => {
     })
     button.addEventListener('click', toggleTheme)
     button.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
+    await Promise.resolve()
+    await Promise.resolve()
     await Promise.resolve()
 
     expect(document.documentElement.classList.contains('dark')).toBe(false)
@@ -136,6 +142,8 @@ describe('useTheme', () => {
     hiddenButton.addEventListener('click', useTheme().toggleTheme)
     hiddenButton.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
     await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
 
     expect(animate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -197,6 +205,8 @@ describe('useTheme', () => {
     })
     offscreenButton.addEventListener('click', useTheme().toggleTheme)
     offscreenButton.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
+    await Promise.resolve()
+    await Promise.resolve()
     await Promise.resolve()
 
     expect(animate).toHaveBeenCalledWith(

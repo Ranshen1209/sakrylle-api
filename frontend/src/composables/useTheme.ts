@@ -104,9 +104,22 @@ function resolveElementOrigin(element: HTMLElement, pointer: TransitionOrigin | 
   }
 }
 
-function getTransitionOrigin(event?: MouseEvent): TransitionOrigin {
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => resolve())
+    } else {
+      resolve()
+    }
+  })
+}
+
+async function getTransitionOrigin(event?: MouseEvent, trigger?: EventTarget | null): Promise<TransitionOrigin> {
+  // On mobile widths the sidebar can still be finishing its transform entry
+  // transition when the first control click arrives after refresh. Let that
+  // frame settle before reading its geometry.
+  await waitForNextPaint()
   const pointer = getPointerOrigin(event)
-  const trigger = event?.currentTarget
   if (trigger instanceof HTMLElement) {
     const origin = resolveElementOrigin(trigger, pointer)
     if (origin) return origin
@@ -120,17 +133,20 @@ function getTransitionOrigin(event?: MouseEvent): TransitionOrigin {
     if (origin) return origin
   }
 
-  return pointer ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
 }
 
 export function useTheme() {
   ensureSystemThemeListener()
   syncFromDom()
 
-  function toggleTheme(event?: MouseEvent) {
+  async function toggleTheme(event?: MouseEvent) {
+    // Event.currentTarget is cleared by the browser once an async handler
+    // yields, so retain the clicked button before waiting for layout to settle.
+    const trigger = event?.currentTarget
     // Chromium can report a bogus position for the first click after a full
     // refresh. Anchor the reveal to the actual theme button instead.
-    const { x, y } = getTransitionOrigin(event)
+    const { x, y } = await getTransitionOrigin(event, trigger)
     const endRadius = Math.hypot(
       Math.max(x, window.innerWidth - x),
       Math.max(y, window.innerHeight - y)
