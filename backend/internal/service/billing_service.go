@@ -343,16 +343,18 @@ func (s *BillingService) initFallbackPricing() {
 	}
 
 	s.fallbackPrices["gpt-5.4-mini"] = &ModelPricing{
-		InputPricePerToken:     7.5e-7,
-		OutputPricePerToken:    4.5e-6,
-		CacheReadPricePerToken: 7.5e-8,
-		SupportsCacheBreakdown: false,
+		InputPricePerToken:         7.5e-7,
+		OutputPricePerToken:        4.5e-6,
+		CacheCreationPricePerToken: 7.5e-7,
+		CacheReadPricePerToken:     7.5e-8,
+		SupportsCacheBreakdown:     false,
 	}
 	s.fallbackPrices["gpt-5.4-nano"] = &ModelPricing{
-		InputPricePerToken:     2e-7,
-		OutputPricePerToken:    1.25e-6,
-		CacheReadPricePerToken: 2e-8,
-		SupportsCacheBreakdown: false,
+		InputPricePerToken:         2e-7,
+		OutputPricePerToken:        1.25e-6,
+		CacheCreationPricePerToken: 2e-7,
+		CacheReadPricePerToken:     2e-8,
+		SupportsCacheBreakdown:     false,
 	}
 	// OpenAI GPT-5.2（本地兜底）
 	s.fallbackPrices["gpt-5.2"] = &ModelPricing{
