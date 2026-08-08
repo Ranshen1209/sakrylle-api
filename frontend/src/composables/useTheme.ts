@@ -59,13 +59,30 @@ function clearTransitionLock() {
   document.documentElement.style.removeProperty('--theme-transition-bg')
 }
 
+function getTransitionOrigin(event?: MouseEvent) {
+  const trigger = event?.currentTarget
+  if (trigger instanceof Element) {
+    const rect = trigger.getBoundingClientRect()
+    return {
+      x: Math.min(window.innerWidth, Math.max(0, rect.left + rect.width / 2)),
+      y: Math.min(window.innerHeight, Math.max(0, rect.top + rect.height / 2))
+    }
+  }
+
+  return {
+    x: event?.clientX || window.innerWidth / 2,
+    y: event?.clientY || window.innerHeight / 2
+  }
+}
+
 export function useTheme() {
   ensureSystemThemeListener()
   syncFromDom()
 
   function toggleTheme(event?: MouseEvent) {
-    const x = event?.clientX ?? window.innerWidth / 2
-    const y = event?.clientY ?? window.innerHeight / 2
+    // Chromium can report a bogus position for the first click after a full
+    // refresh. Anchor the reveal to the actual theme button instead.
+    const { x, y } = getTransitionOrigin(event)
     const endRadius = Math.hypot(
       Math.max(x, window.innerWidth - x),
       Math.max(y, window.innerHeight - y)

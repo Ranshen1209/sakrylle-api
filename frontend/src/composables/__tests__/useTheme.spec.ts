@@ -50,7 +50,20 @@ describe('useTheme', () => {
     })
 
     const { toggleTheme, isDark } = useTheme()
-    toggleTheme(new MouseEvent('click', { clientX: 40, clientY: 60 }))
+    const button = document.createElement('button')
+    vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({
+      left: 24,
+      top: 480,
+      width: 200,
+      height: 48,
+      right: 224,
+      bottom: 528,
+      x: 24,
+      y: 480,
+      toJSON: () => ({})
+    })
+    button.addEventListener('click', toggleTheme)
+    button.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
     await Promise.resolve()
 
     expect(document.documentElement.classList.contains('dark')).toBe(false)
@@ -58,7 +71,12 @@ describe('useTheme', () => {
     expect(localStorage.getItem('theme')).toBe('light')
     expect(document.documentElement.style.getPropertyValue('--theme-transition-bg')).toBe('#f9fafb')
     expect(animate).toHaveBeenCalledWith(
-      expect.objectContaining({ clipPath: expect.any(Array) }),
+      expect.objectContaining({
+        clipPath: [
+          'circle(0px at 124px 504px)',
+          expect.stringMatching(/^circle\(.+px at 124px 504px\)$/)
+        ]
+      }),
       expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })
     )
 
