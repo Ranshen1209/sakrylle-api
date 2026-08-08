@@ -1214,11 +1214,11 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 	}
 	normalized := normalizeKnownOpenAICodexModel(model)
 	isGPT56 := isOpenAIGPT56Model(normalized)
-	usesLegacyLongContextPricing := usesOpenAILegacyLongContextPricing(normalized)
-	if !isGPT56 && !usesLegacyLongContextPricing {
+	usesGPT5LongContextPricing := usesOpenAIGPT5LongContextPricing(normalized)
+	if !isGPT56 && !usesGPT5LongContextPricing {
 		return pricing
 	}
-	needsLongContextPolicy := (isGPT56 || usesLegacyLongContextPricing) &&
+	needsLongContextPolicy := (isGPT56 || usesGPT5LongContextPricing) &&
 		(pricing.LongContextInputThreshold <= 0 || pricing.LongContextInputMultiplier <= 0 || pricing.LongContextOutputMultiplier <= 0)
 	needsCacheCreationPolicy := isGPT56 && !pricing.CacheCreationPriceExplicit && (pricing.CacheCreationPricePerToken <= 0 ||
 		(pricing.InputPricePerTokenPriority > 0 && pricing.CacheCreationPricePerTokenPriority <= 0))
@@ -1234,7 +1234,7 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 			cloned.CacheCreationPricePerTokenPriority = cloned.InputPricePerTokenPriority * 1.25
 		}
 	}
-	if isGPT56 || usesLegacyLongContextPricing {
+	if isGPT56 || usesGPT5LongContextPricing {
 		if cloned.LongContextInputThreshold <= 0 {
 			cloned.LongContextInputThreshold = openAIGPT54LongContextInputThreshold
 		}
@@ -1259,8 +1259,8 @@ func (s *BillingService) shouldApplySessionLongContextPricing(tokens UsageTokens
 	return totalInputTokens > pricing.LongContextInputThreshold
 }
 
-func usesOpenAILegacyLongContextPricing(normalized string) bool {
-	return normalized == "gpt-5.4" || normalized == "gpt-5.5" || normalized == "gpt-5.5-pro"
+func usesOpenAIGPT5LongContextPricing(normalized string) bool {
+	return strings.HasPrefix(normalized, "gpt-5")
 }
 
 // CalculateCostWithConfig 使用配置中的默认倍率计算费用

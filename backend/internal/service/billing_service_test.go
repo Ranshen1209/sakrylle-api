@@ -217,8 +217,8 @@ func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
 	}{
 		{model: "gpt5.5", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 272000},
 		{model: "openai/gpt5.4", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 272000},
-		{model: "gpt5.4-mini", inputPrice: 7.5e-7, outputPrice: 4.5e-6, cacheRead: 7.5e-8, longContext: 0},
-		{model: "gpt5.3codexspark", inputPrice: 1.5e-6, outputPrice: 12e-6, cacheRead: 0.15e-6, longContext: 0},
+		{model: "gpt5.4-mini", inputPrice: 7.5e-7, outputPrice: 4.5e-6, cacheRead: 7.5e-8, longContext: 272000},
+		{model: "gpt5.3codexspark", inputPrice: 1.5e-6, outputPrice: 12e-6, cacheRead: 0.15e-6, longContext: 272000},
 	}
 
 	for _, tt := range tests {
@@ -243,7 +243,28 @@ func TestGetModelPricing_OpenAIGPT54MiniFallback(t *testing.T) {
 	require.InDelta(t, 7.5e-7, pricing.InputPricePerToken, 1e-12)
 	require.InDelta(t, 4.5e-6, pricing.OutputPricePerToken, 1e-12)
 	require.InDelta(t, 7.5e-8, pricing.CacheReadPricePerToken, 1e-12)
-	require.Zero(t, pricing.LongContextInputThreshold)
+	require.Equal(t, 272000, pricing.LongContextInputThreshold)
+	require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
+	require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+}
+
+func TestCalculateCost_OpenAIGPT54MiniLongContextAppliesInputCacheAndOutputMultipliers(t *testing.T) {
+	svc := newTestBillingService()
+
+	tokens := UsageTokens{
+		InputTokens:         200000,
+		OutputTokens:        4000,
+		CacheCreationTokens: 40000,
+		CacheReadTokens:     40000,
+	}
+	cost, err := svc.CalculateCost("gpt-5.4-mini", tokens, 1.0)
+	require.NoError(t, err)
+
+	require.InDelta(t, float64(tokens.InputTokens)*7.5e-7*2.0, cost.InputCost, 1e-10)
+	require.InDelta(t, float64(tokens.CacheCreationTokens)*7.5e-7*2.0, cost.CacheCreationCost, 1e-10)
+	require.InDelta(t, float64(tokens.CacheReadTokens)*7.5e-8*2.0, cost.CacheReadCost, 1e-10)
+	require.InDelta(t, float64(tokens.OutputTokens)*4.5e-6*1.5, cost.OutputCost, 1e-10)
+	require.True(t, cost.LongContextBillingApplied)
 }
 
 func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *testing.T) {
