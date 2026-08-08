@@ -61,8 +61,27 @@ function clearTransitionLock() {
 
 function getTransitionOrigin(event?: MouseEvent) {
   const trigger = event?.currentTarget
-  if (trigger instanceof Element) {
+  if (trigger instanceof HTMLElement) {
     const rect = trigger.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      return {
+        x: Math.min(window.innerWidth, Math.max(0, rect.left + rect.width / 2)),
+        y: Math.min(window.innerHeight, Math.max(0, rect.top + rect.height / 2))
+      }
+    }
+  }
+
+  // The first click after boot can arrive before the event target has a
+  // usable layout box. Find the visible theme control instead of using a
+  // browser-supplied zero coordinate in that case.
+  const visibleTrigger = Array.from(document.querySelectorAll<HTMLElement>('[data-theme-toggle]')).find(
+    (element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.width > 0 && rect.height > 0
+    }
+  )
+  if (visibleTrigger) {
+    const rect = visibleTrigger.getBoundingClientRect()
     return {
       x: Math.min(window.innerWidth, Math.max(0, rect.left + rect.width / 2)),
       y: Math.min(window.innerHeight, Math.max(0, rect.top + rect.height / 2))

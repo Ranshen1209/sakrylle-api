@@ -152,6 +152,7 @@
       <!-- Theme Toggle -->
       <button
         @click="toggleTheme($event)"
+        data-theme-toggle
         class="sidebar-link mb-2 w-full"
         :class="{ 'sidebar-link-collapsed': sidebarCollapsed }"
         :title="sidebarCollapsed ? (isDark ? t('nav.lightMode') : t('nav.darkMode')) : undefined"
