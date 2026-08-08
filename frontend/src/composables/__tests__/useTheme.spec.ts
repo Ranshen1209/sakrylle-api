@@ -1,224 +1,127 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-function installMatchMedia() {
+function installMatchMedia(reducedMotion = false) {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     value: vi.fn().mockImplementation((query: string) => ({
-      matches: false,
+      matches: reducedMotion && query === '(prefers-reduced-motion: reduce)',
       media: query,
-      onchange: null,
       addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn()
+      removeEventListener: vi.fn()
     }))
   })
+}
+
+function mockRect(element: HTMLElement, left: number, top: number, width: number, height: number) {
+  vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+    x: left,
+    y: top,
+    toJSON: () => ({})
+  })
+}
+
+function installAnimationMock() {
+  let finishAnimation: () => void = () => {}
+  const finished = new Promise<void>((resolve) => {
+    finishAnimation = resolve
+  })
+  const animate = vi.fn().mockReturnValue({ finished })
+  Object.defineProperty(HTMLElement.prototype, 'animate', {
+    configurable: true,
+    value: animate
+  })
+  return { animate, finished, finishAnimation }
 }
 
 describe('useTheme', () => {
   beforeEach(() => {
     vi.resetModules()
+    vi.useRealTimers()
     localStorage.clear()
     document.body.innerHTML = ''
     document.documentElement.className = ''
-    document.documentElement.style.removeProperty('--theme-transition-bg')
     installMatchMedia()
-    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-      callback(0)
-      return 0
-    })
   })
 
-  it('uses the restored DOM theme for the first toggle after refresh', async () => {
+  it('uses the restored DOM theme and the button center for the first toggle', async () => {
+    const { animate, finished, finishAnimation } = installAnimationMock()
     const { useTheme } = await import('../useTheme')
-
-    // main.ts restores the saved class after the composable module is evaluated.
     document.documentElement.classList.add('dark')
 
-    const animate = vi.fn()
-    Object.defineProperty(document.documentElement, 'animate', {
-      configurable: true,
-      value: animate
-    })
-
-    let finishTransition: () => void = () => {}
-    const finished = new Promise<void>((resolve) => {
-      finishTransition = resolve
-    })
-    let updateCallbackResult: unknown
-    Object.defineProperty(document, 'startViewTransition', {
-      configurable: true,
-      value: vi.fn((callback: () => void) => {
-        updateCallbackResult = callback()
-        return { ready: Promise.resolve(), finished }
-      })
-    })
-
-    const { toggleTheme, isDark } = useTheme()
     const button = document.createElement('button')
-    vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({
-      left: 24,
-      top: 480,
-      width: 200,
-      height: 48,
-      right: 224,
-      bottom: 528,
-      x: 24,
-      y: 480,
-      toJSON: () => ({})
-    })
-    button.addEventListener('click', toggleTheme)
+    mockRect(button, 24, 480, 200, 48)
+    button.addEventListener('click', useTheme().toggleTheme)
     button.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
 
     expect(document.documentElement.classList.contains('dark')).toBe(false)
-    expect(isDark.value).toBe(false)
     expect(localStorage.getItem('theme')).toBe('light')
-    expect(updateCallbackResult).toBeInstanceOf(Promise)
-    await updateCallbackResult
-    expect(document.documentElement.style.getPropertyValue('--theme-transition-bg')).toBe('#f9fafb')
+    const ripple = document.querySelector<HTMLElement>('[data-theme-ripple]')
+    expect(ripple).not.toBeNull()
+    const radius = Math.hypot(Math.max(124, window.innerWidth - 124), Math.max(504, window.innerHeight - 504))
+    expect(ripple?.style.left).toBe(`${124 - radius}px`)
+    expect(ripple?.style.top).toBe(`${504 - radius}px`)
     expect(animate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clipPath: [
-          'circle(0px at 124px 504px)',
-          expect.stringMatching(/^circle\(.+px at 124px 504px\)$/)
-        ]
-      }),
-      expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })
+      [
+        { transform: 'scale(0)', opacity: 0.28 },
+        { transform: 'scale(1)', opacity: 0 }
+      ],
+      expect.objectContaining({ duration: 500 })
     )
 
-    finishTransition()
+    finishAnimation()
     await finished
+    await Promise.resolve()
+    expect(document.querySelector('[data-theme-ripple]')).toBeNull()
   })
 
-  it('uses the visible theme control when the click target has no layout box', async () => {
+  it('uses a visible theme control when the clicked control is off-screen', async () => {
+    const { animate, finishAnimation } = installAnimationMock()
     const { useTheme } = await import('../useTheme')
-    document.documentElement.classList.add('dark')
-
-    const animate = vi.fn()
-    Object.defineProperty(document.documentElement, 'animate', { configurable: true, value: animate })
-    let finishTransition: () => void = () => {}
-    const finished = new Promise<void>((resolve) => {
-      finishTransition = resolve
-    })
-    Object.defineProperty(document, 'startViewTransition', {
-      configurable: true,
-      value: vi.fn((callback: () => void) => {
-        callback()
-        return { ready: Promise.resolve(), finished }
-      })
-    })
 
     const visibleButton = document.createElement('button')
     visibleButton.dataset.themeToggle = ''
-    vi.spyOn(visibleButton, 'getBoundingClientRect').mockReturnValue({
-      left: 24,
-      top: 480,
-      width: 200,
-      height: 48,
-      right: 224,
-      bottom: 528,
-      x: 24,
-      y: 480,
-      toJSON: () => ({})
-    })
-    document.body.appendChild(visibleButton)
-
-    const hiddenButton = document.createElement('button')
-    vi.spyOn(hiddenButton, 'getBoundingClientRect').mockReturnValue({
-      left: 0,
-      top: 0,
-      width: 0,
-      height: 0,
-      right: 0,
-      bottom: 0,
-      x: 0,
-      y: 0,
-      toJSON: () => ({})
-    })
-    hiddenButton.addEventListener('click', useTheme().toggleTheme)
-    hiddenButton.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
-
-    expect(animate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clipPath: [
-          'circle(0px at 124px 504px)',
-          expect.stringMatching(/^circle\(.+px at 124px 504px\)$/)
-        ]
-      }),
-      expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })
-    )
-    finishTransition()
-    await finished
-  })
-
-  it('ignores an off-screen sidebar toggle after refresh', async () => {
-    const { useTheme } = await import('../useTheme')
-
-    const animate = vi.fn()
-    Object.defineProperty(document.documentElement, 'animate', { configurable: true, value: animate })
-    let finishTransition: () => void = () => {}
-    const finished = new Promise<void>((resolve) => {
-      finishTransition = resolve
-    })
-    Object.defineProperty(document, 'startViewTransition', {
-      configurable: true,
-      value: vi.fn((callback: () => void) => {
-        callback()
-        return { ready: Promise.resolve(), finished }
-      })
-    })
-
-    const visibleButton = document.createElement('button')
-    visibleButton.dataset.themeToggle = ''
-    vi.spyOn(visibleButton, 'getBoundingClientRect').mockReturnValue({
-      left: 560,
-      top: 20,
-      width: 40,
-      height: 40,
-      right: 600,
-      bottom: 60,
-      x: 560,
-      y: 20,
-      toJSON: () => ({})
-    })
+    mockRect(visibleButton, 560, 20, 40, 40)
     document.body.appendChild(visibleButton)
 
     const offscreenButton = document.createElement('button')
     offscreenButton.dataset.themeToggle = ''
-    vi.spyOn(offscreenButton, 'getBoundingClientRect').mockReturnValue({
-      left: -244,
-      top: 480,
-      width: 231,
-      height: 40,
-      right: -13,
-      bottom: 520,
-      x: -244,
-      y: 480,
-      toJSON: () => ({})
-    })
+    mockRect(offscreenButton, -244, 480, 231, 40)
     offscreenButton.addEventListener('click', useTheme().toggleTheme)
-    offscreenButton.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    offscreenButton.dispatchEvent(new MouseEvent('click'))
 
-    expect(animate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clipPath: [
-          'circle(0px at 580px 40px)',
-          expect.stringMatching(/^circle\(.+px at 580px 40px\)$/)
-        ]
-      }),
-      expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })
-    )
-    finishTransition()
+    const radius = Math.hypot(Math.max(580, window.innerWidth - 580), Math.max(40, window.innerHeight - 40))
+    const ripple = document.querySelector<HTMLElement>('[data-theme-ripple]')
+    expect(ripple?.style.left).toBe(`${580 - radius}px`)
+    expect(ripple?.style.top).toBe(`${40 - radius}px`)
+    expect(animate).toHaveBeenCalledTimes(1)
+    finishAnimation()
+  })
+
+  it('ignores rapid repeated toggles until the current ripple finishes', async () => {
+    const { animate, finished, finishAnimation } = installAnimationMock()
+    const { useTheme } = await import('../useTheme')
+
+    const button = document.createElement('button')
+    mockRect(button, 24, 480, 200, 48)
+    button.addEventListener('click', useTheme().toggleTheme)
+    button.dispatchEvent(new MouseEvent('click'))
+    button.dispatchEvent(new MouseEvent('click'))
+    button.dispatchEvent(new MouseEvent('click'))
+
+    expect(animate).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem('theme')).toBe('dark')
+
+    finishAnimation()
     await finished
+    await Promise.resolve()
+    button.dispatchEvent(new MouseEvent('click'))
+    expect(animate).toHaveBeenCalledTimes(2)
+    expect(localStorage.getItem('theme')).toBe('light')
   })
 })

@@ -1,18 +1,16 @@
-import { nextTick, ref, readonly } from 'vue'
+import { ref, readonly } from 'vue'
 
 const isDark = ref(
   typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
 )
 
 let mediaQueryInitialized = false
-let activeTransition: { finished: Promise<void> } | null = null
+let transitionActive = false
 let transitionSafetyTimer: ReturnType<typeof setTimeout> | null = null
 
 const TRANSITION_MS = 500
 
 function syncBrowserChrome(dark: boolean) {
-  // Do NOT set documentElement.style.colorScheme — CSS :root / :root.dark owns it.
-  // Writing inline color-scheme during View Transitions corrupts painted snapshots.
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
     ?.setAttribute('content', dark ? '#020617' : '#f9fafb')
@@ -53,9 +51,8 @@ function clearTransitionLock() {
     clearTimeout(transitionSafetyTimer)
     transitionSafetyTimer = null
   }
-  activeTransition = null
+  transitionActive = false
   document.documentElement.classList.remove('theme-toggling')
-  document.documentElement.style.removeProperty('--theme-transition-bg')
 }
 
 type TransitionOrigin = { x: number; y: number }
@@ -71,32 +68,9 @@ function getVisibleRect(element: HTMLElement) {
   return { left, right, top, bottom }
 }
 
-function getPointerOrigin(event?: MouseEvent): TransitionOrigin | null {
-  if (!event || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return null
-  if (
-    event.clientX < 0 ||
-    event.clientX > window.innerWidth ||
-    event.clientY < 0 ||
-    event.clientY > window.innerHeight
-  ) {
-    return null
-  }
-  return { x: event.clientX, y: event.clientY }
-}
-
-function resolveElementOrigin(element: HTMLElement, pointer: TransitionOrigin | null) {
+function resolveElementOrigin(element: HTMLElement) {
   const visibleRect = getVisibleRect(element)
   if (!visibleRect) return null
-
-  if (
-    pointer &&
-    pointer.x >= visibleRect.left &&
-    pointer.x <= visibleRect.right &&
-    pointer.y >= visibleRect.top &&
-    pointer.y <= visibleRect.bottom
-  ) {
-    return pointer
-  }
 
   return {
     x: (visibleRect.left + visibleRect.right) / 2,
@@ -104,24 +78,9 @@ function resolveElementOrigin(element: HTMLElement, pointer: TransitionOrigin | 
   }
 }
 
-function waitForNextPaint() {
-  return new Promise<void>((resolve) => {
-    if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(() => resolve())
-    } else {
-      resolve()
-    }
-  })
-}
-
-async function getTransitionOrigin(event?: MouseEvent, trigger?: EventTarget | null): Promise<TransitionOrigin> {
-  // On mobile widths the sidebar can still be finishing its transform entry
-  // transition when the first control click arrives after refresh. Let that
-  // frame settle before reading its geometry.
-  await waitForNextPaint()
-  const pointer = getPointerOrigin(event)
+function getTransitionOrigin(trigger?: EventTarget | null): TransitionOrigin {
   if (trigger instanceof HTMLElement) {
-    const origin = resolveElementOrigin(trigger, pointer)
+    const origin = resolveElementOrigin(trigger)
     if (origin) return origin
   }
 
@@ -129,7 +88,7 @@ async function getTransitionOrigin(event?: MouseEvent, trigger?: EventTarget | n
   // a theme control that actually intersects the viewport; clamping an
   // off-screen center produces the erroneous left-edge reveal after refresh.
   for (const element of document.querySelectorAll<HTMLElement>('[data-theme-toggle]')) {
-    const origin = resolveElementOrigin(element, pointer)
+    const origin = resolveElementOrigin(element)
     if (origin) return origin
   }
 
@@ -140,97 +99,55 @@ export function useTheme() {
   ensureSystemThemeListener()
   syncFromDom()
 
-  async function toggleTheme(event?: MouseEvent) {
-    // Event.currentTarget is cleared by the browser once an async handler
-    // yields, so retain the clicked button before waiting for layout to settle.
-    const trigger = event?.currentTarget
-    // Chromium can report a bogus position for the first click after a full
-    // refresh. Anchor the reveal to the actual theme button instead.
-    const { x, y } = await getTransitionOrigin(event, trigger)
+  function toggleTheme(event?: MouseEvent) {
+    // Lock before any layout read or theme mutation. Chromium can crash when
+    // multiple full-viewport animations are created by rapid clicks.
+    if (transitionActive) return
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reducedMotion || typeof HTMLElement.prototype.animate !== 'function') {
+      commitToggle()
+      return
+    }
+
+    transitionActive = true
+    const { x, y } = getTransitionOrigin(event?.currentTarget)
     const endRadius = Math.hypot(
       Math.max(x, window.innerWidth - x),
       Math.max(y, window.innerHeight - y)
     )
 
     const goingDark = !document.documentElement.classList.contains('dark')
-    const supportsViewTransition = 'startViewTransition' in document
-
-    if (
-      !supportsViewTransition ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
-      activeTransition
-    ) {
-      document.documentElement.classList.add('theme-toggling')
-      commitToggle()
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          document.documentElement.classList.remove('theme-toggling')
-        })
-      })
-      return
-    }
-
-    // Destination page color under the reveal — prevents a 1-frame white/dark flash
-    // between the DOM theme swap and the clip-path animation starting.
-    document.documentElement.style.setProperty(
-      '--theme-transition-bg',
-      goingDark ? '#020617' : '#f9fafb'
-    )
     document.documentElement.classList.add('theme-toggling')
+    commitToggle()
+
+    const ripple = document.createElement('span')
+    ripple.dataset.themeRipple = ''
+    ripple.className = 'theme-ripple-overlay'
+    ripple.style.left = `${x - endRadius}px`
+    ripple.style.top = `${y - endRadius}px`
+    ripple.style.width = `${endRadius * 2}px`
+    ripple.style.height = `${endRadius * 2}px`
+    ripple.style.backgroundColor = goingDark ? '#020617' : '#f9fafb'
+    document.body.appendChild(ripple)
 
     try {
-      const transition = (
-        document as Document & {
-          startViewTransition: (cb: () => Promise<void>) => {
-            ready: Promise<void>
-            finished: Promise<void>
-          }
-        }
-      ).startViewTransition(async () => {
-        commitToggle()
-        // View Transitions waits for this promise before capturing the new
-        // snapshot. Flush theme-driven icons, labels, charts, and layout first.
-        await nextTick()
-      })
-
-      activeTransition = transition
-      transitionSafetyTimer = setTimeout(clearTransitionLock, TRANSITION_MS + 250)
-
-      transition.ready
-        .then(() => {
-          // Always expand the NEW theme from the click point (both directions).
-          // Shrinking the old layer on lighten races Chromium's default fade and flashes.
-          document.documentElement.animate(
-            {
-              clipPath: [
-                `circle(0px at ${x}px ${y}px)`,
-                `circle(${endRadius}px at ${x}px ${y}px)`
-              ]
-            },
-            {
-              duration: TRANSITION_MS,
-              easing: 'ease-in-out',
-              // Apply the 0-radius keyframe immediately so the new layer never
-              // paints full-bleed for a frame before the reveal starts.
-              fill: 'both',
-              pseudoElement: '::view-transition-new(root)'
-            }
-          )
-        })
-        .catch(() => {
-          // Transition skipped; theme already applied in the callback.
-        })
-
-      transition.finished
-        .catch(() => {})
-        .finally(() => {
-          document.documentElement.style.removeProperty('--theme-transition-bg')
-          clearTransitionLock()
-        })
+      const animation = ripple.animate(
+        [
+          { transform: 'scale(0)', opacity: 0.28 },
+          { transform: 'scale(1)', opacity: 0 }
+        ],
+        { duration: TRANSITION_MS, easing: 'ease-out', fill: 'both' }
+      )
+      const finish = () => {
+        ripple.remove()
+        clearTransitionLock()
+      }
+      transitionSafetyTimer = setTimeout(finish, TRANSITION_MS + 250)
+      animation.finished.catch(() => {}).finally(finish)
     } catch {
-      document.documentElement.style.removeProperty('--theme-transition-bg')
+      ripple.remove()
       clearTransitionLock()
-      commitToggle()
     }
   }
 
