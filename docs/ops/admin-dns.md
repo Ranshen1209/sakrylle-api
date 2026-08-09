@@ -44,7 +44,9 @@ Diagnosis trail:
 
 ## Primary App Domain
 
-Mitigation applied: use `ai1.sakrylle.com` as the primary app domain. Keep production settings such as `frontend_url` on `https://ai1.sakrylle.com`; do not use `sub.sakrylle.com` in health checks, docs, user-facing links, or new configs.
+`platform.sakrylle.com` was added on 2026-08-09 as the preferred unified ingress for the full app, API, and OAuth/OIDC route surface. `ai1.sakrylle.com`, `oidc1.sakrylle.com`, and `sub.sakrylle.com` remain online as aliases.
+
+For compatibility, production still uses `frontend_url=https://ai1.sakrylle.com` and `oauth_issuer=https://oidc1.sakrylle.com`. Do not change the issuer merely to rename the public entry point: strict OIDC clients will reject discovery when the configured issuer changes. Do not use `sub.sakrylle.com` in new health checks, docs, or user-facing links.
 
 ## Cloudflare Proxy Exception
 

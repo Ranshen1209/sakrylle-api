@@ -43,6 +43,7 @@ Without a client-level default group, login closes with `invalid_group` from `Re
 Production has `sakrylle-studio`:
 
 - issuer: `settings.oauth_issuer=https://oidc1.sakrylle.com`
+- `platform.sakrylle.com` exposes the same OAuth/OIDC routes, but discovery intentionally continues to advertise `oidc1.sakrylle.com` so existing strict-issuer clients remain compatible.
 - public desktop client
 - PKCE required
 - `default_group_id=3`

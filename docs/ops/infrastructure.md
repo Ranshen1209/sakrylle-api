@@ -4,7 +4,7 @@
 
 - **Upstream**: [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api)
 - **Fork**: [Ranshen1209/sub2api](https://github.com/Ranshen1209/sub2api), branch `theme/monet-purple`
-- **Production**: `ai1.sakrylle.com` (app), `api.sakrylle.com` (API), `doc.sakrylle.com` (docs), `status.sakrylle.com` (monitor)
+- **Production**: `platform.sakrylle.com` (unified app/OIDC ingress), `ai1.sakrylle.com` (app alias), `api.sakrylle.com` (API), `doc.sakrylle.com` (docs), `status.sakrylle.com` (monitor)
 - **Server**: `cliproxyapi-jp` (`154.36.159.42`, SSH alias `ssh-tokyo`)
 - **Architecture**: `Public 443 -> Nginx stream (ssl_preread) -> {TLS: 127.0.0.1:8443 Nginx http -> upstream container | SSH: 172.18.0.1:22 host sshd}`. Port 80 goes to Nginx directly.
 
@@ -46,6 +46,7 @@ Default local URL: `http://localhost:18080`.
 
 | Domain | Purpose | Source | Notes |
 | --- | --- | --- | --- |
+| `platform.sakrylle.com` | Unified full Sakrylle API ingress | `nginx/conf.d/sakrylle-platform.conf` | Proxies the full app, API, and OAuth/OIDC route surface to `sub2api`. The existing `ai1`, `oidc1`, and `sub` ingress hosts remain active. `frontend_url` and `oauth_issuer` retain their existing canonical values for compatibility. |
 | `api.sakrylle.com` | Nginx reverse proxy, API-only | `nginx/conf.d/sakrylle-api.conf` | Allows `/v1/`, `/health`, and root gateway aliases such as `/responses`, `/chat/completions`, `/embeddings`, `/images/{generations,edits}`, `/videos`, `/backend-api/codex/`, `/antigravity/`. Everything else returns 404. Root aliases preserve auth middleware and exist for clients with base URL missing `/v1`. |
 | `doc.sakrylle.com` | VitePress docs | external private docs repo | `try_files` must include `$uri.html` before fallback for `cleanUrls: true`. |
 | `automatic-delivery.sakrylle.com` | Agiso Xianyu auto-delivery bridge | `nginx/conf.d/sakrylle-automatic-delivery.conf` | Root webhook only: `POST /integrations/agiso/delivery` plus `/health`; all other paths 404. |
