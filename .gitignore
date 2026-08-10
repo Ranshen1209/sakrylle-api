@@ -153,3 +153,6 @@ frontend/coverage/
 aicodex
 output/
 frontend/pnpm-workspace.yaml
+
+# Vitest / Vite cache at repo root
+.vite/
