@@ -334,7 +334,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		TableDefaultPageSize:                tableDefaultPageSize,
 		TablePageSizeOptions:                tablePageSizeOptions,
 		CustomMenuItems:                     settings[SettingKeyCustomMenuItems],
-		CustomEndpoints:                   settings[SettingKeyCustomEndpoints],
+		CustomEndpoints:                     settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:                 linuxDoEnabled,
 		DingTalkOAuthEnabled:                dingTalkEnabled,
 		WeChatOAuthEnabled:                  weChatEnabled,
