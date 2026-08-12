@@ -6,7 +6,7 @@ alwaysApply: true
 # Always-On Constraints
 
 - Sync upstream with `git merge --no-ff upstream/main`; do not rebase this long-lived fork unless the user explicitly requests it. Replaying hundreds of commits causes repeated conflicts and excessive time/token usage.
-- Never drive public 443 edge changes through SSH-over-443; use direct port 22.
+- Before public 443 stream, firewall, or `sshd` changes, establish and keep open a direct `admin@154.44.8.202:22` fallback session; never rely only on SSH-over-443.
 - Do not reintroduce default model-list fallback in `/v1/models`.
 - Currency is display-only `￥`; do not convert stored numeric values.
 - Treat `channel_model_pricing` as upstream baseline pricing; apply margin with `groups.rate_multiplier`.
