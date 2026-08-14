@@ -31,6 +31,8 @@ tokens * price * groups.rate_multiplier
 
 Change group multiplier for margin. Do not mutate pricing rows for margin; those rows are audit and reconciliation baselines.
 
+Upstream v0.1.176 added `groups.model_pricing` (per-model overrides) and `groups.long_context_pricing_enabled` (default true). Do not use group `model_pricing` for Sakrylle margin; keep channel rows as the baseline and apply `rate_multiplier`. Leave long-context pricing enabled unless a specific group must ignore official long-context tiers.
+
 Account-level `model_mapping` lives in `accounts.credentials.model_mapping` (jsonb), not `accounts.extra`. Empty or absent mapping passes all models.
 
 ## codex-auto-review Two-Gate Rule

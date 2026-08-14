@@ -114,7 +114,8 @@ export default {
     billing: {
       token: 'Per Token',
       perRequest: 'Per Request',
-      image: 'Per Image'
+      image: 'Per Image',
+      video: 'Per Video'
     },
     pricing: {
       input: 'Input',

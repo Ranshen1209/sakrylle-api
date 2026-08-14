@@ -22,6 +22,8 @@ Verified recurring conflict set from the 2026-06-08 merge of v0.1.135:
 - `frontend/src/views/user/UsageView.vue` — keep `￥` symbol and upstream `?? 0` nil guards.
 - `backend/internal/service/wire.go` and `backend/cmd/server/wire.go` — keep Sakrylle OIDC/OAuth providers and merge both shutdown steps.
 
+v0.1.176 also conflicted generated Ent Group files (`group.go`, `mutation.go`, `migrate/schema.go`, `runtime/runtime.go`) because Sakrylle `image_only` and upstream `long_context_pricing_enabled` / `model_pricing` both shift field indices. Resolve schema first, then `go generate ./ent` from `backend/`; do not take `--theirs` on `mutation.go` (it drops Sakrylle OAuth entity types).
+
 ## Wire / OIDC Scheduler Footgun
 
 `wire_gen.go` is committed. CI and Docker builds do not regenerate it.

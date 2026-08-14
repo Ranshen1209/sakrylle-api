@@ -114,7 +114,8 @@ export default {
     billing: {
       token: '按量计费',
       perRequest: '按次计费',
-      image: '按图片计费'
+      image: '按图片计费',
+      video: '按视频计费'
     },
     pricing: {
       input: '输入',

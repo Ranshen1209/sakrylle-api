@@ -93,6 +93,7 @@ import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_IMAGE,
+  BILLING_MODE_VIDEO,
   type BillingMode,
 } from '@/constants/channel'
 
@@ -206,6 +207,7 @@ const billingLabels: Record<BillingMode, string> = {
   [BILLING_MODE_TOKEN]: t('plaza.billing.token'),
   [BILLING_MODE_PER_REQUEST]: t('plaza.billing.perRequest'),
   [BILLING_MODE_IMAGE]: t('plaza.billing.image'),
+  [BILLING_MODE_VIDEO]: t('plaza.billing.video'),
 }
 
 const billingFacets = computed<Facet[]>(() => {
