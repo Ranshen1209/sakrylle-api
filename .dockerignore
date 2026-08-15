@@ -11,6 +11,11 @@
 *.md
 !deploy/DOCKER.md
 docs/
+# admin-compliance gate (LegalDocumentView.vue) build-time imports
+# docs/legal/*.md?raw into the frontend bundle; keep that subtree in the
+# Docker build context even though docs/ is otherwise excluded.
+!docs/legal/
+!docs/legal/*.md
 
 # IDE
 .idea/
@@ -29,6 +34,9 @@ build/
 # Node modules (will be installed in container)
 frontend/node_modules/
 node_modules/
+# Local pnpm workspace metadata is not part of the project and makes pnpm 9
+# treat the frontend as an incomplete workspace inside the image.
+frontend/pnpm-workspace.yaml
 
 # Go build cache (will be built in container)
 backend/vendor/

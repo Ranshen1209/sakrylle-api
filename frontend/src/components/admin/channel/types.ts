@@ -1,4 +1,10 @@
-import type { BillingMode, PricingInterval } from '@/api/admin/channels'
+import type {
+  BillingMode,
+  PricingInterval,
+  PricingTimeVersion,
+} from '@/api/admin/channels'
+
+type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
 export interface IntervalFormEntry {
   min_tokens: number
@@ -19,12 +25,38 @@ export interface PricingFormEntry {
   output_price: number | string | null
   cache_write_price: number | string | null
   cache_read_price: number | string | null
+  image_input_price: number | string | null
   image_output_price: number | string | null
   per_request_price: number | string | null
   intervals: IntervalFormEntry[]
+  time_versions: PricingTimeVersionFormEntry[]
 }
 
-// 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)
+export interface PricingTimeWindowFormEntry {
+  label: string
+  weekdays: number
+  start_minute: number
+  end_minute: number
+  multiplier: number | string
+  sort_order: number
+}
+
+export interface PricingTimeVersionFormEntry {
+  effective_from: string
+  effective_until: string | null
+  timezone: string
+  default_multiplier: number | string
+  input_price: number | string | null
+  output_price: number | string | null
+  cache_write_price: number | string | null
+  cache_read_price: number | string | null
+  image_input_price: number | string | null
+  image_output_price: number | string | null
+  sort_order: number
+  windows: PricingTimeWindowFormEntry[]
+}
+
+// 价格转换：后端存 per-token，前端显示 per-MTok (￥/1M tokens)
 const MTOK = 1_000_000
 
 export function toNullableNumber(val: number | string | null | undefined): number | null {
@@ -72,6 +104,147 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     per_request_price: toNullableNumber(iv.per_request_price),
     sort_order: iv.sort_order
   }))
+}
+
+export function apiTimeVersionsToForm(versions: PricingTimeVersion[]): PricingTimeVersionFormEntry[] {
+  return (versions || []).map(version => ({
+    effective_from: toZonedDatetimeLocal(version.effective_from, version.timezone),
+    effective_until: version.effective_until ? toZonedDatetimeLocal(version.effective_until, version.timezone) : null,
+    timezone: version.timezone || 'Asia/Shanghai',
+    default_multiplier: version.default_multiplier,
+    input_price: perTokenToMTok(version.input_price),
+    output_price: perTokenToMTok(version.output_price),
+    cache_write_price: perTokenToMTok(version.cache_write_price),
+    cache_read_price: perTokenToMTok(version.cache_read_price),
+    image_input_price: perTokenToMTok(version.image_input_price),
+    image_output_price: perTokenToMTok(version.image_output_price),
+    sort_order: version.sort_order,
+    windows: (version.windows || []).map(window => ({ ...window })),
+  }))
+}
+
+export function formTimeVersionsToAPI(versions: PricingTimeVersionFormEntry[]): PricingTimeVersion[] {
+  return (versions || []).map(version => ({
+    effective_from: zonedDatetimeLocalToISO(version.effective_from, version.timezone),
+    effective_until: version.effective_until ? zonedDatetimeLocalToISO(version.effective_until, version.timezone) : null,
+    timezone: version.timezone.trim(),
+    default_multiplier: Number(version.default_multiplier),
+    input_price: mTokToPerToken(version.input_price),
+    output_price: mTokToPerToken(version.output_price),
+    cache_write_price: mTokToPerToken(version.cache_write_price),
+    cache_read_price: mTokToPerToken(version.cache_read_price),
+    image_input_price: mTokToPerToken(version.image_input_price),
+    image_output_price: mTokToPerToken(version.image_output_price),
+    sort_order: version.sort_order,
+    windows: (version.windows || []).map(window => ({
+      ...window,
+      multiplier: Number(window.multiplier),
+    })),
+  }))
+}
+
+export function toZonedDatetimeLocal(value: string, timezone: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const parts = zonedDateParts(date, timezone)
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
+}
+
+export function zonedDatetimeLocalToISO(value: string, timezone: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value)
+  if (!match) throw new RangeError('invalid datetime-local value')
+  const desiredWallTime = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]))
+  let instant = desiredWallTime
+  // Two passes handle offsets that differ around daylight-saving transitions.
+  for (let pass = 0; pass < 2; pass++) {
+    const parts = zonedDateParts(new Date(instant), timezone)
+    const representedWallTime = Date.UTC(
+      Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute),
+    )
+    instant += desiredWallTime - representedWallTime
+  }
+  return new Date(instant).toISOString()
+}
+
+function zonedDateParts(date: Date, timezone: string): Record<'year' | 'month' | 'day' | 'hour' | 'minute', string> {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  })
+  const result = {} as Record<'year' | 'month' | 'day' | 'hour' | 'minute', string>
+  for (const part of formatter.formatToParts(date)) {
+    if (part.type === 'year' || part.type === 'month' || part.type === 'day' || part.type === 'hour' || part.type === 'minute') {
+      result[part.type] = part.value
+    }
+  }
+  return result
+}
+
+function timeVersionEpoch(version: PricingTimeVersionFormEntry, field: 'effective_from' | 'effective_until'): number | null {
+  const value = version[field]
+  if (!value) return null
+  try {
+    return Date.parse(zonedDatetimeLocalToISO(value, version.timezone))
+  } catch {
+    return Number.NaN
+  }
+}
+
+export function validateTimeVersions(
+  versions: PricingTimeVersionFormEntry[],
+  hasIntervals: boolean,
+  t: TranslateFn,
+): string | null {
+  if (!versions || versions.length === 0) return null
+  if (hasIntervals) return t('admin.channels.timePricingValidation.intervalsConflict')
+
+  for (let i = 0; i < versions.length; i++) {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: versions[i].timezone }).format()
+    } catch {
+      return t('admin.channels.timePricingValidation.timezone', { index: i + 1 })
+    }
+  }
+
+  const sorted = [...versions].sort((a, b) => (timeVersionEpoch(a, 'effective_from') ?? 0) - (timeVersionEpoch(b, 'effective_from') ?? 0))
+  for (let i = 0; i < sorted.length; i++) {
+    const version = sorted[i]
+    const from = timeVersionEpoch(version, 'effective_from')
+    const until = timeVersionEpoch(version, 'effective_until')
+    if (!version.effective_from || from == null || Number.isNaN(from)) {
+      return t('admin.channels.timePricingValidation.effectiveFrom', { index: i + 1 })
+    }
+    if (version.default_multiplier === '' || !Number.isFinite(Number(version.default_multiplier)) || Number(version.default_multiplier) < 0) {
+      return t('admin.channels.timePricingValidation.multiplier', { index: i + 1 })
+    }
+    if (until != null && (Number.isNaN(until) || until <= from)) {
+      return t('admin.channels.timePricingValidation.effectiveUntil', { index: i + 1 })
+    }
+    if (i > 0) {
+      const previousUntil = timeVersionEpoch(sorted[i - 1], 'effective_until')
+      if (previousUntil == null || previousUntil > from) {
+        return t('admin.channels.timePricingValidation.versionOverlap')
+      }
+    }
+    for (let w = 0; w < version.windows.length; w++) {
+      const window = version.windows[w]
+      if (window.weekdays < 1 || window.start_minute < 0 || window.end_minute > 1440 || window.start_minute >= window.end_minute) {
+        return t('admin.channels.timePricingValidation.windowRange', { index: i + 1, window: w + 1 })
+      }
+      if (window.multiplier === '' || !Number.isFinite(Number(window.multiplier)) || Number(window.multiplier) < 0) {
+        return t('admin.channels.timePricingValidation.windowMultiplier', { index: i + 1, window: w + 1 })
+      }
+      for (let previous = 0; previous < w; previous++) {
+        const other = version.windows[previous]
+        if ((window.weekdays & other.weekdays) !== 0 && window.start_minute < other.end_minute && other.start_minute < window.end_minute) {
+          return t('admin.channels.timePricingValidation.windowOverlap', { index: i + 1 })
+        }
+      }
+    }
+  }
+  return null
 }
 
 // ── 模型模式冲突检测 ──────────────────────────────────────
@@ -124,7 +297,8 @@ export function findModelConflict(models: string[]): [string, string] | null {
  */
 export function validateIntervals(
   intervals: IntervalFormEntry[],
-  mode: BillingMode = 'token',
+  mode: BillingMode,
+  t: TranslateFn,
 ): string | null {
   if (!intervals || intervals.length === 0) return null
 
@@ -132,58 +306,97 @@ export function validateIntervals(
   const sorted = [...intervals].sort((a, b) => a.min_tokens - b.min_tokens)
 
   for (let i = 0; i < sorted.length; i++) {
-    const err = validateSingleInterval(sorted[i], i)
+    const err = validateSingleInterval(sorted[i], i, t)
     if (err) return err
   }
 
   // per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
   if (mode !== 'token') return null
-  return checkIntervalOverlap(sorted)
+  return checkIntervalOverlap(sorted, t)
 }
 
-function validateSingleInterval(iv: IntervalFormEntry, idx: number): string | null {
+function intervalValidationMessage(
+  t: TranslateFn,
+  key: string,
+  params: Record<string, unknown>,
+): string {
+  return t(`admin.channels.intervalValidation.${key}`, params)
+}
+
+function intervalPriceLabel(t: TranslateFn, key: string): string {
+  return t(`admin.channels.intervalValidation.price.${key}`)
+}
+
+function validateSingleInterval(iv: IntervalFormEntry, idx: number, t: TranslateFn): string | null {
+  const index = idx + 1
   if (iv.min_tokens < 0) {
-    return `区间 #${idx + 1}: 最小 token 数 (${iv.min_tokens}) 不能为负数`
+    return intervalValidationMessage(
+      t,
+      'negativeMin',
+      { index, value: iv.min_tokens },
+    )
   }
   if (iv.max_tokens != null) {
     if (iv.max_tokens <= 0) {
-      return `区间 #${idx + 1}: 最大 token 数 (${iv.max_tokens}) 必须大于 0`
+      return intervalValidationMessage(
+        t,
+        'maxPositive',
+        { index, value: iv.max_tokens },
+      )
     }
     if (iv.max_tokens <= iv.min_tokens) {
-      return `区间 #${idx + 1}: 最大 token 数 (${iv.max_tokens}) 必须大于最小 token 数 (${iv.min_tokens})`
+      return intervalValidationMessage(
+        t,
+        'maxGreaterThanMin',
+        { index, max: iv.max_tokens, min: iv.min_tokens },
+      )
     }
   }
-  return validateIntervalPrices(iv, idx)
+  return validateIntervalPrices(iv, idx, t)
 }
 
-function validateIntervalPrices(iv: IntervalFormEntry, idx: number): string | null {
+function validateIntervalPrices(iv: IntervalFormEntry, idx: number, t: TranslateFn): string | null {
+  const index = idx + 1
   const prices: [string, number | string | null][] = [
-    ['输入价格', iv.input_price],
-    ['输出价格', iv.output_price],
-    ['缓存写入价格', iv.cache_write_price],
-    ['缓存读取价格', iv.cache_read_price],
-    ['单次价格', iv.per_request_price],
+    ['inputPrice', iv.input_price],
+    ['outputPrice', iv.output_price],
+    ['cacheWritePrice', iv.cache_write_price],
+    ['cacheReadPrice', iv.cache_read_price],
+    ['perRequestPrice', iv.per_request_price],
   ]
-  for (const [name, val] of prices) {
+  for (const [key, val] of prices) {
     if (val != null && val !== '' && Number(val) < 0) {
-      return `区间 #${idx + 1}: ${name}不能为负数`
+      const field = intervalPriceLabel(t, key)
+      return intervalValidationMessage(
+        t,
+        'negativePrice',
+        { index, field },
+      )
     }
   }
   return null
 }
 
-function checkIntervalOverlap(sorted: IntervalFormEntry[]): string | null {
+function checkIntervalOverlap(sorted: IntervalFormEntry[], t: TranslateFn): string | null {
   for (let i = 0; i < sorted.length; i++) {
     // 无上限区间必须是最后一个
     if (sorted[i].max_tokens == null && i < sorted.length - 1) {
-      return `区间 #${i + 1}: 无上限区间（最大 token 数为空）只能是最后一个`
+      return intervalValidationMessage(
+        t,
+        'unboundedLast',
+        { index: i + 1 },
+      )
     }
     if (i === 0) continue
     const prev = sorted[i - 1]
     // (min, max] 语义：前一个区间上界 > 当前区间下界则重叠
     if (prev.max_tokens == null || prev.max_tokens > sorted[i].min_tokens) {
       const prevMax = prev.max_tokens == null ? '∞' : String(prev.max_tokens)
-      return `区间 #${i} 和 #${i + 1} 重叠：前一个区间上界 (${prevMax}) 大于当前区间下界 (${sorted[i].min_tokens})`
+      return intervalValidationMessage(
+        t,
+        'overlap',
+        { previousIndex: i, currentIndex: i + 1, previousMax: prevMax, currentMin: sorted[i].min_tokens },
+      )
     }
   }
   return null
@@ -196,6 +409,7 @@ export function getPlatformTagClass(platform: string): string {
     case 'openai': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
     case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+    case 'grok': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
   }
 }
@@ -207,6 +421,7 @@ export function getPlatformTextClass(platform: string): string {
     case 'openai': return 'text-emerald-700 dark:text-emerald-400'
     case 'gemini': return 'text-blue-700 dark:text-blue-400'
     case 'antigravity': return 'text-purple-700 dark:text-purple-400'
+    case 'grok': return 'text-slate-700 dark:text-slate-300'
     default: return ''
   }
 }

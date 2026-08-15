@@ -4,19 +4,44 @@ import App from './App.vue'
 import router from './router'
 import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
+import { updateFavicon } from '@/utils/branding'
+import { isIOSDevice } from '@/utils/device'
 import './style.css'
 
+function initIOSViewportZoomFix() {
+  // iOS Safari 在输入框字号小于 16px 时聚焦会自动放大页面，且失焦后不会恢复。
+  // 限制 maximum-scale 可阻止该行为；iOS 10+ 用户仍可双指手动缩放，不影响可访问性。
+  // 仅在 iOS 设备上注入，避免影响 Android Chrome 的手动缩放能力。
+  if (!isIOSDevice()) return
+
+  const viewport = document.querySelector('meta[name="viewport"]')
+  if (!viewport) return
+
+  const content = viewport.getAttribute('content') || ''
+  if (/maximum-scale/i.test(content)) return
+  viewport.setAttribute('content', `${content}, maximum-scale=1.0`)
+}
+
 function initThemeClass() {
+  // index.html applies this before the first style calculation. Keep this
+  // idempotent pass as a fallback when storage access or the inline script is blocked.
   const savedTheme = localStorage.getItem('theme')
   const shouldUseDark =
     savedTheme === 'dark' ||
     (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.classList.toggle('dark', shouldUseDark)
+
+  // theme-color only. Do not set inline color-scheme — CSS :root / :root.dark
+  // owns it. Writing color-scheme mid View Transition corrupts the painted UI.
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute('content', shouldUseDark ? '#020617' : '#f9fafb')
 }
 
 async function bootstrap() {
-  // Apply theme class globally before app mount to keep all routes consistent.
+  // Reconcile the early document theme before mounting the application.
   initThemeClass()
+  initIOSViewportZoomFix()
 
   const app = createApp(App)
   const pinia = createPinia()
@@ -28,9 +53,10 @@ async function bootstrap() {
   appStore.initFromInjectedConfig()
 
   // Set document title immediately after config is loaded
-  if (appStore.siteName && appStore.siteName !== 'Sub2API') {
+  if (appStore.siteName && appStore.siteName !== 'Sakrylle API') {
     document.title = `${appStore.siteName} - AI API Gateway`
   }
+  updateFavicon(appStore.siteLogo)
 
   await initI18n()
 

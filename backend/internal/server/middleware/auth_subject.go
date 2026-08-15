@@ -1,12 +1,18 @@
 package middleware
 
-import "github.com/gin-gonic/gin"
+import (
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
 
 // AuthSubject is the minimal authenticated identity stored in gin context.
-// Decision: {UserID int64, Concurrency int}
+// IssuedAt carries the JWT iat claim so step-up auth middleware can enforce
+// a recency window without re-parsing the token.
 type AuthSubject struct {
 	UserID      int64
 	Concurrency int
+	IssuedAt    time.Time
 }
 
 func GetAuthSubjectFromContext(c *gin.Context) (AuthSubject, bool) {

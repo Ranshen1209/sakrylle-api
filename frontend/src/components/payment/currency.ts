@@ -1,8 +1,13 @@
 export const DEFAULT_PAYMENT_CURRENCY = 'CNY'
+export const SAKRYLLE_DISPLAY_CURRENCY_SYMBOL = '￥'
 
 export function normalizePaymentCurrency(currency?: string | null): string {
   const normalized = String(currency || '').trim().toUpperCase()
   return /^[A-Z]{3}$/.test(normalized) ? normalized : DEFAULT_PAYMENT_CURRENCY
+}
+
+export function currencySymbol(_currency?: string | null): string {
+  return SAKRYLLE_DISPLAY_CURRENCY_SYMBOL
 }
 
 function paymentCurrencyFractionDigits(currency: string): number {
@@ -19,15 +24,14 @@ function paymentCurrencyFractionDigits(currency: string): number {
 export function formatPaymentAmount(amount: number, currency?: string | null, locale?: string): string {
   const normalized = normalizePaymentCurrency(currency)
   const fractionDigits = paymentCurrencyFractionDigits(normalized)
+  const numericAmount = Number.isFinite(amount) ? amount : 0
   try {
-    return new Intl.NumberFormat(locale || undefined, {
-      style: 'currency',
-      currency: normalized,
-      currencyDisplay: 'narrowSymbol',
+    const formatted = new Intl.NumberFormat(locale || undefined, {
       minimumFractionDigits: fractionDigits,
       maximumFractionDigits: fractionDigits,
-    }).format(Number.isFinite(amount) ? amount : 0)
+    }).format(numericAmount)
+    return `${SAKRYLLE_DISPLAY_CURRENCY_SYMBOL}${formatted}`
   } catch {
-    return `${normalized} ${(Number.isFinite(amount) ? amount : 0).toFixed(fractionDigits)}`
+    return `${SAKRYLLE_DISPLAY_CURRENCY_SYMBOL}${numericAmount.toFixed(fractionDigits)}`
   }
 }

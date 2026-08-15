@@ -1,10 +1,14 @@
 package service
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+)
 
 const (
-	defaultOpenAIMessagesDispatchOpusMappedModel   = "gpt-5.4"
-	defaultOpenAIMessagesDispatchSonnetMappedModel = "gpt-5.3-codex"
+	defaultOpenAIMessagesDispatchOpusMappedModel   = "gpt-5.5"
+	defaultOpenAIMessagesDispatchSonnetMappedModel = "gpt-5.4"
 	defaultOpenAIMessagesDispatchHaikuMappedModel  = "gpt-5.4-mini"
 )
 
@@ -64,12 +68,26 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 		return ""
 	}
 
-	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)
-	if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
-		return mappedModel
+	if g.Platform == PlatformGrok {
+		if claudeMessagesDispatchFamily(requestedModel) == "" {
+			return ""
+		}
+		opts := xai.RuntimeModelMappingOptions()
+		if !opts.EnableCrossClientMap {
+			return ""
+		}
+		return xai.ModelMappingWithOptions(opts)["claude-*"]
 	}
 
-	switch claudeMessagesDispatchFamily(requestedModel) {
+	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)
+	family := claudeMessagesDispatchFamily(requestedModel)
+	if family != "" || strings.HasPrefix(strings.ToLower(requestedModel), "claude") {
+		if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
+			return mappedModel
+		}
+	}
+
+	switch family {
 	case "opus":
 		if mappedModel := strings.TrimSpace(cfg.OpusMappedModel); mappedModel != "" {
 			return mappedModel

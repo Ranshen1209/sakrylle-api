@@ -155,7 +155,7 @@
             class="channel-tab"
             :class="activeTab === 'basic' ? 'channel-tab-active' : 'channel-tab-inactive'"
           >
-            {{ t('admin.channels.form.basicSettings', '基础设置') }}
+            {{ t('admin.channels.form.basicSettings') }}
           </button>
           <!-- Platform Tabs (only enabled) -->
           <button
@@ -228,9 +228,28 @@
               </p>
             </div>
 
+            <!-- Sakrylle channel display metadata -->
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="input-label">{{ t('admin.channels.form.channelFeatures') }}</label>
+                <textarea
+                  v-model="form.features"
+                  rows="2"
+                  class="input font-mono text-sm"
+                  placeholder='["Feature A", "Feature B"]'
+                ></textarea>
+                <p class="mt-1 text-xs text-gray-400">{{ t('admin.channels.form.channelFeaturesHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.channels.form.imageInputRatio') }}</label>
+                <input v-model="form.image_input_ratio" type="number" min="0" step="0.01" class="input" placeholder="1.6" />
+                <p class="mt-1 text-xs text-gray-400">{{ t('admin.channels.form.imageInputRatioHint') }}</p>
+              </div>
+            </div>
+
             <!-- Platform Management -->
             <div class="space-y-3">
-              <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig', '平台配置') }}</label>
+              <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig') }}</label>
               <div class="flex flex-wrap gap-2">
                 <label
                   v-for="p in platformOrder"
@@ -283,7 +302,7 @@
               <label class="input-label text-xs">
                 {{ t('admin.channels.form.groups', 'Associated Groups') }} <span class="text-red-500">*</span>
                 <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
-                  ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }, `已选 ${section.group_ids.length} 个`) }})
+                  ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }) }})
                 </span>
               </label>
               <div class="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-900">
@@ -351,6 +370,21 @@
                   </p>
                 </div>
                 <Toggle v-model="section.codex_image_generation_bridge" />
+              </div>
+            </div>
+
+            <!-- Bedrock CC Compatibility (Anthropic only) -->
+            <div v-if="section.platform === 'anthropic'" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.bedrockCCCompat') }}
+                  </label>
+                  <p class="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
+                    {{ t('admin.channels.form.bedrockCCCompatHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="section.bedrock_cc_compat" />
               </div>
             </div>
 
@@ -562,6 +596,7 @@
                       :key="pIdx"
                       :entry="entry"
                       :platform="section.platform"
+                      hide-time-pricing
                       @update="rule.pricing.splice(pIdx, 1, $event)"
                       @remove="removeRulePricingEntry(sIdx, ruleIndex, pIdx)"
                     />
@@ -617,7 +652,17 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
+import {
+  mTokToPerToken,
+  perTokenToMTok,
+  apiIntervalsToForm,
+  formIntervalsToAPI,
+  apiTimeVersionsToForm,
+  formTimeVersionsToAPI,
+  findModelConflict,
+  validateIntervals,
+  validateTimeVersions,
+} from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
@@ -669,6 +714,7 @@ interface PlatformSection {
   model_pricing: PricingFormEntry[]
   web_search_emulation: boolean
   codex_image_generation_bridge: boolean
+  bedrock_cc_compat: boolean
   account_stats_pricing_rules: FormPricingRule[]
 }
 
@@ -697,7 +743,8 @@ const statusEditOptions = computed(() => [
 const billingModelSourceOptions = computed(() => [
   { value: 'channel_mapped', label: t('admin.channels.form.billingModelSourceChannelMapped', 'Bill by channel-mapped model') },
   { value: 'requested', label: t('admin.channels.form.billingModelSourceRequested', 'Bill by requested model') },
-  { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') }
+  { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') },
+  { value: 'response_model', label: t('admin.channels.form.billingModelSourceResponse', 'Bill by upstream response model') }
 ])
 
 // ── State ──
@@ -736,6 +783,8 @@ const form = reactive({
   description: '',
   status: 'active',
   restrict_models: false,
+  features: '',
+  image_input_ratio: null as number | string | null,
   billing_model_source: 'channel_mapped' as string,
   platforms: [] as PlatformSection[],
   apply_pricing_to_account_stats: false,
@@ -744,7 +793,7 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -765,6 +814,7 @@ function addPlatformSection(platform: GroupPlatform) {
     model_pricing: [],
     web_search_emulation: false,
     codex_image_generation_bridge: false,
+    bedrock_cc_compat: false,
     account_stats_pricing_rules: [],
   })
 }
@@ -782,7 +832,7 @@ function togglePlatform(platform: GroupPlatform) {
 }
 
 function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
-  return allGroups.value.filter(g => g.platform === platform)
+  return allGroups.value.filter(g => g.platform === platform || g.platform === 'composite')
 }
 
 // ── Group helpers ──
@@ -838,9 +888,11 @@ function addPricingEntry(sectionIdx: number) {
     output_price: null,
     cache_write_price: null,
     cache_read_price: null,
+    image_input_price: null,
     image_output_price: null,
     per_request_price: null,
-    intervals: []
+    intervals: [],
+    time_versions: [],
   })
 }
 
@@ -870,9 +922,11 @@ async function syncLatestModels(sectionIdx: number) {
       output_price: null,
       cache_write_price: null,
       cache_read_price: null,
+      image_input_price: null,
       image_output_price: null,
       per_request_price: null,
-      intervals: []
+      intervals: [],
+      time_versions: [],
     })
     appStore.showSuccess(t('admin.channels.form.syncModelsSuccess', { count: newModels.length }))
   } catch (error) {
@@ -934,9 +988,11 @@ function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
     output_price: null,
     cache_write_price: null,
     cache_read_price: null,
+    image_input_price: null,
     image_output_price: null,
     per_request_price: null,
-    intervals: []
+    intervals: [],
+    time_versions: [],
   })
 }
 
@@ -1049,9 +1105,11 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             output_price: mTokToPerToken(p.output_price),
             cache_write_price: mTokToPerToken(p.cache_write_price),
             cache_read_price: mTokToPerToken(p.cache_read_price),
+            image_input_price: mTokToPerToken(p.image_input_price),
             image_output_price: mTokToPerToken(p.image_output_price),
             per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
-            intervals: formIntervalsToAPI(p.intervals || [])
+            intervals: formIntervalsToAPI(p.intervals || []),
+            time_versions: [],
           }))
       })
     }
@@ -1089,12 +1147,15 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         output_price: mTokToPerToken(entry.output_price),
         cache_write_price: mTokToPerToken(entry.cache_write_price),
         cache_read_price: mTokToPerToken(entry.cache_read_price),
+        image_input_price: mTokToPerToken(entry.image_input_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
-        intervals: formIntervalsToAPI(entry.intervals || [])
+        intervals: formIntervalsToAPI(entry.intervals || []),
+        time_versions: formTimeVersionsToAPI(entry.time_versions || []),
       })
     }
   }
+  const uniqueGroupIds = Array.from(new Set(group_ids))
 
   // Collect web_search_emulation (only anthropic platform supports it)
   // Always write the key so that disabling in the UI correctly sets platform to false,
@@ -1125,7 +1186,27 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.codex_image_generation_bridge
   }
 
-  return { group_ids, model_pricing, model_mapping, features_config: featuresConfig }
+  const bedrockCCCompat: Record<string, boolean> = {}
+  for (const section of form.platforms) {
+    if (!section.enabled) continue
+    if (section.platform === 'anthropic') {
+      bedrockCCCompat[section.platform] = !!section.bedrock_cc_compat
+    }
+  }
+  if (Object.keys(bedrockCCCompat).length > 0) {
+    featuresConfig.bedrock_cc_compat = bedrockCCCompat
+  } else {
+    delete featuresConfig.bedrock_cc_compat
+  }
+
+  const imageInputRatio = Number(form.image_input_ratio)
+  if (form.image_input_ratio !== null && form.image_input_ratio !== '' && Number.isFinite(imageInputRatio) && imageInputRatio > 0) {
+    featuresConfig.image_input_ratio = imageInputRatio
+  } else {
+    delete featuresConfig.image_input_ratio
+  }
+
+  return { group_ids: uniqueGroupIds, model_pricing, model_mapping, features_config: featuresConfig }
 }
 
 function apiToForm(channel: Channel): PlatformSection[] {
@@ -1139,7 +1220,11 @@ function apiToForm(channel: Channel): PlatformSection[] {
   const activePlatforms = new Set<GroupPlatform>()
   for (const gid of channel.group_ids || []) {
     const p = groupPlatformMap.get(gid)
-    if (p) activePlatforms.add(p)
+    if (p === 'composite') {
+      platformOrder.forEach(platform => activePlatforms.add(platform))
+    } else if (p) {
+      activePlatforms.add(p)
+    }
   }
   for (const p of channel.model_pricing || []) {
     if (p.platform) activePlatforms.add(p.platform as GroupPlatform)
@@ -1153,7 +1238,10 @@ function apiToForm(channel: Channel): PlatformSection[] {
   for (const platform of platformOrder) {
     if (!activePlatforms.has(platform)) continue
 
-    const groupIds = (channel.group_ids || []).filter(gid => groupPlatformMap.get(gid) === platform)
+    const groupIds = (channel.group_ids || []).filter(gid => {
+      const groupPlatform = groupPlatformMap.get(gid)
+      return groupPlatform === platform || groupPlatform === 'composite'
+    })
     const mapping = (channel.model_mapping || {})[platform] || {}
     const pricing = (channel.model_pricing || [])
       .filter(p => (p.platform || 'anthropic') === platform)
@@ -1164,9 +1252,11 @@ function apiToForm(channel: Channel): PlatformSection[] {
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
+        image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
-        intervals: apiIntervalsToForm(p.intervals || [])
+        intervals: apiIntervalsToForm(p.intervals || []),
+        time_versions: apiTimeVersionsToForm(p.time_versions || []),
       } as PricingFormEntry))
 
     // Read web_search_emulation from features_config
@@ -1175,6 +1265,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
     const webSearchEnabled = wsEmulation?.[platform] === true
     const codexImageGenerationBridge = fc?.codex_image_generation_bridge as Record<string, boolean> | undefined
     const codexImageGenerationBridgeEnabled = codexImageGenerationBridge?.[platform] === true
+    const bedrockCCCompatEnabled = fc?.bedrock_cc_compat === true
 
     sections.push({
       platform,
@@ -1185,6 +1276,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       model_pricing: pricing,
       web_search_emulation: webSearchEnabled,
       codex_image_generation_bridge: codexImageGenerationBridgeEnabled,
+      bedrock_cc_compat: bedrockCCCompatEnabled,
       account_stats_pricing_rules: [],
     })
   }
@@ -1276,6 +1368,8 @@ function resetForm() {
   form.description = ''
   form.status = 'active'
   form.restrict_models = false
+  form.features = ''
+  form.image_input_ratio = null
   form.billing_model_source = 'channel_mapped'
   form.platforms = []
   form.apply_pricing_to_account_stats = false
@@ -1298,6 +1392,9 @@ async function openEditDialog(channel: Channel) {
   form.description = channel.description || ''
   form.status = channel.status
   form.restrict_models = channel.restrict_models || false
+  form.features = channel.features || ''
+  const imageInputRatio = Number(channel.features_config?.image_input_ratio)
+  form.image_input_ratio = Number.isFinite(imageInputRatio) && imageInputRatio > 0 ? imageInputRatio : null
   form.billing_model_source = channel.billing_model_source || 'channel_mapped'
   form.apply_pricing_to_account_stats = channel.apply_pricing_to_account_stats || false
   // Must load groups first so apiToForm can map groupID → platform
@@ -1326,7 +1423,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
     const platforms = new Set<GroupPlatform>()
     for (const gid of apiRule.group_ids || []) {
       const p = groupPlatformMap.get(gid)
-      if (p) platforms.add(p)
+      if (p && p !== 'composite') platforms.add(p)
     }
     // If pricing has a platform field, use that as fallback
     if (platforms.size === 0 && apiRule.pricing?.length > 0) {
@@ -1350,9 +1447,11 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
+        image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
-        intervals: apiIntervalsToForm(p.intervals || [])
+        intervals: apiIntervalsToForm(p.intervals || []),
+        time_versions: [],
       } as PricingFormEntry))
     }
     section.account_stats_pricing_rules.push(formRule)
@@ -1398,18 +1497,29 @@ async function handleSubmit() {
     return
   }
 
+  if (form.features.trim()) {
+    try {
+      const parsed = JSON.parse(form.features)
+      if (!Array.isArray(parsed) || parsed.some(item => typeof item !== 'string')) throw new Error('invalid features')
+    } catch {
+      appStore.showError(t('admin.channels.form.channelFeaturesInvalid'))
+      activeTab.value = 'basic'
+      return
+    }
+  }
+
   // Check for pricing entries with empty models (would be silently skipped)
   for (const section of form.platforms.filter(s => s.enabled)) {
     if (section.group_ids.length === 0) {
       const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
-      appStore.showError(t('admin.channels.noGroupsSelected', { platform: platformLabel }, `${platformLabel} 平台未选择分组，请至少选择一个分组或禁用该平台`))
+      appStore.showError(t('admin.channels.noGroupsSelected', { platform: platformLabel }))
       activeTab.value = section.platform
       return
     }
     for (const entry of section.model_pricing) {
       if (entry.models.length === 0) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
-        appStore.showError(t('admin.channels.emptyModelsInPricing', { platform: platformLabel }, `${platformLabel} 平台下有定价条目未添加模型，请添加模型或删除该条目`))
+        appStore.showError(t('admin.channels.emptyModelsInPricing', { platform: platformLabel }))
         activeTab.value = section.platform
         return
       }
@@ -1427,8 +1537,7 @@ async function handleSubmit() {
     if (pricingConflict) {
       appStore.showError(
         t('admin.channels.modelConflict',
-          { model1: pricingConflict[0], model2: pricingConflict[1] },
-          `模型模式 '${pricingConflict[0]}' 和 '${pricingConflict[1]}' 冲突：匹配范围重叠`)
+          { model1: pricingConflict[0], model2: pricingConflict[1] })
       )
       activeTab.value = section.platform
       return
@@ -1440,8 +1549,7 @@ async function handleSubmit() {
       if (mappingConflict) {
         appStore.showError(
           t('admin.channels.mappingConflict',
-            { model1: mappingConflict[0], model2: mappingConflict[1] },
-            `模型映射源 '${mappingConflict[0]}' 和 '${mappingConflict[1]}' 冲突：匹配范围重叠`)
+            { model1: mappingConflict[0], model2: mappingConflict[1] })
         )
         activeTab.value = section.platform
         return
@@ -1456,7 +1564,7 @@ async function handleSubmit() {
       if ((entry.billing_mode === 'per_request' || entry.billing_mode === 'image') &&
           (entry.per_request_price == null || entry.per_request_price === '') &&
           (!entry.intervals || entry.intervals.length === 0)) {
-        appStore.showError(t('admin.channels.form.perRequestPriceRequired', '按次/图片计费模式必须设置默认价格或至少一个计费层级'))
+        appStore.showError(t('admin.channels.form.perRequestPriceRequired'))
         return
       }
     }
@@ -1466,11 +1574,26 @@ async function handleSubmit() {
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
       if (!entry.intervals || entry.intervals.length === 0) continue
-      const intervalErr = validateIntervals(entry.intervals, entry.billing_mode)
+      const intervalErr = validateIntervals(entry.intervals, entry.billing_mode, t)
       if (intervalErr) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
         const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
         appStore.showError(`${platformLabel} - ${modelLabel}: ${intervalErr}`)
+        activeTab.value = section.platform
+        return
+      }
+    }
+  }
+
+  // 校验峰谷版本及日内窗口；峰谷价与上下文区间价不能同时开启。
+  for (const section of form.platforms.filter(s => s.enabled)) {
+    for (const entry of section.model_pricing) {
+      if (!entry.time_versions || entry.time_versions.length === 0) continue
+      const timePricingErr = validateTimeVersions(entry.time_versions, (entry.intervals || []).length > 0, t)
+      if (timePricingErr) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
+        appStore.showError(`${platformLabel} - ${modelLabel}: ${timePricingErr}`)
         activeTab.value = section.platform
         return
       }
@@ -1491,6 +1614,7 @@ async function handleSubmit() {
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
+        features: form.features.trim(),
         features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()
@@ -1506,6 +1630,7 @@ async function handleSubmit() {
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
+        features: form.features.trim(),
         features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()

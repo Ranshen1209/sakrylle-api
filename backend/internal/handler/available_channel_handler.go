@@ -2,8 +2,10 @@ package handler
 
 import (
 	"sort"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -12,12 +14,11 @@ import (
 
 // AvailableChannelHandler 处理用户侧「可用渠道」查询。
 //
-// 用户侧接口委托 ChannelService.ListAvailable，并在返回前做三层过滤：
+// 用户侧接口委托 ChannelService.ListAvailable，并在返回前做四层过滤：
 //  1. 行过滤：只保留状态为 Active 且与当前用户可访问分组有交集的渠道；
 //  2. 分组过滤：渠道的 Groups 只保留用户可访问的那些；
-//  3. 平台过滤：渠道的 SupportedModels 只保留平台在用户可见 Groups 中出现过的模型，
-//     防止"渠道同时挂在 antigravity / anthropic 两个平台的分组上，用户只访问
-//     antigravity，却看到 anthropic 模型"这类跨平台信息泄漏；
+//  3. 平台过滤：普通分组只保留自身平台模型；Composite 分组按渠道已配置的具体模型平台
+//     展开。这样既防止普通分组跨平台泄漏，也让 Composite 正确展示其多平台能力；
 //  4. 字段白名单：仅返回用户需要的字段（省略 BillingModelSource / RestrictModels
 //     / 内部 ID / Status 等管理字段）。
 type AvailableChannelHandler struct {
@@ -50,27 +51,64 @@ func (h *AvailableChannelHandler) featureEnabled(c *gin.Context) bool {
 // userAvailableGroup 用户可见的分组概要（白名单字段）。
 //
 // 前端据此区分专属 vs 公开分组（IsExclusive）、订阅 vs 标准分组（SubscriptionType，
-// 订阅视觉加深），并用 RateMultiplier 作为默认倍率；用户专属倍率前端走
+// 订阅视觉加深），并展示默认倍率与高峰倍率规则；用户专属倍率前端走
 // /groups/rates，和 API 密钥页面保持一致。
 type userAvailableGroup struct {
-	ID               int64   `json:"id"`
-	Name             string  `json:"name"`
-	Platform         string  `json:"platform"`
-	SubscriptionType string  `json:"subscription_type"`
-	RateMultiplier   float64 `json:"rate_multiplier"`
-	IsExclusive      bool    `json:"is_exclusive"`
+	ID                 int64   `json:"id"`
+	Name               string  `json:"name"`
+	Platform           string  `json:"platform"`
+	SubscriptionType   string  `json:"subscription_type"`
+	RateMultiplier     float64 `json:"rate_multiplier"`
+	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
+	PeakStart          string  `json:"peak_start"`
+	PeakEnd            string  `json:"peak_end"`
+	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+	IsExclusive        bool    `json:"is_exclusive"`
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
 type userSupportedModelPricing struct {
-	BillingMode      string                   `json:"billing_mode"`
-	InputPrice       *float64                 `json:"input_price"`
-	OutputPrice      *float64                 `json:"output_price"`
-	CacheWritePrice  *float64                 `json:"cache_write_price"`
-	CacheReadPrice   *float64                 `json:"cache_read_price"`
-	ImageOutputPrice *float64                 `json:"image_output_price"`
-	PerRequestPrice  *float64                 `json:"per_request_price"`
-	Intervals        []userPricingIntervalDTO `json:"intervals"`
+	BillingMode      string                     `json:"billing_mode"`
+	InputPrice       *float64                   `json:"input_price"`
+	OutputPrice      *float64                   `json:"output_price"`
+	CacheWritePrice  *float64                   `json:"cache_write_price"`
+	CacheReadPrice   *float64                   `json:"cache_read_price"`
+	ImageInputPrice  *float64                   `json:"image_input_price"`
+	ImageOutputPrice *float64                   `json:"image_output_price"`
+	PerRequestPrice  *float64                   `json:"per_request_price"`
+	ImageInputRatio  *float64                   `json:"image_input_ratio"`
+	Intervals        []userPricingIntervalDTO   `json:"intervals"`
+	TimeVersions     []userPricingTimeVersion   `json:"time_versions"`
+	TimeResolution   *userPricingTimeResolution `json:"time_resolution"`
+}
+
+type userPricingTimeVersion struct {
+	EffectiveFrom     time.Time               `json:"effective_from"`
+	EffectiveUntil    *time.Time              `json:"effective_until"`
+	Timezone          string                  `json:"timezone"`
+	DefaultMultiplier float64                 `json:"default_multiplier"`
+	InputPrice        *float64                `json:"input_price"`
+	OutputPrice       *float64                `json:"output_price"`
+	CacheWritePrice   *float64                `json:"cache_write_price"`
+	CacheReadPrice    *float64                `json:"cache_read_price"`
+	ImageInputPrice   *float64                `json:"image_input_price"`
+	ImageOutputPrice  *float64                `json:"image_output_price"`
+	Windows           []userPricingTimeWindow `json:"windows"`
+}
+
+type userPricingTimeWindow struct {
+	Label       string  `json:"label"`
+	Weekdays    int     `json:"weekdays"`
+	StartMinute int     `json:"start_minute"`
+	EndMinute   int     `json:"end_minute"`
+	Multiplier  float64 `json:"multiplier"`
+}
+
+type userPricingTimeResolution struct {
+	PricingAt   time.Time `json:"pricing_at"`
+	Timezone    string    `json:"timezone"`
+	PeriodLabel string    `json:"period_label"`
+	Multiplier  float64   `json:"multiplier"`
 }
 
 // userPricingIntervalDTO 定价区间白名单（去掉内部 ID、SortOrder 等前端不渲染的字段）。
@@ -167,18 +205,46 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 }
 
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：
-// 每个 section 对应一个平台，只包含该平台的 groups 和 supported_models。
+// 每个 section 对应一个具体平台，只包含该平台的 groups 和 supported_models。
+//
+// Composite 分组可访问渠道中所有已配置的具体平台，因此会被展开到每个有支持模型的
+// 平台 section。普通分组仍严格留在自身平台，避免跨平台模型信息泄漏。Composite 渠道
+// 尚未配置任何模型时保留 composite section，以便前端继续展示该分组和“未配置模型”状态。
 // 输出按 platform 字母序稳定排序，便于前端等效比较与回归测试。
 func buildPlatformSections(
 	ch service.AvailableChannel,
 	visibleGroups []userAvailableGroup,
 ) []userChannelPlatformSection {
 	groupsByPlatform := make(map[string][]userAvailableGroup, 4)
+	compositeGroups := make([]userAvailableGroup, 0, 1)
 	for _, g := range visibleGroups {
 		if g.Platform == "" {
 			continue
 		}
+		if g.Platform == service.PlatformComposite {
+			compositeGroups = append(compositeGroups, g)
+			continue
+		}
 		groupsByPlatform[g.Platform] = append(groupsByPlatform[g.Platform], g)
+	}
+
+	if len(compositeGroups) > 0 {
+		modelPlatforms := make(map[string]struct{}, len(ch.SupportedModels))
+		for i := range ch.SupportedModels {
+			if platform := ch.SupportedModels[i].Platform; platform != "" {
+				modelPlatforms[platform] = struct{}{}
+			}
+		}
+		if len(modelPlatforms) == 0 {
+			groupsByPlatform[service.PlatformComposite] = append(
+				groupsByPlatform[service.PlatformComposite],
+				compositeGroups...,
+			)
+		} else {
+			for platform := range modelPlatforms {
+				groupsByPlatform[platform] = append(groupsByPlatform[platform], compositeGroups...)
+			}
+		}
 	}
 	if len(groupsByPlatform) == 0 {
 		return nil
@@ -196,7 +262,7 @@ func buildPlatformSections(
 		sections = append(sections, userChannelPlatformSection{
 			Platform:        platform,
 			Groups:          groupsByPlatform[platform],
-			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet),
+			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet, ch.ImageInputRatio),
 		})
 	}
 	return sections
@@ -213,12 +279,16 @@ func filterUserVisibleGroups(
 			continue
 		}
 		visible = append(visible, userAvailableGroup{
-			ID:               g.ID,
-			Name:             g.Name,
-			Platform:         g.Platform,
-			SubscriptionType: g.SubscriptionType,
-			RateMultiplier:   g.RateMultiplier,
-			IsExclusive:      g.IsExclusive,
+			ID:                 g.ID,
+			Name:               g.Name,
+			Platform:           g.Platform,
+			SubscriptionType:   g.SubscriptionType,
+			RateMultiplier:     g.RateMultiplier,
+			PeakRateEnabled:    g.PeakRateEnabled,
+			PeakStart:          g.PeakStart,
+			PeakEnd:            g.PeakEnd,
+			PeakRateMultiplier: g.PeakRateMultiplier,
+			IsExclusive:        g.IsExclusive,
 		})
 	}
 	return visible
@@ -227,9 +297,11 @@ func filterUserVisibleGroups(
 // toUserSupportedModels 将 service 层支持模型转换为用户 DTO（字段白名单）。
 // 仅保留平台在 allowedPlatforms 中的条目，防止跨平台模型信息泄漏。
 // allowedPlatforms 为 nil 时不做平台过滤（保留全部，供测试或明确无过滤场景使用）。
+// imageInputRatio 来自渠道级 FeaturesConfig，统一戳到该渠道所有模型的 pricing DTO 上。
 func toUserSupportedModels(
 	src []service.SupportedModel,
 	allowedPlatforms map[string]struct{},
+	imageInputRatio *float64,
 ) []userSupportedModel {
 	out := make([]userSupportedModel, 0, len(src))
 	for i := range src {
@@ -242,17 +314,25 @@ func toUserSupportedModels(
 		out = append(out, userSupportedModel{
 			Name:     m.Name,
 			Platform: m.Platform,
-			Pricing:  toUserPricing(m.Pricing),
+			Pricing:  toUserPricingWithRatio(m.Pricing, imageInputRatio),
 		})
 	}
 	return out
 }
 
-// toUserPricing 将 service 层定价转换为用户 DTO；入参为 nil 时返回 nil。
+// toUserPricingWithRatio 将 service 层定价转换为用户 DTO，并将渠道级 imageInputRatio
+// 戳入 DTO 的 ImageInputRatio 字段。入参 p 为 nil 时返回 nil。
 func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
+	return toUserPricingWithRatio(p, nil)
+}
+
+func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *float64) *userSupportedModelPricing {
 	if p == nil {
 		return nil
 	}
+	source := p
+	resolved, resolution := p.ResolveAt(timezone.Now())
+	p = &resolved
 	intervals := make([]userPricingIntervalDTO, 0, len(p.Intervals))
 	for _, iv := range p.Intervals {
 		intervals = append(intervals, userPricingIntervalDTO{
@@ -270,14 +350,43 @@ func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 	if billingMode == "" {
 		billingMode = string(service.BillingModeToken)
 	}
+	timeVersions := make([]userPricingTimeVersion, 0, len(source.TimeVersions))
+	for _, version := range source.TimeVersions {
+		windows := make([]userPricingTimeWindow, 0, len(version.Windows))
+		for _, window := range version.Windows {
+			windows = append(windows, userPricingTimeWindow{
+				Label: window.Label, Weekdays: window.Weekdays, StartMinute: window.StartMinute,
+				EndMinute: window.EndMinute, Multiplier: window.Multiplier,
+			})
+		}
+		timeVersions = append(timeVersions, userPricingTimeVersion{
+			EffectiveFrom: version.EffectiveFrom, EffectiveUntil: version.EffectiveUntil,
+			Timezone: version.Timezone, DefaultMultiplier: version.DefaultMultiplier,
+			InputPrice: version.InputPrice, OutputPrice: version.OutputPrice,
+			CacheWritePrice: version.CacheWritePrice, CacheReadPrice: version.CacheReadPrice,
+			ImageInputPrice: version.ImageInputPrice, ImageOutputPrice: version.ImageOutputPrice,
+			Windows: windows,
+		})
+	}
+	var timeResolution *userPricingTimeResolution
+	if resolution != nil {
+		timeResolution = &userPricingTimeResolution{
+			PricingAt: resolution.PricingAt, Timezone: resolution.Timezone,
+			PeriodLabel: resolution.PeriodLabel, Multiplier: resolution.Multiplier,
+		}
+	}
 	return &userSupportedModelPricing{
 		BillingMode:      billingMode,
 		InputPrice:       p.InputPrice,
 		OutputPrice:      p.OutputPrice,
 		CacheWritePrice:  p.CacheWritePrice,
 		CacheReadPrice:   p.CacheReadPrice,
+		ImageInputPrice:  p.ImageInputPrice,
 		ImageOutputPrice: p.ImageOutputPrice,
 		PerRequestPrice:  p.PerRequestPrice,
+		ImageInputRatio:  imageInputRatio,
 		Intervals:        intervals,
+		TimeVersions:     timeVersions,
+		TimeResolution:   timeResolution,
 	}
 }

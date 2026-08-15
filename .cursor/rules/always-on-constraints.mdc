@@ -1,0 +1,17 @@
+---
+description: Hard fork constraints — upstream sync, full-stack feature delivery, edge SSH, pricing, currency, Wire
+alwaysApply: true
+---
+
+# Always-On Constraints
+
+- Sync upstream with `git merge --no-ff upstream/main`; do not rebase this long-lived fork unless the user explicitly requests it. Replaying hundreds of commits causes repeated conflicts and excessive time/token usage.
+- Before public 443 stream, firewall, or `sshd` changes, establish and keep open a direct `admin@154.44.8.202:22` fallback session; never rely only on SSH-over-443.
+- Do not reintroduce default model-list fallback in `/v1/models`.
+- Currency is display-only `￥`; do not convert stored numeric values.
+- Treat `channel_model_pricing` as upstream baseline pricing; apply margin with `groups.rate_multiplier`.
+- Resolve channel peak/off-peak versions in the backend using the request start time. Do not duplicate the decision in the frontend or model an upstream schedule with group `peak_rate_*` fields.
+- Keep OpenAI text/coding groups compatible with Codex tool declarations; see channel docs before changing `allow_image_generation`.
+- Every new backend feature must ship with its corresponding frontend in the same change. A backend-only implementation is incomplete: add the relevant create/edit/display surfaces, API and type wiring, validation, i18n, and frontend tests. The only exception is when the user explicitly requests a backend-only change; document that exception and the missing frontend follow-up.
+- For Sakrylle-only configuration fields, update every explicit boundary: admin DTOs, form/API conversion, edit hydration, persistence, user-facing whitelist DTOs where relevant, i18n, and tests. Operational-only exceptions must be documented in `docs/ops/customizations.md`.
+- If Wire providers change, regenerate committed `wire_gen.go` and verify OIDC key rotation is still consumed by cleanup.

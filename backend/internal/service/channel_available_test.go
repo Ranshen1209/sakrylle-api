@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -308,4 +309,87 @@ func TestFillGlobalPricingFallback_KeepsExistingPrice(t *testing.T) {
 
 func newStubPricingServiceFromMap(data map[string]*LiteLLMModelPricing) *PricingService {
 	return &PricingService{pricingData: data}
+}
+
+func TestListAvailable_ImageInputRatioFromFeaturesConfig(t *testing.T) {
+	// 渠道 FeaturesConfig["image_input_ratio"] = 1.6 → AvailableChannel.ImageInputRatio 为 1.6 指针。
+	ratio := 1.6
+	channels := []Channel{{
+		ID:     1,
+		Name:   "img-ch",
+		Status: StatusActive,
+		FeaturesConfig: map[string]any{
+			"image_input_ratio": ratio,
+		},
+	}}
+	svc := newAvailableChannelService(channels, &stubGroupRepoForAvailable{})
+	out, err := svc.ListAvailable(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.NotNil(t, out[0].ImageInputRatio)
+	require.InDelta(t, 1.6, *out[0].ImageInputRatio, 1e-9)
+}
+
+func TestListAvailable_ImageInputRatioAbsentIsNil(t *testing.T) {
+	// 渠道无 FeaturesConfig → AvailableChannel.ImageInputRatio 应为 nil。
+	channels := []Channel{{
+		ID:     2,
+		Name:   "no-ratio-ch",
+		Status: StatusActive,
+	}}
+	svc := newAvailableChannelService(channels, &stubGroupRepoForAvailable{})
+	out, err := svc.ListAvailable(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Nil(t, out[0].ImageInputRatio)
+}
+
+func TestListAvailable_ImageInputRatioZeroIsNil(t *testing.T) {
+	// FeaturesConfig["image_input_ratio"] = 0 → nil（无意义值不暴露）。
+	channels := []Channel{{
+		ID:     3,
+		Name:   "zero-ratio-ch",
+		Status: StatusActive,
+		FeaturesConfig: map[string]any{
+			"image_input_ratio": float64(0),
+		},
+	}}
+	svc := newAvailableChannelService(channels, &stubGroupRepoForAvailable{})
+	out, err := svc.ListAvailable(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Nil(t, out[0].ImageInputRatio)
+}
+
+func TestFeaturesConfigFloatPos(t *testing.T) {
+	tests := []struct {
+		name   string
+		cfg    map[string]any
+		key    string
+		wantV  float64
+		wantOk bool
+	}{
+		{"float64 positive", map[string]any{"k": float64(1.6)}, "k", 1.6, true},
+		{"float64 zero", map[string]any{"k": float64(0)}, "k", 0, false},
+		{"float64 negative", map[string]any{"k": float64(-1)}, "k", 0, false},
+		{"json.Number positive", map[string]any{"k": jsonNumberOf("2.5")}, "k", 2.5, true},
+		{"string positive", map[string]any{"k": "3.14"}, "k", 3.14, true},
+		{"string invalid", map[string]any{"k": "abc"}, "k", 0, false},
+		{"missing key", map[string]any{}, "k", 0, false},
+		{"nil map", nil, "k", 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, ok := featuresConfigFloatPos(tt.cfg, tt.key)
+			require.Equal(t, tt.wantOk, ok)
+			if ok {
+				require.InDelta(t, tt.wantV, v, 1e-9)
+			}
+		})
+	}
+}
+
+// jsonNumberOf 用于测试 json.Number 路径（encoding/json 将数字解码为 json.Number）。
+func jsonNumberOf(s string) interface{} {
+	return json.Number(s)
 }

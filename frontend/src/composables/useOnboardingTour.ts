@@ -151,6 +151,14 @@ export function useOnboardingTour(options: OnboardingOptions) {
         }
       },
       onPrevClick: () => {
+        // 欢迎步骤(index 0)没有上一步——它的"上一步"按钮被复用为"跳过"
+        // (见 steps welcome.prevBtn)。此时 movePrevious() 是 no-op,所以改为跳过整个引导。
+        if ((driverInstance?.getActiveIndex() ?? 0) === 0) {
+          markAsSeen()
+          driverInstance?.destroy()
+          onboardingStore.setDriverInstance(null)
+          return
+        }
         driverInstance?.movePrevious()
       },
       onCloseClick: () => {
@@ -256,6 +264,7 @@ export function useOnboardingTour(options: OnboardingOptions) {
           // 3. 状态更新
           const isLastStep = state.activeIndex === (config.steps?.length ?? 0) - 1
           const activeNextBtn = nextButton || footerEl.querySelector(`.${CLASS_NEXT_BTN}`)
+          const activePrevBtn = previousButton || footerEl.querySelector(`.${CLASS_PREV_BTN}`)
 
           if (activeNextBtn) {
              if (isLastStep) {
@@ -264,6 +273,18 @@ export function useOnboardingTour(options: OnboardingOptions) {
                activeNextBtn.classList.remove(CLASS_DONE_BTN)
              }
           }
+
+          // 3.1 逐步重新声明 prev/next 可见性。
+          // driver.js 用 inline display:none 隐藏不在 showButtons 内的按钮,但我们
+          // `.theme-tour-popover button { display: inline-flex !important }` 覆盖了它,
+          // 导致交互式(close-only)步骤上"返回/下一步"泄漏出来。用一个我们自己控制、
+          // 优先级更高的 class 重新声明意图。
+          const HIDDEN_BTN_CLASS = 'tour-btn-hidden'
+          const showButtonsCfg = currentStep?.popover?.showButtons
+          const showNextBtn = !showButtonsCfg || showButtonsCfg.includes('next')
+          const showPrevBtn = !showButtonsCfg || showButtonsCfg.includes('previous')
+          if (activeNextBtn) activeNextBtn.classList.toggle(HIDDEN_BTN_CLASS, !showNextBtn)
+          if (activePrevBtn) activePrevBtn.classList.toggle(HIDDEN_BTN_CLASS, !showPrevBtn)
         } catch (e) {
           console.error('Onboarding Tour Render Error:', e)
         }

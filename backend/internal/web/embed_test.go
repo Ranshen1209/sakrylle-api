@@ -5,8 +5,12 @@ package web
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -79,6 +83,25 @@ func TestInjectSiteTitle(t *testing.T) {
 		assert.Equal(t, string(html), string(result))
 	})
 
+	t.Run("escapes_html_in_site_name", func(t *testing.T) {
+		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
+		settingsJSON := []byte(`{"site_name":"</title><script>alert(1)</script><title>"}`)
+
+		result := injectSiteTitle(html, settingsJSON)
+
+		assert.NotContains(t, string(result), "<script>")
+		assert.Contains(t, string(result), "&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;title&gt;")
+	})
+
+	t.Run("escapes_ampersand_in_site_name", func(t *testing.T) {
+		html := []byte(`<html><head><title>Sub2API</title></head><body></body></html>`)
+		settingsJSON := []byte(`{"site_name":"A&B"}`)
+
+		result := injectSiteTitle(html, settingsJSON)
+
+		assert.Contains(t, string(result), "<title>A&amp;B - AI API Gateway</title>")
+	})
+
 	t.Run("preserves_rest_of_html", func(t *testing.T) {
 		html := []byte(`<html><head><meta charset="UTF-8"><title>Sub2API</title><script src="app.js"></script></head><body><div id="app"></div></body></html>`)
 		settingsJSON := []byte(`{"site_name":"TestSite"}`)
@@ -89,6 +112,41 @@ func TestInjectSiteTitle(t *testing.T) {
 		assert.Contains(t, string(result), `<script src="app.js"></script>`)
 		assert.Contains(t, string(result), `<div id="app"></div>`)
 		assert.Contains(t, string(result), "<title>TestSite - AI API Gateway</title>")
+	})
+}
+
+func TestInjectSiteFavicon(t *testing.T) {
+	t.Run("replaces_favicon_with_site_logo", func(t *testing.T) {
+		html := []byte(`<html><head><link rel="icon" type="image/png" href="/logo.png" /></head></html>`)
+		settingsJSON := []byte(`{"site_logo":"https://example.com/custom-logo.png"}`)
+
+		result := injectSiteFavicon(html, settingsJSON)
+
+		assert.Contains(t, string(result), `<link rel="icon" href="https://example.com/custom-logo.png" />`)
+		assert.NotContains(t, string(result), `/logo.png`)
+	})
+
+	t.Run("supports_relative_and_data_image_urls", func(t *testing.T) {
+		html := []byte(`<link rel="icon" href="/logo.png" />`)
+
+		assert.Contains(t, string(injectSiteFavicon(html, []byte(`{"site_logo":"/uploads/logo.svg"}`))), `/uploads/logo.svg`)
+		assert.Contains(t, string(injectSiteFavicon(html, []byte(`{"site_logo":"data:image/png;base64,abc"}`))), `data:image/png;base64,abc`)
+	})
+
+	t.Run("rejects_unsafe_logo_urls", func(t *testing.T) {
+		html := []byte(`<link rel="icon" href="/logo.png" />`)
+
+		result := injectSiteFavicon(html, []byte(`{"site_logo":"javascript:alert(1)"}`))
+
+		assert.Equal(t, string(html), string(result))
+	})
+
+	t.Run("escapes_logo_url_for_html", func(t *testing.T) {
+		html := []byte(`<link rel="icon" href="/logo.png" />`)
+
+		result := injectSiteFavicon(html, []byte(`{"site_logo":"https://example.com/logo.png?a=1&b=2"}`))
+
+		assert.Contains(t, string(result), `a=1&amp;b=2`)
 	})
 }
 
@@ -274,7 +332,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.Contains(t, w2.Body.String(), `nonce="nonce2"`)
 	})
 
-	t.Run("sets_etag_header", func(t *testing.T) {
+	t.Run("does_not_set_etag_for_nonce_html", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -289,13 +347,10 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		server.serveIndexHTML(c)
 
-		etag := w.Header().Get("ETag")
-		assert.NotEmpty(t, etag)
-		assert.True(t, strings.HasPrefix(etag, `"`))
-		assert.True(t, strings.HasSuffix(etag, `"`))
+		assert.Empty(t, w.Header().Get("ETag"))
 	})
 
-	t.Run("returns_304_for_matching_etag", func(t *testing.T) {
+	t.Run("returns_fresh_nonce_when_if_none_match_is_sent", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -303,29 +358,33 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		server, err := NewFrontendServer(provider)
 		require.NoError(t, err)
 
-		// Use a real router for proper 304 handling
+		requestNumber := 0
 		router := gin.New()
 		router.Use(func(c *gin.Context) {
-			c.Set(middleware.CSPNonceKey, "test-nonce")
+			requestNumber++
+			c.Set(middleware.CSPNonceKey, fmt.Sprintf("nonce%d", requestNumber))
 			c.Next()
 		})
 		router.Use(server.Middleware())
 
-		// First request to populate cache and get ETag
+		// First request populates the rendered HTML cache.
 		w1 := httptest.NewRecorder()
 		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
 		router.ServeHTTP(w1, req1)
-		etag := w1.Header().Get("ETag")
-		require.NotEmpty(t, etag)
+		assert.Contains(t, w1.Body.String(), `nonce="nonce1"`)
+		cached := server.cache.Get()
+		require.NotNil(t, cached)
 
-		// Second request with If-None-Match
+		// A browser refresh may still send an ETag from an older deployment.
+		// It must receive a complete body containing the current request nonce.
 		w2 := httptest.NewRecorder()
 		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
-		req2.Header.Set("If-None-Match", etag)
+		req2.Header.Set("If-None-Match", cached.ETag)
 		router.ServeHTTP(w2, req2)
 
-		assert.Equal(t, http.StatusNotModified, w2.Code)
-		assert.Empty(t, w2.Body.String())
+		assert.Equal(t, http.StatusOK, w2.Code)
+		assert.Contains(t, w2.Body.String(), `nonce="nonce2"`)
+		assert.NotContains(t, w2.Body.String(), `nonce="nonce1"`)
 	})
 
 	t.Run("sets_cache_control_header", func(t *testing.T) {
@@ -343,7 +402,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		server.serveIndexHTML(c)
 
-		assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
 	})
 
 	t.Run("fallback_on_settings_error", func(t *testing.T) {
@@ -367,6 +426,9 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		// Should still return 200 with base HTML
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		assert.Contains(t, w.Body.String(), `nonce="nonce123"`)
+		assert.NotContains(t, w.Body.String(), NonceHTMLPlaceholder)
 	})
 }
 
@@ -421,6 +483,37 @@ func TestFrontendServer_InvalidateCache(t *testing.T) {
 	})
 }
 
+func TestOverrideFilesNeverReceiveImmutableCacheHeaders(t *testing.T) {
+	t.Parallel()
+
+	overrideDir := t.TempDir()
+	cleanPath := "assets/index-AbCd1234.js"
+	filePath := filepath.Join(overrideDir, cleanPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0o755))
+	require.NoError(t, os.WriteFile(filePath, []byte("override"), 0o644))
+
+	t.Run("frontend_server_override", func(t *testing.T) {
+		t.Parallel()
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/"+cleanPath, nil)
+
+		server := &FrontendServer{overrideDir: overrideDir}
+		assert.True(t, server.tryServeOverride(c, cleanPath))
+		assert.Empty(t, w.Header().Get("Cache-Control"))
+	})
+
+	t.Run("legacy_override", func(t *testing.T) {
+		t.Parallel()
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/"+cleanPath, nil)
+
+		assert.True(t, tryServeOverrideFile(c, overrideDir, cleanPath))
+		assert.Empty(t, w.Header().Get("Cache-Control"))
+	})
+}
+
 func TestFrontendServer_Middleware(t *testing.T) {
 	t.Run("skips_api_routes", func(t *testing.T) {
 		provider := &mockSettingsProvider{
@@ -432,6 +525,8 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		apiPaths := []string{
 			"/api/v1/users",
+			"/integrations/agiso/delivery",
+			"/models",
 			"/v1/models",
 			"/v1beta/chat",
 			"/backend-api/codex/responses",
@@ -488,6 +583,32 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.JSONEq(t, `{"ok":true}`, w.Body.String())
 	})
 
+	t.Run("skips_alpha_search_post_route", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+		nextCalled := false
+		router.POST("/alpha/search", func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"ok": true})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/alpha/search", strings.NewReader(`{"model":"gpt-5.6-sol"}`))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+
+		assert.True(t, nextCalled, "next handler should be called for alpha search API route")
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.JSONEq(t, `{"ok":true}`, w.Body.String())
+	})
+
 	t.Run("serves_index_for_spa_routes", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
@@ -540,7 +661,38 @@ func TestFrontendServer_Middleware(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+		assert.Empty(t, w.Header().Get("Cache-Control"))
+
+		entries, err := fs.ReadDir(server.distFS, "assets")
+		require.NoError(t, err)
+		fingerprintedPath := ""
+		for _, entry := range entries {
+			candidate := "assets/" + entry.Name()
+			if !entry.IsDir() && isFingerprintedEmbeddedAssetPath(candidate) {
+				fingerprintedPath = candidate
+				break
+			}
+		}
+		require.NotEmpty(t, fingerprintedPath)
+
+		assetWriter := httptest.NewRecorder()
+		assetRequest := httptest.NewRequest(http.MethodGet, "/"+fingerprintedPath, nil)
+		router.ServeHTTP(assetWriter, assetRequest)
+
+		assert.Equal(t, http.StatusOK, assetWriter.Code)
+		assert.Equal(t, staticAssetsCacheControl, assetWriter.Header().Get("Cache-Control"))
 	})
+}
+
+func TestEmbeddedFrontendBypassesBareVideoAPIRoutes(t *testing.T) {
+	for _, path := range []string{
+		"/videos/generations",
+		"/videos/edits",
+		"/videos/extensions",
+		"/videos/request-123",
+	} {
+		require.True(t, shouldBypassEmbeddedFrontend(path), "path=%s", path)
+	}
 }
 
 func TestNewFrontendServer(t *testing.T) {
@@ -636,6 +788,7 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 
 		apiPaths := []string{
 			"/api/users",
+			"/models",
 			"/v1/models",
 			"/v1beta/chat",
 			"/backend-api/codex/responses",

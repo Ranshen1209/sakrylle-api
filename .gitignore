@@ -116,23 +116,43 @@ backend/.installed
 # 其他
 # ===================
 tests
+!deploy/tests/
+!deploy/tests/**
 CLAUDE.md
 .claude
 scripts
+!backend/scripts/
+!backend/scripts/resolve-version.sh
 .code-review-state
 #openspec/
 code-reviews/
-AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/ops/
+!docs/ops/**
+!docs/development.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/ASYNC_IMAGE_TASKS.md
+!docs/legal/
+!docs/legal/*.md
+!docs/OAUTH_CLIENT_INTEGRATION.md
+!docs/OAUTH_V2_DESIGN.md
+!docs/OAUTH_V2_INTEGRATION.md
+!docs/OAUTH_V2_ERROR_REFERENCE.md
+!docs/OAUTH_V2_DEVICE_FLOW_CLI_GUIDE.md
+!docs/OAUTH_V2_SCOPE_MIGRATION.md
+!docs/OAUTH_V2_FIRST_PARTY_SECURITY_CHECKLIST.md
 .serena/
 .codex/
 frontend/coverage/
 aicodex
 output/
+frontend/pnpm-workspace.yaml
+
+# Vitest / Vite cache at repo root
+.vite/

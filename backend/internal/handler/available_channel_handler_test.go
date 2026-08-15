@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -49,7 +50,7 @@ func TestToUserSupportedModels_FiltersByAllowedPlatforms(t *testing.T) {
 		{Name: "gpt-4o", Platform: "openai", Pricing: nil},
 	}
 	allowed := map[string]struct{}{"anthropic": {}}
-	out := toUserSupportedModels(src, allowed)
+	out := toUserSupportedModels(src, allowed, nil)
 	require.Len(t, out, 1)
 	require.Equal(t, "claude-sonnet-4-6", out[0].Name)
 }
@@ -60,7 +61,7 @@ func TestToUserSupportedModels_NilAllowedPlatformsKeepsAll(t *testing.T) {
 		{Name: "a", Platform: "anthropic"},
 		{Name: "b", Platform: "openai"},
 	}
-	require.Len(t, toUserSupportedModels(src, nil), 2)
+	require.Len(t, toUserSupportedModels(src, nil, nil), 2)
 }
 
 func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
@@ -101,24 +102,24 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 		require.Truef(t, exists, "platform section must expose %q", key)
 	}
 
-	// Group DTO 暴露区分专属/公开、订阅类型、默认倍率所需的字段，
+	// Group DTO 暴露区分专属/公开、订阅类型、默认倍率和高峰倍率规则所需的字段，
 	// 前端据此渲染 GroupBadge 并与 API 密钥页保持一致的视觉。
 	rawGroup, err := json.Marshal(row.Platforms[0].Groups[0])
 	require.NoError(t, err)
 	var groupDecoded map[string]any
 	require.NoError(t, json.Unmarshal(rawGroup, &groupDecoded))
-	for _, key := range []string{"id", "name", "platform", "subscription_type", "rate_multiplier", "is_exclusive"} {
+	for _, key := range []string{"id", "name", "platform", "subscription_type", "rate_multiplier", "peak_rate_enabled", "peak_start", "peak_end", "peak_rate_multiplier", "is_exclusive"} {
 		_, exists := groupDecoded[key]
 		require.Truef(t, exists, "group DTO must expose %q", key)
 	}
 
 	// pricing interval 白名单：不应暴露 id / sort_order。
-	pricing := toUserPricing(&service.ChannelModelPricing{
+	pricing := toUserPricingWithRatio(&service.ChannelModelPricing{
 		BillingMode: service.BillingModeToken,
 		Intervals: []service.PricingInterval{
 			{ID: 7, MinTokens: 0, MaxTokens: nil, SortOrder: 3},
 		},
-	})
+	}, nil)
 	require.NotNil(t, pricing)
 	require.Len(t, pricing.Intervals, 1)
 	rawIv, err := json.Marshal(pricing.Intervals[0])
@@ -154,4 +155,174 @@ func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	require.Equal(t, int64(2), sections[0].Groups[0].ID)
 	require.Len(t, sections[0].SupportedModels, 1)
 	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
+}
+
+func TestToUserPricing_ImageInputRatioPropagated(t *testing.T) {
+	// toUserPricing が image_input_ratio を DTO に引き継ぐことを確認。
+	ratio := 1.6
+	p := &service.ChannelModelPricing{BillingMode: service.BillingModeImage}
+	dto := toUserPricingWithRatio(p, &ratio)
+	require.NotNil(t, dto)
+	require.NotNil(t, dto.ImageInputRatio)
+	require.InDelta(t, 1.6, *dto.ImageInputRatio, 1e-9)
+}
+
+func TestToUserPricing_ImageInputRatioNilWhenNotSet(t *testing.T) {
+	// channel に image_input_ratio なし → DTO.ImageInputRatio = nil。
+	p := &service.ChannelModelPricing{BillingMode: service.BillingModeToken}
+	dto := toUserPricingWithRatio(p, nil)
+	require.NotNil(t, dto)
+	require.Nil(t, dto.ImageInputRatio)
+}
+
+func TestToUserPricing_ResolvesCurrentTimeVersionAndExposesSchedule(t *testing.T) {
+	staticInput := 4.0
+	versionInput := 6.0
+	dto := toUserPricingWithRatio(&service.ChannelModelPricing{
+		BillingMode: service.BillingModeToken,
+		InputPrice:  &staticInput,
+		TimeVersions: []service.PricingTimeVersion{{
+			ID:                99,
+			EffectiveFrom:     time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			Timezone:          "Asia/Shanghai",
+			DefaultMultiplier: 0.5,
+			InputPrice:        &versionInput,
+			Windows: []service.PricingTimeWindow{{
+				ID: 12, Label: "peak", Weekdays: 127, StartMinute: 540, EndMinute: 720, Multiplier: 1,
+			}},
+		}},
+	}, nil)
+
+	require.NotNil(t, dto)
+	require.NotNil(t, dto.InputPrice)
+	require.Contains(t, []float64{3, 6}, *dto.InputPrice)
+	require.NotNil(t, dto.TimeResolution)
+	require.Len(t, dto.TimeVersions, 1)
+	require.Len(t, dto.TimeVersions[0].Windows, 1)
+	raw, err := json.Marshal(dto.TimeVersions[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), `"id"`)
+	require.NotContains(t, string(raw), `"sort_order"`)
+}
+
+func TestBuildPlatformSections_ImageInputRatioStampedOnModels(t *testing.T) {
+	// AvailableChannel.ImageInputRatio が全モデルの DTO に転写される。
+	ratio := 1.6
+	ch := service.AvailableChannel{
+		Name:            "img-ch",
+		ImageInputRatio: &ratio,
+		SupportedModels: []service.SupportedModel{
+			{Name: "gpt-image-2", Platform: "openai", Pricing: &service.ChannelModelPricing{
+				BillingMode: service.BillingModeImage,
+			}},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "g-img", Platform: "openai"},
+	}
+	sections := buildPlatformSections(ch, visible)
+	require.Len(t, sections, 1)
+	require.Len(t, sections[0].SupportedModels, 1)
+	pricing := sections[0].SupportedModels[0].Pricing
+	require.NotNil(t, pricing)
+	require.NotNil(t, pricing.ImageInputRatio)
+	require.InDelta(t, 1.6, *pricing.ImageInputRatio, 1e-9)
+}
+
+func TestBuildPlatformSections_CompositeGroupExpandsAcrossConfiguredModelPlatforms(t *testing.T) {
+	anthropicPrice := 3e-6
+	openAIPrice := 2.5e-6
+	ch := service.AvailableChannel{
+		Name: "composite-channel",
+		SupportedModels: []service.SupportedModel{
+			{
+				Name:     "claude-sonnet-4-6",
+				Platform: service.PlatformAnthropic,
+				Pricing:  &service.ChannelModelPricing{InputPrice: &anthropicPrice},
+			},
+			{
+				Name:     "gpt-5",
+				Platform: service.PlatformOpenAI,
+				Pricing:  &service.ChannelModelPricing{InputPrice: &openAIPrice},
+			},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 9, Name: "composite", Platform: service.PlatformComposite},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+
+	require.Len(t, sections, 2)
+	require.Equal(t, service.PlatformAnthropic, sections[0].Platform)
+	require.Equal(t, service.PlatformOpenAI, sections[1].Platform)
+	for _, section := range sections {
+		require.Len(t, section.Groups, 1)
+		require.Equal(t, int64(9), section.Groups[0].ID)
+		require.Equal(t, service.PlatformComposite, section.Groups[0].Platform)
+		require.Len(t, section.SupportedModels, 1)
+		require.Equal(t, section.Platform, section.SupportedModels[0].Platform)
+		require.NotNil(t, section.SupportedModels[0].Pricing)
+	}
+	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
+	require.Equal(t, "gpt-5", sections[1].SupportedModels[0].Name)
+}
+
+func TestBuildPlatformSections_OrdinaryGroupRemainsPlatformIsolated(t *testing.T) {
+	ch := service.AvailableChannel{
+		SupportedModels: []service.SupportedModel{
+			{Name: "claude-sonnet-4-6", Platform: service.PlatformAnthropic},
+			{Name: "gpt-5", Platform: service.PlatformOpenAI},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "anthropic-only", Platform: service.PlatformAnthropic},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+
+	require.Len(t, sections, 1)
+	require.Equal(t, service.PlatformAnthropic, sections[0].Platform)
+	require.Len(t, sections[0].SupportedModels, 1)
+	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
+}
+
+func TestBuildPlatformSections_CompositeAndOrdinaryGroupsShareConcreteSection(t *testing.T) {
+	ch := service.AvailableChannel{
+		SupportedModels: []service.SupportedModel{
+			{Name: "claude-sonnet-4-6", Platform: service.PlatformAnthropic},
+			{Name: "gpt-5", Platform: service.PlatformOpenAI},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "anthropic-only", Platform: service.PlatformAnthropic},
+		{ID: 9, Name: "composite", Platform: service.PlatformComposite},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+
+	require.Len(t, sections, 2)
+	require.Equal(t, service.PlatformAnthropic, sections[0].Platform)
+	require.Equal(t, []int64{1, 9}, []int64{
+		sections[0].Groups[0].ID,
+		sections[0].Groups[1].ID,
+	})
+	require.Equal(t, service.PlatformOpenAI, sections[1].Platform)
+	require.Len(t, sections[1].Groups, 1)
+	require.Equal(t, int64(9), sections[1].Groups[0].ID)
+}
+
+func TestBuildPlatformSections_CompositeWithoutModelsKeepsEmptyCompositeSection(t *testing.T) {
+	visible := []userAvailableGroup{
+		{ID: 9, Name: "composite", Platform: service.PlatformComposite},
+	}
+
+	sections := buildPlatformSections(service.AvailableChannel{
+		SupportedModels: []service.SupportedModel{{Name: "invalid-without-platform"}},
+	}, visible)
+
+	require.Len(t, sections, 1)
+	require.Equal(t, service.PlatformComposite, sections[0].Platform)
+	require.Len(t, sections[0].Groups, 1)
+	require.Empty(t, sections[0].SupportedModels)
 }

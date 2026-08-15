@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -14,12 +15,22 @@ const (
 	BillingModeToken      BillingMode = "token"       // 按 token 区间计费
 	BillingModePerRequest BillingMode = "per_request" // 按次计费（支持上下文窗口分层）
 	BillingModeImage      BillingMode = "image"       // 图片计费（当前按次，预留 token 计费）
+	BillingModeVideo      BillingMode = "video"       // 视频生成计费（按视频生成次数）
 )
 
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
-	case BillingModeToken, BillingModePerRequest, BillingModeImage, "":
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
+		return true
+	}
+	return false
+}
+
+// IsValidUsageFilter 检查 BillingMode 是否可用于使用记录筛选。
+func (m BillingMode) IsValidUsageFilter() bool {
+	switch m {
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
 		return true
 	}
 	return false
@@ -29,6 +40,10 @@ const (
 	BillingModelSourceRequested     = "requested"
 	BillingModelSourceUpstream      = "upstream"
 	BillingModelSourceChannelMapped = "channel_mapped"
+	// BillingModelSourceResponse bills by a trusted model declaration observed
+	// in the successful upstream response. It is deliberately distinct from
+	// "upstream", which means the model sent to the provider.
+	BillingModelSourceResponse = "response_model"
 )
 
 // Channel 渠道实体
@@ -37,7 +52,7 @@ type Channel struct {
 	Name               string
 	Description        string
 	Status             string
-	BillingModelSource string         // "requested", "upstream", or "channel_mapped"
+	BillingModelSource string         // "requested", "upstream", "channel_mapped", or "response_model"
 	RestrictModels     bool           // 是否限制模型（仅允许定价列表中的模型）
 	Features           string         // 渠道特性描述（JSON 数组），用于支付页面展示
 	FeaturesConfig     map[string]any // 渠道功能配置（如 web search emulation）
@@ -73,37 +88,86 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID               int64
-	ChannelID        int64
-	Platform         string            // 所属平台（anthropic/openai/gemini/...）
-	Models           []string          // 绑定的模型列表
-	BillingMode      BillingMode       // 计费模式
-	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice      *float64          // 每 token 输出价格（USD）
-	CacheWritePrice  *float64          // 缓存写入价格
-	CacheReadPrice   *float64          // 缓存读取价格
-	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
-	PerRequestPrice  *float64          // 默认按次计费价格（USD）
-	Intervals        []PricingInterval // 区间定价列表
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               int64                `json:"id,omitempty"`
+	ChannelID        int64                `json:"channel_id,omitempty"`
+	Platform         string               `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
+	Models           []string             `json:"models"`
+	BillingMode      BillingMode          `json:"billing_mode"`
+	InputPrice       *float64             `json:"input_price"`
+	OutputPrice      *float64             `json:"output_price"`
+	CacheWritePrice  *float64             `json:"cache_write_price"`
+	CacheReadPrice   *float64             `json:"cache_read_price"`
+	ImageInputPrice  *float64             `json:"image_input_price"`
+	ImageOutputPrice *float64             `json:"image_output_price"`
+	PerRequestPrice  *float64             `json:"per_request_price"`
+	Intervals        []PricingInterval    `json:"intervals"`
+	TimeVersions     []PricingTimeVersion `json:"time_versions"`
+	CreatedAt        time.Time            `json:"created_at,omitempty"`
+	UpdatedAt        time.Time            `json:"updated_at,omitempty"`
+}
+
+// PricingTimeVersion is a future- or currently-effective token price card.
+// The flat ChannelModelPricing prices remain the fallback whenever no version
+// is active, including before the first version and between finite versions.
+type PricingTimeVersion struct {
+	ID                int64               `json:"id,omitempty"`
+	PricingID         int64               `json:"pricing_id,omitempty"`
+	EffectiveFrom     time.Time           `json:"effective_from"`
+	EffectiveUntil    *time.Time          `json:"effective_until"`
+	Timezone          string              `json:"timezone"`
+	DefaultMultiplier float64             `json:"default_multiplier"`
+	InputPrice        *float64            `json:"input_price"`
+	OutputPrice       *float64            `json:"output_price"`
+	CacheWritePrice   *float64            `json:"cache_write_price"`
+	CacheReadPrice    *float64            `json:"cache_read_price"`
+	ImageInputPrice   *float64            `json:"image_input_price"`
+	ImageOutputPrice  *float64            `json:"image_output_price"`
+	SortOrder         int                 `json:"sort_order"`
+	Windows           []PricingTimeWindow `json:"windows"`
+	CreatedAt         time.Time           `json:"created_at,omitempty"`
+	UpdatedAt         time.Time           `json:"updated_at,omitempty"`
+}
+
+// PricingTimeWindow is a left-closed, right-open local-time interval. Weekdays
+// uses bit 0=Monday through bit 6=Sunday; 127 means every day.
+type PricingTimeWindow struct {
+	ID          int64     `json:"id,omitempty"`
+	VersionID   int64     `json:"version_id,omitempty"`
+	Label       string    `json:"label"`
+	Weekdays    int       `json:"weekdays"`
+	StartMinute int       `json:"start_minute"`
+	EndMinute   int       `json:"end_minute"`
+	Multiplier  float64   `json:"multiplier"`
+	SortOrder   int       `json:"sort_order"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at,omitempty"`
+}
+
+// PricingTimeResolution describes the time rule selected for a request or a
+// user-facing current-price response.
+type PricingTimeResolution struct {
+	VersionID   int64     `json:"version_id"`
+	PricingAt   time.Time `json:"pricing_at"`
+	Timezone    string    `json:"timezone"`
+	PeriodLabel string    `json:"period_label"`
+	Multiplier  float64   `json:"multiplier"`
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
 type PricingInterval struct {
-	ID              int64
-	PricingID       int64
-	MinTokens       int      // 区间下界（含）
-	MaxTokens       *int     // 区间上界（不含），nil = 无上限
-	TierLabel       string   // 层级标签（按次/图片模式：1K, 2K, 4K, HD 等）
-	InputPrice      *float64 // token 模式：每 token 输入价
-	OutputPrice     *float64 // token 模式：每 token 输出价
-	CacheWritePrice *float64 // token 模式：缓存写入价
-	CacheReadPrice  *float64 // token 模式：缓存读取价
-	PerRequestPrice *float64 // 按次/图片模式：每次请求价格
-	SortOrder       int
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              int64     `json:"id,omitempty"`
+	PricingID       int64     `json:"pricing_id,omitempty"`
+	MinTokens       int       `json:"min_tokens"`
+	MaxTokens       *int      `json:"max_tokens"`
+	TierLabel       string    `json:"tier_label"`
+	InputPrice      *float64  `json:"input_price"`
+	OutputPrice     *float64  `json:"output_price"`
+	CacheWritePrice *float64  `json:"cache_write_price"`
+	CacheReadPrice  *float64  `json:"cache_read_price"`
+	PerRequestPrice *float64  `json:"per_request_price"`
+	SortOrder       int       `json:"sort_order"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at,omitempty"`
 }
 
 // IsActive 判断渠道是否启用
@@ -180,7 +244,116 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
 		copy(cp.Intervals, p.Intervals)
 	}
+	if p.TimeVersions != nil {
+		cp.TimeVersions = make([]PricingTimeVersion, len(p.TimeVersions))
+		for i := range p.TimeVersions {
+			cp.TimeVersions[i] = p.TimeVersions[i]
+			if p.TimeVersions[i].Windows != nil {
+				cp.TimeVersions[i].Windows = make([]PricingTimeWindow, len(p.TimeVersions[i].Windows))
+				copy(cp.TimeVersions[i].Windows, p.TimeVersions[i].Windows)
+			}
+		}
+	}
 	return cp
+}
+
+// ResolveAt returns a price-card copy with the active version and time-window
+// multiplier applied. A nil resolution means the legacy flat price is active.
+func (p ChannelModelPricing) ResolveAt(at time.Time) (ChannelModelPricing, *PricingTimeResolution) {
+	resolved := p.Clone()
+	if at.IsZero() || len(p.TimeVersions) == 0 {
+		return resolved, nil
+	}
+
+	var active *PricingTimeVersion
+	for i := range p.TimeVersions {
+		version := &p.TimeVersions[i]
+		if at.Before(version.EffectiveFrom) || (version.EffectiveUntil != nil && !at.Before(*version.EffectiveUntil)) {
+			continue
+		}
+		if active == nil || version.EffectiveFrom.After(active.EffectiveFrom) {
+			active = version
+		}
+	}
+	if active == nil {
+		return resolved, nil
+	}
+
+	location, err := time.LoadLocation(active.Timezone)
+	if err != nil {
+		return resolved, nil
+	}
+	applyVersionPrices(&resolved, active)
+
+	local := at.In(location)
+	multiplier := active.DefaultMultiplier
+	periodLabel := "off_peak"
+	weekdayBit := 1 << ((int(local.Weekday()) + 6) % 7) // Go Sunday=0; stored Monday=bit 0.
+	minute := local.Hour()*60 + local.Minute()
+	for i := range active.Windows {
+		window := &active.Windows[i]
+		if window.Weekdays&weekdayBit == 0 || minute < window.StartMinute || minute >= window.EndMinute {
+			continue
+		}
+		multiplier = window.Multiplier
+		periodLabel = strings.TrimSpace(window.Label)
+		if periodLabel == "" {
+			periodLabel = "peak"
+		}
+		break
+	}
+	applyPricingMultiplier(&resolved, multiplier)
+	return resolved, &PricingTimeResolution{
+		VersionID:   active.ID,
+		PricingAt:   at,
+		Timezone:    active.Timezone,
+		PeriodLabel: periodLabel,
+		Multiplier:  multiplier,
+	}
+}
+
+func applyVersionPrices(pricing *ChannelModelPricing, version *PricingTimeVersion) {
+	if pricing == nil || version == nil {
+		return
+	}
+	if version.InputPrice != nil {
+		pricing.InputPrice = version.InputPrice
+	}
+	if version.OutputPrice != nil {
+		pricing.OutputPrice = version.OutputPrice
+	}
+	if version.CacheWritePrice != nil {
+		pricing.CacheWritePrice = version.CacheWritePrice
+	}
+	if version.CacheReadPrice != nil {
+		pricing.CacheReadPrice = version.CacheReadPrice
+	}
+	if version.ImageInputPrice != nil {
+		pricing.ImageInputPrice = version.ImageInputPrice
+	}
+	if version.ImageOutputPrice != nil {
+		pricing.ImageOutputPrice = version.ImageOutputPrice
+	}
+}
+
+func applyPricingMultiplier(pricing *ChannelModelPricing, multiplier float64) {
+	if pricing == nil {
+		return
+	}
+	pricing.InputPrice = multipliedPrice(pricing.InputPrice, multiplier)
+	pricing.OutputPrice = multipliedPrice(pricing.OutputPrice, multiplier)
+	pricing.CacheWritePrice = multipliedPrice(pricing.CacheWritePrice, multiplier)
+	pricing.CacheReadPrice = multipliedPrice(pricing.CacheReadPrice, multiplier)
+	pricing.ImageInputPrice = multipliedPrice(pricing.ImageInputPrice, multiplier)
+	pricing.ImageOutputPrice = multipliedPrice(pricing.ImageOutputPrice, multiplier)
+}
+
+func multipliedPrice(price *float64, multiplier float64) *float64 {
+	if price == nil {
+		return nil
+	}
+	value := *price * multiplier
+	return &value
 }
 
 // Clone 返回 Channel 的深拷贝
@@ -248,6 +421,17 @@ func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
 	return ok && enabled
 }
 
+// IsBedrockCCCompatEnabled 返回该渠道是否启用了 Bedrock CC 兼容模式。
+// 一旦启用，该渠道下所有请求都会应用 CC 兼容转换，不区分账号 platform。
+func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	// 直接检查 bedrock_cc_compat 开关，不再检查 platform 子字段
+	enabled, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(bool)
+	return ok && enabled
+}
+
 // deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.
 func deepCopyFeaturesConfig(src map[string]any) map[string]any {
 	dst := make(map[string]any, len(src))
@@ -289,10 +473,76 @@ func ValidateIntervals(intervals []PricingInterval, mode BillingMode) error {
 	}
 
 	// per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
-	if mode == BillingModePerRequest || mode == BillingModeImage {
+	if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
 		return nil
 	}
 	return validateIntervalOverlap(sorted)
+}
+
+// ValidatePricingTimeVersions validates version ranges and their daily windows.
+// Time pricing deliberately remains token-only until a provider requires
+// scheduled per-request or media prices.
+func ValidatePricingTimeVersions(versions []PricingTimeVersion, mode BillingMode, hasTokenIntervals bool) error {
+	if len(versions) == 0 {
+		return nil
+	}
+	if mode != "" && mode != BillingModeToken {
+		return errors.New("time pricing is only supported for token billing")
+	}
+	if hasTokenIntervals {
+		return errors.New("time pricing cannot be combined with token context intervals")
+	}
+
+	sorted := make([]PricingTimeVersion, len(versions))
+	copy(sorted, versions)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].EffectiveFrom.Before(sorted[j].EffectiveFrom) })
+	for i := range sorted {
+		version := &sorted[i]
+		if version.EffectiveFrom.IsZero() {
+			return fmt.Errorf("time version %d: effective_from is required", i+1)
+		}
+		if version.EffectiveUntil != nil && !version.EffectiveUntil.After(version.EffectiveFrom) {
+			return fmt.Errorf("time version %d: effective_until must be after effective_from", i+1)
+		}
+		if _, err := time.LoadLocation(version.Timezone); err != nil {
+			return fmt.Errorf("time version %d: invalid timezone %q", i+1, version.Timezone)
+		}
+		if version.DefaultMultiplier < 0 {
+			return fmt.Errorf("time version %d: default_multiplier must be >= 0", i+1)
+		}
+		if err := validatePricingTimeWindows(version.Windows, i+1); err != nil {
+			return err
+		}
+		if i > 0 {
+			previous := &sorted[i-1]
+			if previous.EffectiveUntil == nil || previous.EffectiveUntil.After(version.EffectiveFrom) {
+				return fmt.Errorf("time versions %d and %d overlap", i, i+1)
+			}
+		}
+	}
+	return nil
+}
+
+func validatePricingTimeWindows(windows []PricingTimeWindow, versionIndex int) error {
+	for i := range windows {
+		window := &windows[i]
+		if window.Weekdays < 1 || window.Weekdays > 127 {
+			return fmt.Errorf("time version %d window %d: weekdays must be between 1 and 127", versionIndex, i+1)
+		}
+		if window.StartMinute < 0 || window.StartMinute > 1439 || window.EndMinute < 1 || window.EndMinute > 1440 || window.StartMinute >= window.EndMinute {
+			return fmt.Errorf("time version %d window %d: invalid minute range", versionIndex, i+1)
+		}
+		if window.Multiplier < 0 {
+			return fmt.Errorf("time version %d window %d: multiplier must be >= 0", versionIndex, i+1)
+		}
+		for j := 0; j < i; j++ {
+			other := &windows[j]
+			if window.Weekdays&other.Weekdays != 0 && window.StartMinute < other.EndMinute && other.StartMinute < window.EndMinute {
+				return fmt.Errorf("time version %d windows %d and %d overlap", versionIndex, j+1, i+1)
+			}
+		}
+	}
+	return nil
 }
 
 // validateSingleInterval 校验单个区间的字段合法性
@@ -544,8 +794,12 @@ func (c *Channel) SupportedModels() []SupportedModel {
 				}
 				continue
 			}
-			// 精确 mapping：定价按 target 查；target 缺失/通配则退化按 src 查
+			// 精确 mapping：默认按 target 查价，因为 channel_mapped 计费看的是映射后模型；
+			// requested 计费则必须按用户请求名查价（例如 gpt-image-2-4k → gpt-image-2-vip）。
 			pricingKey := target
+			if c.BillingModelSource == BillingModelSourceRequested {
+				pricingKey = src
+			}
 			if pricingKey == "" {
 				pricingKey = src
 			}

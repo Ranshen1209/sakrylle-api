@@ -8,6 +8,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -22,7 +23,7 @@ func TestCORS_DisallowedOrigin_NoAllowHeaders(t *testing.T) {
 		AllowedOrigins:   []string{"https://allowed.example.com"},
 		AllowCredentials: false,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	tests := []struct {
 		name   string
@@ -80,7 +81,7 @@ func TestCORS_AllowedOrigin_HasAllowHeaders(t *testing.T) {
 		AllowedOrigins:   []string{"https://allowed.example.com"},
 		AllowCredentials: false,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	tests := []struct {
 		name   string
@@ -103,8 +104,11 @@ func TestCORS_AllowedOrigin_HasAllowHeaders(t *testing.T) {
 			// 应设置 Allow-Headers、Allow-Methods 和 Max-Age
 			assert.NotEmpty(t, w.Header().Get("Access-Control-Allow-Headers"),
 				"允许的 origin 应收到 Allow-Headers")
+			assert.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "X-Admin-UI-Request")
+			assert.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "X-User-UI-Request")
 			assert.NotEmpty(t, w.Header().Get("Access-Control-Allow-Methods"),
 				"允许的 origin 应收到 Allow-Methods")
+			assert.Contains(t, w.Header().Get("Access-Control-Expose-Headers"), "Server-Timing")
 			assert.Equal(t, "86400", w.Header().Get("Access-Control-Max-Age"),
 				"允许的 origin 应收到 Max-Age=86400")
 			assert.Equal(t, "https://allowed.example.com", w.Header().Get("Access-Control-Allow-Origin"),
@@ -118,7 +122,7 @@ func TestCORS_PreflightDisallowedOrigin_ReturnsForbidden(t *testing.T) {
 		AllowedOrigins:   []string{"https://allowed.example.com"},
 		AllowCredentials: false,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -136,7 +140,7 @@ func TestCORS_PreflightAllowedOrigin_ReturnsNoContent(t *testing.T) {
 		AllowedOrigins:   []string{"https://allowed.example.com"},
 		AllowCredentials: false,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -154,7 +158,7 @@ func TestCORS_WildcardOrigin_AllowsAny(t *testing.T) {
 		AllowedOrigins:   []string{"*"},
 		AllowCredentials: false,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -176,7 +180,7 @@ func TestCORS_AllowCredentials_SetCorrectly(t *testing.T) {
 		AllowedOrigins:   []string{"https://allowed.example.com"},
 		AllowCredentials: true,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	t.Run("allowed_origin_gets_credentials", func(t *testing.T) {
 		w := httptest.NewRecorder()
@@ -208,7 +212,7 @@ func TestCORS_WildcardWithCredentials_DisablesCredentials(t *testing.T) {
 		AllowedOrigins:   []string{"*"},
 		AllowCredentials: true,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -230,7 +234,7 @@ func TestCORS_MultipleAllowedOrigins(t *testing.T) {
 		},
 		AllowCredentials: false,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	t.Run("first_origin_allowed", func(t *testing.T) {
 		w := httptest.NewRecorder()
@@ -274,7 +278,7 @@ func TestCORS_VaryHeader_SetForSpecificOrigin(t *testing.T) {
 		AllowedOrigins:   []string{"https://allowed.example.com"},
 		AllowCredentials: false,
 	}
-	middleware := CORS(cfg)
+	middleware := CORS(cfg, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -285,6 +289,119 @@ func TestCORS_VaryHeader_SetForSpecificOrigin(t *testing.T) {
 
 	assert.Contains(t, w.Header().Values("Vary"), "Origin",
 		"非通配符允许的 origin 应设置 Vary: Origin")
+}
+
+// --- Dynamic origin allowlist (e.g. OAuth client redirect_uris from DB) ---
+
+func TestCORS_DynamicOrigin_Allowed(t *testing.T) {
+	// Static config has only one origin; the dynamic source supplies the
+	// browser SPA's origin (mimicking image.sakrylle.com being registered
+	// at runtime via the oauth_clients table).
+	cfg := config.CORSConfig{
+		AllowedOrigins:   []string{"https://static.example.com"},
+		AllowCredentials: false,
+	}
+	getExtra := func() []string {
+		return []string{"https://image.sakrylle.com"}
+	}
+	middleware := CORS(cfg, getExtra)
+
+	t.Run("dynamic_origin_echoed_with_vary", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/oauth/token", nil)
+		c.Request.Header.Set("Origin", "https://image.sakrylle.com")
+
+		middleware(c)
+
+		assert.Equal(t, "https://image.sakrylle.com", w.Header().Get("Access-Control-Allow-Origin"),
+			"动态 allowlist 命中应回显 origin")
+		assert.Contains(t, w.Header().Values("Vary"), "Origin",
+			"动态命中时仍需带 Vary: Origin (缓存正确性)")
+		assert.NotEmpty(t, w.Header().Get("Access-Control-Allow-Methods"))
+		assert.NotEmpty(t, w.Header().Get("Access-Control-Allow-Headers"))
+		assert.Equal(t, "86400", w.Header().Get("Access-Control-Max-Age"))
+	})
+
+	t.Run("preflight_dynamic_origin_returns_204", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodOptions, "/oauth/token", nil)
+		c.Request.Header.Set("Origin", "https://image.sakrylle.com")
+
+		middleware(c)
+
+		assert.Equal(t, http.StatusNoContent, w.Code,
+			"动态命中的 preflight 应返回 204")
+	})
+
+	t.Run("static_origin_still_works_alongside_dynamic", func(t *testing.T) {
+		// Regression guard: adding dynamic origins must not regress the
+		// existing static-allowlist behavior.
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/foo", nil)
+		c.Request.Header.Set("Origin", "https://static.example.com")
+
+		middleware(c)
+
+		assert.Equal(t, "https://static.example.com", w.Header().Get("Access-Control-Allow-Origin"))
+	})
+
+	t.Run("origin_in_neither_list_rejected", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c.Request.Header.Set("Origin", "https://attacker.example.com")
+
+		middleware(c)
+
+		assert.Empty(t, w.Header().Get("Access-Control-Allow-Origin"),
+			"既不在静态也不在动态 allowlist 的 origin 必须被拒绝")
+	})
+}
+
+func TestCORS_DynamicOrigin_NilGetterIsSafe(t *testing.T) {
+	// nil getExtraOrigins is the documented "no dynamic source" mode and
+	// must not panic. Used by setup-mode binary (cmd/server/main.go) where
+	// the OAuth provider service isn't wired yet.
+	cfg := config.CORSConfig{
+		AllowedOrigins: []string{"https://static.example.com"},
+	}
+	middleware := CORS(cfg, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	c.Request.Header.Set("Origin", "https://static.example.com")
+
+	require.NotPanics(t, func() { middleware(c) })
+	assert.Equal(t, "https://static.example.com", w.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestCORS_DynamicOrigin_IgnoredUnderWildcard(t *testing.T) {
+	// When the static allowlist is `*`, we already echo `*` for everything.
+	// The dynamic getter shouldn't be consulted (and a bug there shouldn't
+	// affect responses), so we feed it a sentinel that would fail loudly
+	// if used.
+	called := false
+	cfg := config.CORSConfig{
+		AllowedOrigins: []string{"*"},
+	}
+	middleware := CORS(cfg, func() []string {
+		called = true
+		return nil
+	})
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	c.Request.Header.Set("Origin", "https://anywhere.example.com")
+
+	middleware(c)
+
+	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.False(t, called, "wildcard 模式下不应再调用动态 origin getter")
 }
 
 func TestNormalizeOrigins(t *testing.T) {

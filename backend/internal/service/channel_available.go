@@ -2,23 +2,29 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 // AvailableGroupRef 渠道视图中关联分组的简要信息。
 //
 // 用户侧「可用渠道」页面据此展示：专属分组 vs 公开分组（IsExclusive）、
-// 订阅 vs 标准（SubscriptionType）、默认倍率（RateMultiplier）。用户专属倍率
-// 不在这里暴露，前端自己通过 /groups/rates 拉取，和 API 密钥页面保持一致。
+// 订阅 vs 标准（SubscriptionType）、默认倍率（RateMultiplier）与高峰倍率规则。
+// 用户专属倍率不在这里暴露，前端自己通过 /groups/rates 拉取，和 API 密钥页面保持一致。
 type AvailableGroupRef struct {
-	ID               int64
-	Name             string
-	Platform         string
-	SubscriptionType string
-	RateMultiplier   float64
-	IsExclusive      bool
+	ID                 int64
+	Name               string
+	Platform           string
+	SubscriptionType   string
+	RateMultiplier     float64
+	PeakRateEnabled    bool
+	PeakStart          string
+	PeakEnd            string
+	PeakRateMultiplier float64
+	IsExclusive        bool
 }
 
 // AvailableChannel 可用渠道视图：用于「可用渠道」页面展示渠道基础信息 +
@@ -32,6 +38,9 @@ type AvailableChannel struct {
 	RestrictModels     bool
 	Groups             []AvailableGroupRef
 	SupportedModels    []SupportedModel
+	// ImageInputRatio 图片输入计费倍率，来自渠道 FeaturesConfig["image_input_ratio"]。
+	// 仅异步图片渠道设置此值；未配置时为 nil（序列化为 JSON null）。
+	ImageInputRatio *float64
 }
 
 // ListAvailable 返回所有渠道的可用视图：每个渠道附带关联分组信息与支持模型列表。
@@ -59,12 +68,16 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 	for i := range groups {
 		g := groups[i]
 		groupByID[g.ID] = AvailableGroupRef{
-			ID:               g.ID,
-			Name:             g.Name,
-			Platform:         g.Platform,
-			SubscriptionType: g.SubscriptionType,
-			RateMultiplier:   g.RateMultiplier,
-			IsExclusive:      g.IsExclusive,
+			ID:                 g.ID,
+			Name:               g.Name,
+			Platform:           g.Platform,
+			SubscriptionType:   g.SubscriptionType,
+			RateMultiplier:     g.RateMultiplier,
+			PeakRateEnabled:    g.PeakRateEnabled,
+			PeakStart:          g.PeakStart,
+			PeakEnd:            g.PeakEnd,
+			PeakRateMultiplier: g.PeakRateMultiplier,
+			IsExclusive:        g.IsExclusive,
 		}
 	}
 
@@ -84,6 +97,11 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		supported := ch.SupportedModels()
 		s.fillGlobalPricingFallback(supported)
 
+		var imageInputRatio *float64
+		if v, ok := featuresConfigFloatPos(ch.FeaturesConfig, "image_input_ratio"); ok {
+			imageInputRatio = &v
+		}
+
 		out = append(out, AvailableChannel{
 			ID:                 ch.ID,
 			Name:               ch.Name,
@@ -93,6 +111,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 			RestrictModels:     ch.RestrictModels,
 			Groups:             groups,
 			SupportedModels:    supported,
+			ImageInputRatio:    imageInputRatio,
 		})
 	}
 
@@ -194,4 +213,40 @@ func nonZeroPtr(v float64) *float64 {
 		return nil
 	}
 	return &v
+}
+
+// featuresConfigFloatPos 从 FeaturesConfig 中读取正浮点数。
+// 支持 float64（JSON 直接解析结果）、json.Number 和 string 三种存储类型。
+// 值 ≤ 0 或类型无法转换时返回 (0, false)；调用方按 false 视为未设置。
+func featuresConfigFloatPos(cfg map[string]any, key string) (float64, bool) {
+	if cfg == nil {
+		return 0, false
+	}
+	raw, exists := cfg[key]
+	if !exists {
+		return 0, false
+	}
+	var v float64
+	switch t := raw.(type) {
+	case float64:
+		v = t
+	case json.Number:
+		parsed, err := t.Float64()
+		if err != nil {
+			return 0, false
+		}
+		v = parsed
+	case string:
+		parsed, err := strconv.ParseFloat(t, 64)
+		if err != nil {
+			return 0, false
+		}
+		v = parsed
+	default:
+		return 0, false
+	}
+	if v <= 0 {
+		return 0, false
+	}
+	return v, true
 }

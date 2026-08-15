@@ -2,7 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+.theme-ripple-overlay {
+  position: fixed;
+  z-index: 2147483647;
+  pointer-events: none;
+  border-radius: 9999px;
+  transform-origin: center;
+}
+
+/* Prevent component color transitions from competing with the ripple. */
+html.theme-toggling,
+html.theme-toggling * {
+  transition: none !important;
+}
+
 @layer base {
+  :root {
+    color-scheme: light;
+    --color-primary-50: 248 246 252;
+    --color-primary-100: 240 236 248;
+    --color-primary-200: 226 218 242;
+    --color-primary-300: 207 194 232;
+    --color-primary-400: 181 163 217;
+    --color-primary-500: 145 129 189;
+    --color-primary-600: 123 106 171;
+    --color-primary-700: 107 91 149;
+    --color-primary-800: 88 75 122;
+    --color-primary-900: 74 63 102;
+    --color-primary-950: 45 38 64;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+    --color-primary-50: 250 248 253;
+    --color-primary-100: 243 238 249;
+    --color-primary-200: 231 222 243;
+    --color-primary-300: 215 201 235;
+    --color-primary-400: 193 175 224;
+    --color-primary-500: 166 148 204;
+    --color-primary-600: 145 129 189;
+    --color-primary-700: 121 104 164;
+    --color-primary-800: 98 85 133;
+    --color-primary-900: 75 65 103;
+    --color-primary-950: 46 40 64;
+  }
+
   * {
     @apply border-gray-200 dark:border-dark-700;
   }
@@ -168,6 +212,14 @@
     @apply transition-all duration-200;
     @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
     @apply disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-dark-900;
+  }
+
+  .dark .input[type='date'],
+  .dark .input[type='time'],
+  .dark .input[type='datetime-local'],
+  .dark .input[type='month'],
+  .dark .input[type='week'] {
+    color-scheme: dark;
   }
 
   .input-error {

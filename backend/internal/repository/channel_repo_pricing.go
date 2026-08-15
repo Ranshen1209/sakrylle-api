@@ -16,7 +16,7 @@ import (
 
 func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int64) ([]service.ChannelModelPricing, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at
+		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, created_at, updated_at
 		 FROM channel_model_pricing WHERE channel_id = $1 ORDER BY id`, channelID,
 	)
 	if err != nil {
@@ -37,6 +37,13 @@ func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int6
 		for i := range result {
 			result[i].Intervals = intervalMap[result[i].ID]
 		}
+		versionMap, err := r.batchLoadTimeVersions(ctx, pricingIDs)
+		if err != nil {
+			return nil, err
+		}
+		for i := range result {
+			result[i].TimeVersions = versionMap[result[i].ID]
+		}
 	}
 
 	return result, nil
@@ -55,21 +62,32 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 	if billingMode == "" {
 		billingMode = service.BillingModeToken
 	}
-	result, err := r.db.ExecContext(ctx,
-		`UPDATE channel_model_pricing
-		 SET models = $1, billing_mode = $2, input_price = $3, output_price = $4, cache_write_price = $5, cache_read_price = $6, image_output_price = $7, per_request_price = $8, platform = $9, updated_at = NOW()
-		 WHERE id = $10`,
-		modelsJSON, billingMode, pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
-		pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.Platform, pricing.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("update model pricing: %w", err)
-	}
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("pricing entry not found: %d", pricing.ID)
-	}
-	return nil
+	return r.runInTx(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx,
+			`UPDATE channel_model_pricing
+			 SET models = $1, billing_mode = $2, input_price = $3, output_price = $4, cache_write_price = $5, cache_read_price = $6, image_input_price = $7, image_output_price = $8, per_request_price = $9, platform = $10, updated_at = NOW()
+			 WHERE id = $11`,
+			modelsJSON, billingMode, pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
+			pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.Platform, pricing.ID,
+		)
+		if err != nil {
+			return fmt.Errorf("update model pricing: %w", err)
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			return fmt.Errorf("pricing entry not found: %d", pricing.ID)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM channel_model_pricing_versions WHERE pricing_id = $1`, pricing.ID); err != nil {
+			return fmt.Errorf("delete old time pricing versions: %w", err)
+		}
+		for i := range pricing.TimeVersions {
+			pricing.TimeVersions[i].PricingID = pricing.ID
+			if err := createTimeVersionExec(ctx, tx, &pricing.TimeVersions[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *channelRepository) DeleteModelPricing(ctx context.Context, id int64) error {
@@ -91,7 +109,7 @@ func (r *channelRepository) ReplaceModelPricing(ctx context.Context, channelID i
 // batchLoadModelPricing 批量加载多个渠道的模型定价（含区间）
 func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelIDs []int64) (map[int64][]service.ChannelModelPricing, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at
+		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, created_at, updated_at
 		 FROM channel_model_pricing WHERE channel_id = ANY($1) ORDER BY channel_id, id`,
 		pq.Array(channelIDs),
 	)
@@ -120,6 +138,15 @@ func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelID
 		for chID := range pricingMap {
 			for i := range pricingMap[chID] {
 				pricingMap[chID][i].Intervals = intervalMap[pricingMap[chID][i].ID]
+			}
+		}
+		versionMap, err := r.batchLoadTimeVersions(ctx, allPricingIDs)
+		if err != nil {
+			return nil, err
+		}
+		for chID := range pricingMap {
+			for i := range pricingMap[chID] {
+				pricingMap[chID][i].TimeVersions = versionMap[pricingMap[chID][i].ID]
 			}
 		}
 	}
@@ -160,6 +187,76 @@ func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs [
 	return intervalMap, nil
 }
 
+func (r *channelRepository) batchLoadTimeVersions(ctx context.Context, pricingIDs []int64) (map[int64][]service.PricingTimeVersion, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, pricing_id, effective_from, effective_until, timezone, default_multiplier,
+		        input_price, output_price, cache_write_price, cache_read_price,
+		        image_input_price, image_output_price, sort_order, created_at, updated_at
+		 FROM channel_model_pricing_versions
+		 WHERE pricing_id = ANY($1) ORDER BY pricing_id, effective_from, sort_order, id`,
+		pq.Array(pricingIDs),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("batch load time pricing versions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	versionMap := make(map[int64][]service.PricingTimeVersion, len(pricingIDs))
+	versionIDs := make([]int64, 0)
+	for rows.Next() {
+		var version service.PricingTimeVersion
+		if err := rows.Scan(
+			&version.ID, &version.PricingID, &version.EffectiveFrom, &version.EffectiveUntil,
+			&version.Timezone, &version.DefaultMultiplier, &version.InputPrice, &version.OutputPrice,
+			&version.CacheWritePrice, &version.CacheReadPrice, &version.ImageInputPrice,
+			&version.ImageOutputPrice, &version.SortOrder, &version.CreatedAt, &version.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan time pricing version: %w", err)
+		}
+		versionIDs = append(versionIDs, version.ID)
+		versionMap[version.PricingID] = append(versionMap[version.PricingID], version)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate time pricing versions: %w", err)
+	}
+	if len(versionIDs) == 0 {
+		return versionMap, nil
+	}
+
+	windowRows, err := r.db.QueryContext(ctx,
+		`SELECT id, version_id, label, weekdays, start_minute, end_minute,
+		        multiplier, sort_order, created_at, updated_at
+		 FROM channel_pricing_time_windows
+		 WHERE version_id = ANY($1) ORDER BY version_id, sort_order, id`,
+		pq.Array(versionIDs),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("batch load pricing time windows: %w", err)
+	}
+	defer func() { _ = windowRows.Close() }()
+	windowsByVersion := make(map[int64][]service.PricingTimeWindow, len(versionIDs))
+	for windowRows.Next() {
+		var window service.PricingTimeWindow
+		if err := windowRows.Scan(
+			&window.ID, &window.VersionID, &window.Label, &window.Weekdays,
+			&window.StartMinute, &window.EndMinute, &window.Multiplier,
+			&window.SortOrder, &window.CreatedAt, &window.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan pricing time window: %w", err)
+		}
+		windowsByVersion[window.VersionID] = append(windowsByVersion[window.VersionID], window)
+	}
+	if err := windowRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pricing time windows: %w", err)
+	}
+	for pricingID := range versionMap {
+		for i := range versionMap[pricingID] {
+			versionMap[pricingID][i].Windows = windowsByVersion[versionMap[pricingID][i].ID]
+		}
+	}
+	return versionMap, nil
+}
+
 // --- 共享 scan 辅助 ---
 
 // scanModelPricingRows 扫描 model pricing 行，返回结果列表和 ID 列表
@@ -172,7 +269,7 @@ func scanModelPricingRows(rows *sql.Rows) ([]service.ChannelModelPricing, []int6
 		if err := rows.Scan(
 			&p.ID, &p.ChannelID, &p.Platform, &modelsJSON, &p.BillingMode,
 			&p.InputPrice, &p.OutputPrice, &p.CacheWritePrice, &p.CacheReadPrice,
-			&p.ImageOutputPrice, &p.PerRequestPrice, &p.CreatedAt, &p.UpdatedAt,
+			&p.ImageInputPrice, &p.ImageOutputPrice, &p.PerRequestPrice, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, nil, fmt.Errorf("scan model pricing: %w", err)
 		}
@@ -229,11 +326,11 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 		platform = "anthropic"
 	}
 	err = exec.QueryRowContext(ctx,
-		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at, updated_at`,
+		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, created_at, updated_at`,
 		pricing.ChannelID, platform, modelsJSON, billingMode,
 		pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
-		pricing.ImageOutputPrice, pricing.PerRequestPrice,
+		pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice,
 	).Scan(&pricing.ID, &pricing.CreatedAt, &pricing.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("insert model pricing: %w", err)
@@ -242,6 +339,12 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 	for i := range pricing.Intervals {
 		pricing.Intervals[i].PricingID = pricing.ID
 		if err := createIntervalExec(ctx, exec, &pricing.Intervals[i]); err != nil {
+			return err
+		}
+	}
+	for i := range pricing.TimeVersions {
+		pricing.TimeVersions[i].PricingID = pricing.ID
+		if err := createTimeVersionExec(ctx, exec, &pricing.TimeVersions[i]); err != nil {
 			return err
 		}
 	}
@@ -258,6 +361,42 @@ func createIntervalExec(ctx context.Context, exec dbExec, iv *service.PricingInt
 		iv.InputPrice, iv.OutputPrice, iv.CacheWritePrice, iv.CacheReadPrice,
 		iv.PerRequestPrice, iv.SortOrder,
 	).Scan(&iv.ID, &iv.CreatedAt, &iv.UpdatedAt)
+}
+
+func createTimeVersionExec(ctx context.Context, exec dbExec, version *service.PricingTimeVersion) error {
+	if strings.TrimSpace(version.Timezone) == "" {
+		version.Timezone = "Asia/Shanghai"
+	}
+	err := exec.QueryRowContext(ctx,
+		`INSERT INTO channel_model_pricing_versions
+		 (pricing_id, effective_from, effective_until, timezone, default_multiplier,
+		  input_price, output_price, cache_write_price, cache_read_price,
+		  image_input_price, image_output_price, sort_order)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		 RETURNING id, created_at, updated_at`,
+		version.PricingID, version.EffectiveFrom, version.EffectiveUntil, version.Timezone,
+		version.DefaultMultiplier, version.InputPrice, version.OutputPrice,
+		version.CacheWritePrice, version.CacheReadPrice, version.ImageInputPrice,
+		version.ImageOutputPrice, version.SortOrder,
+	).Scan(&version.ID, &version.CreatedAt, &version.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("insert time pricing version: %w", err)
+	}
+	for i := range version.Windows {
+		window := &version.Windows[i]
+		window.VersionID = version.ID
+		if err := exec.QueryRowContext(ctx,
+			`INSERT INTO channel_pricing_time_windows
+			 (version_id, label, weekdays, start_minute, end_minute, multiplier, sort_order)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)
+			 RETURNING id, created_at, updated_at`,
+			window.VersionID, window.Label, window.Weekdays, window.StartMinute,
+			window.EndMinute, window.Multiplier, window.SortOrder,
+		).Scan(&window.ID, &window.CreatedAt, &window.UpdatedAt); err != nil {
+			return fmt.Errorf("insert pricing time window: %w", err)
+		}
+	}
+	return nil
 }
 
 func replaceModelPricingTx(ctx context.Context, exec dbExec, channelID int64, pricingList []service.ChannelModelPricing) error {

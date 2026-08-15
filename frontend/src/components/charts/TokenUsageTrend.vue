@@ -109,8 +109,8 @@ const chartData = computed(() => {
       {
         label: 'Cache Hit Rate',
         data: props.trendData.map((d) => {
-          const total = d.cache_read_tokens + d.cache_creation_tokens
-          return total > 0 ? (d.cache_read_tokens / total) * 100 : 0
+          const totalPromptTokens = d.input_tokens + d.cache_read_tokens + d.cache_creation_tokens
+          return totalPromptTokens > 0 ? (d.cache_read_tokens / totalPromptTokens) * 100 : 0
         }),
         borderColor: chartColors.value.cacheHitRate,
         backgroundColor: `${chartColors.value.cacheHitRate}20`,
@@ -155,7 +155,7 @@ const lineOptions = computed(() => ({
           const dataIndex = tooltipItems[0]?.dataIndex
           if (dataIndex !== undefined && props.trendData[dataIndex]) {
             const data = props.trendData[dataIndex]
-            return `Actual: $${formatCost(data.actual_cost)} | Standard: $${formatCost(data.cost)}`
+            return `Actual: ￥${formatCost(data.actual_cost)} | Standard: ￥${formatCost(data.cost)}`
           }
           return ''
         }

@@ -15,14 +15,24 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
+	"github.com/Wei-Shaw/sub2api/ent/batchimageitem"
+	"github.com/Wei-Shaw/sub2api/ent/batchimagejob"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
+	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/oauthaccesstoken"
+	"github.com/Wei-Shaw/sub2api/ent/oauthauthorizetransaction"
+	"github.com/Wei-Shaw/sub2api/ent/oauthclient"
+	"github.com/Wei-Shaw/sub2api/ent/oauthcode"
+	"github.com/Wei-Shaw/sub2api/ent/oauthdevicecode"
+	"github.com/Wei-Shaw/sub2api/ent/oauthrefreshtoken"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -42,6 +52,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 )
 
@@ -290,6 +301,87 @@ func (f TraverseAuthIdentityChannel) Traverse(ctx context.Context, q ent.Query) 
 	return fmt.Errorf("unexpected query type %T. expect *ent.AuthIdentityChannelQuery", q)
 }
 
+// The BatchImageEventFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BatchImageEventFunc func(context.Context, *ent.BatchImageEventQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BatchImageEventFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BatchImageEventQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BatchImageEventQuery", q)
+}
+
+// The TraverseBatchImageEvent type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBatchImageEvent func(context.Context, *ent.BatchImageEventQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBatchImageEvent) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBatchImageEvent) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BatchImageEventQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BatchImageEventQuery", q)
+}
+
+// The BatchImageItemFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BatchImageItemFunc func(context.Context, *ent.BatchImageItemQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BatchImageItemFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BatchImageItemQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BatchImageItemQuery", q)
+}
+
+// The TraverseBatchImageItem type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBatchImageItem func(context.Context, *ent.BatchImageItemQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBatchImageItem) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBatchImageItem) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BatchImageItemQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BatchImageItemQuery", q)
+}
+
+// The BatchImageJobFunc type is an adapter to allow the use of ordinary function as a Querier.
+type BatchImageJobFunc func(context.Context, *ent.BatchImageJobQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f BatchImageJobFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.BatchImageJobQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.BatchImageJobQuery", q)
+}
+
+// The TraverseBatchImageJob type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseBatchImageJob func(context.Context, *ent.BatchImageJobQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseBatchImageJob) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseBatchImageJob) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.BatchImageJobQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.BatchImageJobQuery", q)
+}
+
 // The ChannelMonitorFunc type is an adapter to allow the use of ordinary function as a Querier.
 type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorQuery) (ent.Value, error)
 
@@ -398,6 +490,33 @@ func (f TraverseChannelMonitorRequestTemplate) Traverse(ctx context.Context, q e
 	return fmt.Errorf("unexpected query type %T. expect *ent.ChannelMonitorRequestTemplateQuery", q)
 }
 
+// The CompositeModelRouteFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CompositeModelRouteFunc func(context.Context, *ent.CompositeModelRouteQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CompositeModelRouteFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CompositeModelRouteQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CompositeModelRouteQuery", q)
+}
+
+// The TraverseCompositeModelRoute type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCompositeModelRoute func(context.Context, *ent.CompositeModelRouteQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCompositeModelRoute) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCompositeModelRoute) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CompositeModelRouteQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CompositeModelRouteQuery", q)
+}
+
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary function as a Querier.
 type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleQuery) (ent.Value, error)
 
@@ -504,6 +623,168 @@ func (f TraverseIdentityAdoptionDecision) Traverse(ctx context.Context, q ent.Qu
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.IdentityAdoptionDecisionQuery", q)
+}
+
+// The OAuthAccessTokenFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OAuthAccessTokenFunc func(context.Context, *ent.OAuthAccessTokenQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OAuthAccessTokenFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OAuthAccessTokenQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OAuthAccessTokenQuery", q)
+}
+
+// The TraverseOAuthAccessToken type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOAuthAccessToken func(context.Context, *ent.OAuthAccessTokenQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOAuthAccessToken) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOAuthAccessToken) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OAuthAccessTokenQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OAuthAccessTokenQuery", q)
+}
+
+// The OAuthAuthorizeTransactionFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OAuthAuthorizeTransactionFunc func(context.Context, *ent.OAuthAuthorizeTransactionQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OAuthAuthorizeTransactionFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OAuthAuthorizeTransactionQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OAuthAuthorizeTransactionQuery", q)
+}
+
+// The TraverseOAuthAuthorizeTransaction type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOAuthAuthorizeTransaction func(context.Context, *ent.OAuthAuthorizeTransactionQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOAuthAuthorizeTransaction) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOAuthAuthorizeTransaction) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OAuthAuthorizeTransactionQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OAuthAuthorizeTransactionQuery", q)
+}
+
+// The OAuthClientFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OAuthClientFunc func(context.Context, *ent.OAuthClientQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OAuthClientFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OAuthClientQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OAuthClientQuery", q)
+}
+
+// The TraverseOAuthClient type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOAuthClient func(context.Context, *ent.OAuthClientQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOAuthClient) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOAuthClient) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OAuthClientQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OAuthClientQuery", q)
+}
+
+// The OAuthCodeFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OAuthCodeFunc func(context.Context, *ent.OAuthCodeQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OAuthCodeFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OAuthCodeQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OAuthCodeQuery", q)
+}
+
+// The TraverseOAuthCode type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOAuthCode func(context.Context, *ent.OAuthCodeQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOAuthCode) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOAuthCode) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OAuthCodeQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OAuthCodeQuery", q)
+}
+
+// The OAuthDeviceCodeFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OAuthDeviceCodeFunc func(context.Context, *ent.OAuthDeviceCodeQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OAuthDeviceCodeFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OAuthDeviceCodeQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OAuthDeviceCodeQuery", q)
+}
+
+// The TraverseOAuthDeviceCode type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOAuthDeviceCode func(context.Context, *ent.OAuthDeviceCodeQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOAuthDeviceCode) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOAuthDeviceCode) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OAuthDeviceCodeQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OAuthDeviceCodeQuery", q)
+}
+
+// The OAuthRefreshTokenFunc type is an adapter to allow the use of ordinary function as a Querier.
+type OAuthRefreshTokenFunc func(context.Context, *ent.OAuthRefreshTokenQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f OAuthRefreshTokenFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.OAuthRefreshTokenQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.OAuthRefreshTokenQuery", q)
+}
+
+// The TraverseOAuthRefreshToken type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseOAuthRefreshToken func(context.Context, *ent.OAuthRefreshTokenQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseOAuthRefreshToken) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseOAuthRefreshToken) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.OAuthRefreshTokenQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.OAuthRefreshTokenQuery", q)
 }
 
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -992,6 +1273,33 @@ func (f TraverseUserAttributeValue) Traverse(ctx context.Context, q ent.Query) e
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserAttributeValueQuery", q)
 }
 
+// The UserPlatformQuotaFunc type is an adapter to allow the use of ordinary function as a Querier.
+type UserPlatformQuotaFunc func(context.Context, *ent.UserPlatformQuotaQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f UserPlatformQuotaFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.UserPlatformQuotaQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.UserPlatformQuotaQuery", q)
+}
+
+// The TraverseUserPlatformQuota type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseUserPlatformQuota func(context.Context, *ent.UserPlatformQuotaQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseUserPlatformQuota) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseUserPlatformQuota) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.UserPlatformQuotaQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.UserPlatformQuotaQuery", q)
+}
+
 // The UserSubscriptionFunc type is an adapter to allow the use of ordinary function as a Querier.
 type UserSubscriptionFunc func(context.Context, *ent.UserSubscriptionQuery) (ent.Value, error)
 
@@ -1036,6 +1344,12 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AuthIdentityQuery, predicate.AuthIdentity, authidentity.OrderOption]{typ: ent.TypeAuthIdentity, tq: q}, nil
 	case *ent.AuthIdentityChannelQuery:
 		return &query[*ent.AuthIdentityChannelQuery, predicate.AuthIdentityChannel, authidentitychannel.OrderOption]{typ: ent.TypeAuthIdentityChannel, tq: q}, nil
+	case *ent.BatchImageEventQuery:
+		return &query[*ent.BatchImageEventQuery, predicate.BatchImageEvent, batchimageevent.OrderOption]{typ: ent.TypeBatchImageEvent, tq: q}, nil
+	case *ent.BatchImageItemQuery:
+		return &query[*ent.BatchImageItemQuery, predicate.BatchImageItem, batchimageitem.OrderOption]{typ: ent.TypeBatchImageItem, tq: q}, nil
+	case *ent.BatchImageJobQuery:
+		return &query[*ent.BatchImageJobQuery, predicate.BatchImageJob, batchimagejob.OrderOption]{typ: ent.TypeBatchImageJob, tq: q}, nil
 	case *ent.ChannelMonitorQuery:
 		return &query[*ent.ChannelMonitorQuery, predicate.ChannelMonitor, channelmonitor.OrderOption]{typ: ent.TypeChannelMonitor, tq: q}, nil
 	case *ent.ChannelMonitorDailyRollupQuery:
@@ -1044,6 +1358,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ChannelMonitorHistoryQuery, predicate.ChannelMonitorHistory, channelmonitorhistory.OrderOption]{typ: ent.TypeChannelMonitorHistory, tq: q}, nil
 	case *ent.ChannelMonitorRequestTemplateQuery:
 		return &query[*ent.ChannelMonitorRequestTemplateQuery, predicate.ChannelMonitorRequestTemplate, channelmonitorrequesttemplate.OrderOption]{typ: ent.TypeChannelMonitorRequestTemplate, tq: q}, nil
+	case *ent.CompositeModelRouteQuery:
+		return &query[*ent.CompositeModelRouteQuery, predicate.CompositeModelRoute, compositemodelroute.OrderOption]{typ: ent.TypeCompositeModelRoute, tq: q}, nil
 	case *ent.ErrorPassthroughRuleQuery:
 		return &query[*ent.ErrorPassthroughRuleQuery, predicate.ErrorPassthroughRule, errorpassthroughrule.OrderOption]{typ: ent.TypeErrorPassthroughRule, tq: q}, nil
 	case *ent.GroupQuery:
@@ -1052,6 +1368,18 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: q}, nil
 	case *ent.IdentityAdoptionDecisionQuery:
 		return &query[*ent.IdentityAdoptionDecisionQuery, predicate.IdentityAdoptionDecision, identityadoptiondecision.OrderOption]{typ: ent.TypeIdentityAdoptionDecision, tq: q}, nil
+	case *ent.OAuthAccessTokenQuery:
+		return &query[*ent.OAuthAccessTokenQuery, predicate.OAuthAccessToken, oauthaccesstoken.OrderOption]{typ: ent.TypeOAuthAccessToken, tq: q}, nil
+	case *ent.OAuthAuthorizeTransactionQuery:
+		return &query[*ent.OAuthAuthorizeTransactionQuery, predicate.OAuthAuthorizeTransaction, oauthauthorizetransaction.OrderOption]{typ: ent.TypeOAuthAuthorizeTransaction, tq: q}, nil
+	case *ent.OAuthClientQuery:
+		return &query[*ent.OAuthClientQuery, predicate.OAuthClient, oauthclient.OrderOption]{typ: ent.TypeOAuthClient, tq: q}, nil
+	case *ent.OAuthCodeQuery:
+		return &query[*ent.OAuthCodeQuery, predicate.OAuthCode, oauthcode.OrderOption]{typ: ent.TypeOAuthCode, tq: q}, nil
+	case *ent.OAuthDeviceCodeQuery:
+		return &query[*ent.OAuthDeviceCodeQuery, predicate.OAuthDeviceCode, oauthdevicecode.OrderOption]{typ: ent.TypeOAuthDeviceCode, tq: q}, nil
+	case *ent.OAuthRefreshTokenQuery:
+		return &query[*ent.OAuthRefreshTokenQuery, predicate.OAuthRefreshToken, oauthrefreshtoken.OrderOption]{typ: ent.TypeOAuthRefreshToken, tq: q}, nil
 	case *ent.PaymentAuditLogQuery:
 		return &query[*ent.PaymentAuditLogQuery, predicate.PaymentAuditLog, paymentauditlog.OrderOption]{typ: ent.TypePaymentAuditLog, tq: q}, nil
 	case *ent.PaymentOrderQuery:
@@ -1088,6 +1416,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserAttributeDefinitionQuery, predicate.UserAttributeDefinition, userattributedefinition.OrderOption]{typ: ent.TypeUserAttributeDefinition, tq: q}, nil
 	case *ent.UserAttributeValueQuery:
 		return &query[*ent.UserAttributeValueQuery, predicate.UserAttributeValue, userattributevalue.OrderOption]{typ: ent.TypeUserAttributeValue, tq: q}, nil
+	case *ent.UserPlatformQuotaQuery:
+		return &query[*ent.UserPlatformQuotaQuery, predicate.UserPlatformQuota, userplatformquota.OrderOption]{typ: ent.TypeUserPlatformQuota, tq: q}, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: q}, nil
 	default:

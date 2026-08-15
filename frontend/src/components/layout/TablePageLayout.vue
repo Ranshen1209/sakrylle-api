@@ -1,5 +1,5 @@
 <template>
-  <div class="table-page-layout" :class="{ 'mobile-mode': isMobile }">
+  <div ref="layoutRef" class="table-page-layout" :class="{ 'mobile-mode': isMobile }" @wheel="onWheel">
     <!-- 固定区域：操作按钮 -->
     <div v-if="$slots.actions" class="layout-section-fixed">
       <slot name="actions" />
@@ -28,9 +28,35 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 
 const isMobile = ref(false)
+const layoutRef = ref<HTMLElement | null>(null)
 
 const checkMobile = () => {
   isMobile.value = window.innerWidth < 1024
+}
+
+/**
+ * Keep the table body as the desktop scroll owner, but let the user start a
+ * wheel gesture anywhere inside the page layout (filters, padding, or the
+ * empty area beside the table). Native scrolling still wins when the pointer
+ * is already over the table wrapper.
+ */
+const onWheel = (event: WheelEvent) => {
+  if (isMobile.value || event.deltaY === 0) return
+
+  const wrapper = layoutRef.value?.querySelector<HTMLElement>('.table-wrapper')
+  if (!wrapper) return
+
+  const target = event.target
+  if (target instanceof Element && wrapper.contains(target)) return
+
+  const maxScrollTop = wrapper.scrollHeight - wrapper.clientHeight
+  if (maxScrollTop <= 0) return
+
+  const nextScrollTop = Math.max(0, Math.min(maxScrollTop, wrapper.scrollTop + event.deltaY))
+  if (nextScrollTop === wrapper.scrollTop) return
+
+  event.preventDefault()
+  wrapper.scrollTop = nextScrollTop
 }
 
 onMounted(() => {
@@ -98,10 +124,6 @@ onUnmounted(() => {
 
 .table-page-layout.mobile-mode .layout-section-scrollable {
   @apply flex-none min-h-fit;
-}
-
-.table-page-layout.mobile-mode .table-scroll-container :deep(.table-wrapper) {
-  @apply overflow-visible;
 }
 
 .table-page-layout.mobile-mode .table-scroll-container :deep(table) {
