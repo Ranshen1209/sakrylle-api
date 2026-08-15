@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { validateIntervals, type IntervalFormEntry } from '../types'
+import {
+  formTimeVersionsToAPI,
+  toZonedDatetimeLocal,
+  validateIntervals,
+  validateTimeVersions,
+  type IntervalFormEntry,
+  type PricingTimeVersionFormEntry,
+} from '../types'
 
 function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   return {
@@ -12,6 +19,27 @@ function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
     cache_read_price: null,
     per_request_price: null,
     sort_order: 0,
+    ...over,
+  }
+}
+
+function makeTimeVersion(over: Partial<PricingTimeVersionFormEntry> = {}): PricingTimeVersionFormEntry {
+  return {
+    effective_from: '2026-08-17T00:00',
+    effective_until: null,
+    timezone: 'Asia/Shanghai',
+    default_multiplier: 0.5,
+    input_price: 3,
+    output_price: 9,
+    cache_write_price: null,
+    cache_read_price: 0.1,
+    image_input_price: null,
+    image_output_price: null,
+    sort_order: 0,
+    windows: [
+      { label: 'peak', weekdays: 127, start_minute: 540, end_minute: 720, multiplier: 1, sort_order: 0 },
+      { label: 'peak', weekdays: 127, start_minute: 840, end_minute: 1080, multiplier: 1, sort_order: 1 },
+    ],
     ...over,
   }
 }
@@ -79,5 +107,37 @@ describe('validateIntervals', () => {
       ]
       expect(validateIntervals(intervals, 'image', t)).toContain('maxGreaterThanMin')
     })
+  })
+})
+
+describe('time pricing', () => {
+  it('accepts the DeepSeek two-window schedule and converts MTok prices', () => {
+    const version = makeTimeVersion()
+    expect(validateTimeVersions([version], false, t)).toBeNull()
+    const [api] = formTimeVersionsToAPI([version])
+    expect(api.input_price).toBe(0.000003)
+    expect(api.output_price).toBe(0.000009)
+    expect(api.cache_read_price).toBe(0.0000001)
+    expect(api.default_multiplier).toBe(0.5)
+    expect(api.windows).toHaveLength(2)
+    expect(api.effective_from).toBe('2026-08-16T16:00:00.000Z')
+    expect(toZonedDatetimeLocal(api.effective_from, 'Asia/Shanghai')).toBe('2026-08-17T00:00')
+  })
+
+  it('rejects overlapping windows on shared weekdays', () => {
+    const version = makeTimeVersion({
+      windows: [
+        { label: 'peak', weekdays: 127, start_minute: 540, end_minute: 720, multiplier: 1, sort_order: 0 },
+        { label: 'peak', weekdays: 1, start_minute: 600, end_minute: 780, multiplier: 1, sort_order: 1 },
+      ],
+    })
+    expect(validateTimeVersions([version], false, t)).toContain('windowOverlap')
+  })
+
+  it('rejects context intervals and overlapping effective ranges', () => {
+    expect(validateTimeVersions([makeTimeVersion()], true, t)).toContain('intervalsConflict')
+    const first = makeTimeVersion({ effective_until: '2026-08-18T00:00' })
+    const second = makeTimeVersion({ effective_from: '2026-08-17T12:00' })
+    expect(validateTimeVersions([first, second], false, t)).toContain('versionOverlap')
   })
 })

@@ -467,6 +467,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ModelPricing:                    modelPricing,
 		AllowImageGeneration:            allowImageGeneration,
 		AllowBatchImageGeneration:       allowBatchImageGeneration,
+		ImageOnly:                       input.ImageOnly,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
 		BatchImageDiscountMultiplier:    batchImageDiscountMultiplier,
@@ -691,6 +692,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.AllowBatchImageGeneration != nil {
 		group.AllowBatchImageGeneration = *input.AllowBatchImageGeneration
+	}
+	if input.ImageOnly != nil {
+		group.ImageOnly = *input.ImageOnly
 	}
 	if !group.AllowImageGeneration || group.Platform != PlatformGemini {
 		group.AllowBatchImageGeneration = false

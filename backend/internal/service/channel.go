@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -87,21 +88,69 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID               int64             `json:"id,omitempty"`
-	ChannelID        int64             `json:"channel_id,omitempty"`
-	Platform         string            `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
-	Models           []string          `json:"models"`
-	BillingMode      BillingMode       `json:"billing_mode"`
-	InputPrice       *float64          `json:"input_price"`
-	OutputPrice      *float64          `json:"output_price"`
-	CacheWritePrice  *float64          `json:"cache_write_price"`
-	CacheReadPrice   *float64          `json:"cache_read_price"`
-	ImageInputPrice  *float64          `json:"image_input_price"`
-	ImageOutputPrice *float64          `json:"image_output_price"`
-	PerRequestPrice  *float64          `json:"per_request_price"`
-	Intervals        []PricingInterval `json:"intervals"`
-	CreatedAt        time.Time         `json:"created_at,omitempty"`
-	UpdatedAt        time.Time         `json:"updated_at,omitempty"`
+	ID               int64                `json:"id,omitempty"`
+	ChannelID        int64                `json:"channel_id,omitempty"`
+	Platform         string               `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
+	Models           []string             `json:"models"`
+	BillingMode      BillingMode          `json:"billing_mode"`
+	InputPrice       *float64             `json:"input_price"`
+	OutputPrice      *float64             `json:"output_price"`
+	CacheWritePrice  *float64             `json:"cache_write_price"`
+	CacheReadPrice   *float64             `json:"cache_read_price"`
+	ImageInputPrice  *float64             `json:"image_input_price"`
+	ImageOutputPrice *float64             `json:"image_output_price"`
+	PerRequestPrice  *float64             `json:"per_request_price"`
+	Intervals        []PricingInterval    `json:"intervals"`
+	TimeVersions     []PricingTimeVersion `json:"time_versions"`
+	CreatedAt        time.Time            `json:"created_at,omitempty"`
+	UpdatedAt        time.Time            `json:"updated_at,omitempty"`
+}
+
+// PricingTimeVersion is a future- or currently-effective token price card.
+// The flat ChannelModelPricing prices remain the fallback whenever no version
+// is active, including before the first version and between finite versions.
+type PricingTimeVersion struct {
+	ID                int64               `json:"id,omitempty"`
+	PricingID         int64               `json:"pricing_id,omitempty"`
+	EffectiveFrom     time.Time           `json:"effective_from"`
+	EffectiveUntil    *time.Time          `json:"effective_until"`
+	Timezone          string              `json:"timezone"`
+	DefaultMultiplier float64             `json:"default_multiplier"`
+	InputPrice        *float64            `json:"input_price"`
+	OutputPrice       *float64            `json:"output_price"`
+	CacheWritePrice   *float64            `json:"cache_write_price"`
+	CacheReadPrice    *float64            `json:"cache_read_price"`
+	ImageInputPrice   *float64            `json:"image_input_price"`
+	ImageOutputPrice  *float64            `json:"image_output_price"`
+	SortOrder         int                 `json:"sort_order"`
+	Windows           []PricingTimeWindow `json:"windows"`
+	CreatedAt         time.Time           `json:"created_at,omitempty"`
+	UpdatedAt         time.Time           `json:"updated_at,omitempty"`
+}
+
+// PricingTimeWindow is a left-closed, right-open local-time interval. Weekdays
+// uses bit 0=Monday through bit 6=Sunday; 127 means every day.
+type PricingTimeWindow struct {
+	ID          int64     `json:"id,omitempty"`
+	VersionID   int64     `json:"version_id,omitempty"`
+	Label       string    `json:"label"`
+	Weekdays    int       `json:"weekdays"`
+	StartMinute int       `json:"start_minute"`
+	EndMinute   int       `json:"end_minute"`
+	Multiplier  float64   `json:"multiplier"`
+	SortOrder   int       `json:"sort_order"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at,omitempty"`
+}
+
+// PricingTimeResolution describes the time rule selected for a request or a
+// user-facing current-price response.
+type PricingTimeResolution struct {
+	VersionID   int64     `json:"version_id"`
+	PricingAt   time.Time `json:"pricing_at"`
+	Timezone    string    `json:"timezone"`
+	PeriodLabel string    `json:"period_label"`
+	Multiplier  float64   `json:"multiplier"`
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
@@ -195,7 +244,116 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
 		copy(cp.Intervals, p.Intervals)
 	}
+	if p.TimeVersions != nil {
+		cp.TimeVersions = make([]PricingTimeVersion, len(p.TimeVersions))
+		for i := range p.TimeVersions {
+			cp.TimeVersions[i] = p.TimeVersions[i]
+			if p.TimeVersions[i].Windows != nil {
+				cp.TimeVersions[i].Windows = make([]PricingTimeWindow, len(p.TimeVersions[i].Windows))
+				copy(cp.TimeVersions[i].Windows, p.TimeVersions[i].Windows)
+			}
+		}
+	}
 	return cp
+}
+
+// ResolveAt returns a price-card copy with the active version and time-window
+// multiplier applied. A nil resolution means the legacy flat price is active.
+func (p ChannelModelPricing) ResolveAt(at time.Time) (ChannelModelPricing, *PricingTimeResolution) {
+	resolved := p.Clone()
+	if at.IsZero() || len(p.TimeVersions) == 0 {
+		return resolved, nil
+	}
+
+	var active *PricingTimeVersion
+	for i := range p.TimeVersions {
+		version := &p.TimeVersions[i]
+		if at.Before(version.EffectiveFrom) || (version.EffectiveUntil != nil && !at.Before(*version.EffectiveUntil)) {
+			continue
+		}
+		if active == nil || version.EffectiveFrom.After(active.EffectiveFrom) {
+			active = version
+		}
+	}
+	if active == nil {
+		return resolved, nil
+	}
+
+	location, err := time.LoadLocation(active.Timezone)
+	if err != nil {
+		return resolved, nil
+	}
+	applyVersionPrices(&resolved, active)
+
+	local := at.In(location)
+	multiplier := active.DefaultMultiplier
+	periodLabel := "off_peak"
+	weekdayBit := 1 << ((int(local.Weekday()) + 6) % 7) // Go Sunday=0; stored Monday=bit 0.
+	minute := local.Hour()*60 + local.Minute()
+	for i := range active.Windows {
+		window := &active.Windows[i]
+		if window.Weekdays&weekdayBit == 0 || minute < window.StartMinute || minute >= window.EndMinute {
+			continue
+		}
+		multiplier = window.Multiplier
+		periodLabel = strings.TrimSpace(window.Label)
+		if periodLabel == "" {
+			periodLabel = "peak"
+		}
+		break
+	}
+	applyPricingMultiplier(&resolved, multiplier)
+	return resolved, &PricingTimeResolution{
+		VersionID:   active.ID,
+		PricingAt:   at,
+		Timezone:    active.Timezone,
+		PeriodLabel: periodLabel,
+		Multiplier:  multiplier,
+	}
+}
+
+func applyVersionPrices(pricing *ChannelModelPricing, version *PricingTimeVersion) {
+	if pricing == nil || version == nil {
+		return
+	}
+	if version.InputPrice != nil {
+		pricing.InputPrice = version.InputPrice
+	}
+	if version.OutputPrice != nil {
+		pricing.OutputPrice = version.OutputPrice
+	}
+	if version.CacheWritePrice != nil {
+		pricing.CacheWritePrice = version.CacheWritePrice
+	}
+	if version.CacheReadPrice != nil {
+		pricing.CacheReadPrice = version.CacheReadPrice
+	}
+	if version.ImageInputPrice != nil {
+		pricing.ImageInputPrice = version.ImageInputPrice
+	}
+	if version.ImageOutputPrice != nil {
+		pricing.ImageOutputPrice = version.ImageOutputPrice
+	}
+}
+
+func applyPricingMultiplier(pricing *ChannelModelPricing, multiplier float64) {
+	if pricing == nil {
+		return
+	}
+	pricing.InputPrice = multipliedPrice(pricing.InputPrice, multiplier)
+	pricing.OutputPrice = multipliedPrice(pricing.OutputPrice, multiplier)
+	pricing.CacheWritePrice = multipliedPrice(pricing.CacheWritePrice, multiplier)
+	pricing.CacheReadPrice = multipliedPrice(pricing.CacheReadPrice, multiplier)
+	pricing.ImageInputPrice = multipliedPrice(pricing.ImageInputPrice, multiplier)
+	pricing.ImageOutputPrice = multipliedPrice(pricing.ImageOutputPrice, multiplier)
+}
+
+func multipliedPrice(price *float64, multiplier float64) *float64 {
+	if price == nil {
+		return nil
+	}
+	value := *price * multiplier
+	return &value
 }
 
 // Clone 返回 Channel 的深拷贝
@@ -319,6 +477,72 @@ func ValidateIntervals(intervals []PricingInterval, mode BillingMode) error {
 		return nil
 	}
 	return validateIntervalOverlap(sorted)
+}
+
+// ValidatePricingTimeVersions validates version ranges and their daily windows.
+// Time pricing deliberately remains token-only until a provider requires
+// scheduled per-request or media prices.
+func ValidatePricingTimeVersions(versions []PricingTimeVersion, mode BillingMode, hasTokenIntervals bool) error {
+	if len(versions) == 0 {
+		return nil
+	}
+	if mode != "" && mode != BillingModeToken {
+		return errors.New("time pricing is only supported for token billing")
+	}
+	if hasTokenIntervals {
+		return errors.New("time pricing cannot be combined with token context intervals")
+	}
+
+	sorted := make([]PricingTimeVersion, len(versions))
+	copy(sorted, versions)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].EffectiveFrom.Before(sorted[j].EffectiveFrom) })
+	for i := range sorted {
+		version := &sorted[i]
+		if version.EffectiveFrom.IsZero() {
+			return fmt.Errorf("time version %d: effective_from is required", i+1)
+		}
+		if version.EffectiveUntil != nil && !version.EffectiveUntil.After(version.EffectiveFrom) {
+			return fmt.Errorf("time version %d: effective_until must be after effective_from", i+1)
+		}
+		if _, err := time.LoadLocation(version.Timezone); err != nil {
+			return fmt.Errorf("time version %d: invalid timezone %q", i+1, version.Timezone)
+		}
+		if version.DefaultMultiplier < 0 {
+			return fmt.Errorf("time version %d: default_multiplier must be >= 0", i+1)
+		}
+		if err := validatePricingTimeWindows(version.Windows, i+1); err != nil {
+			return err
+		}
+		if i > 0 {
+			previous := &sorted[i-1]
+			if previous.EffectiveUntil == nil || previous.EffectiveUntil.After(version.EffectiveFrom) {
+				return fmt.Errorf("time versions %d and %d overlap", i, i+1)
+			}
+		}
+	}
+	return nil
+}
+
+func validatePricingTimeWindows(windows []PricingTimeWindow, versionIndex int) error {
+	for i := range windows {
+		window := &windows[i]
+		if window.Weekdays < 1 || window.Weekdays > 127 {
+			return fmt.Errorf("time version %d window %d: weekdays must be between 1 and 127", versionIndex, i+1)
+		}
+		if window.StartMinute < 0 || window.StartMinute > 1439 || window.EndMinute < 1 || window.EndMinute > 1440 || window.StartMinute >= window.EndMinute {
+			return fmt.Errorf("time version %d window %d: invalid minute range", versionIndex, i+1)
+		}
+		if window.Multiplier < 0 {
+			return fmt.Errorf("time version %d window %d: multiplier must be >= 0", versionIndex, i+1)
+		}
+		for j := 0; j < i; j++ {
+			other := &windows[j]
+			if window.Weekdays&other.Weekdays != 0 && window.StartMinute < other.EndMinute && other.StartMinute < window.EndMinute {
+				return fmt.Errorf("time version %d windows %d and %d overlap", versionIndex, j+1, i+1)
+			}
+		}
+	}
+	return nil
 }
 
 // validateSingleInterval 校验单个区间的字段合法性

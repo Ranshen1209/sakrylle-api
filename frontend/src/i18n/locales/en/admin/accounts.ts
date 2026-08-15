@@ -505,6 +505,48 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      mediaBridge: {
+        title: 'Image and video bridge',
+        description: 'Model routing, async image tasks, and video forwarding for OpenAI API Key accounts',
+        imageRouting: 'Image model routing',
+        imageModels: 'Image model allowlist',
+        imageDefaultSize: 'Default image size',
+        commaSeparatedHint: 'Separate multiple values with commas.',
+        asyncImage: 'Async image task bridge',
+        asyncImageHint: 'Submit image requests as tasks and synthesize billing tokens from size, quality, and reference images.',
+        asyncBaseUrl: 'Async task Base URL',
+        allowedImageHost: 'Allowed image download host suffix',
+        pollIntervalMs: 'Poll interval (ms)',
+        maxWaitMs: 'Maximum wait (ms)',
+        outputTokenTable: 'Output token calibration table',
+        outputTokenTableHint: 'Synthetic output tokens per image. A missing or zero value fails billing and blocks delivery.',
+        imageInputRatio: 'Reference image input ratio',
+        size: 'Size',
+        refImageTokens: 'Reference tokens',
+        quality: {
+          low: 'Low',
+          medium: 'Medium',
+          high: 'High'
+        },
+        video: 'Video task forwarding',
+        videoHint: 'Enable submission and status lookup for declared video models with duration-based billing.',
+        videoModels: 'Video model allowlist',
+        videoSubmitPath: 'Submit path',
+        videoPollPath: 'Status path',
+        videoDefaultSeconds: 'Default billable duration (seconds)',
+        allowedVideoHosts: 'Allowed video output host suffixes',
+        errors: {
+          asyncBaseUrlRequired: 'Enter the async task Base URL',
+          asyncBaseUrlInvalid: 'The async task Base URL must be a valid HTTP(S) URL',
+          asyncHostSuffixRequired: 'Enter the allowed image download host suffix',
+          asyncTimingInvalid: 'Async image poll interval and maximum wait must be positive integers',
+          asyncTokenTableInvalid: 'Async image token values, reference tokens, and input ratio must be greater than zero',
+          videoModelsRequired: 'Enter at least one video model',
+          videoPathsInvalid: 'Video submit and status paths must start with /',
+          videoHostSuffixRequired: 'Enter at least one allowed video output host suffix',
+          videoTimingInvalid: 'Video polling, maximum wait, and default billable duration must be greater than zero'
+        }
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',

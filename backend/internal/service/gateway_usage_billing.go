@@ -809,6 +809,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if pricingAt.IsZero() {
 		pricingAt = timezone.Now()
 	}
+	ctx = withPricingAt(ctx, pricingAt)
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, pricingAt)
 
 	// 确定计费模型

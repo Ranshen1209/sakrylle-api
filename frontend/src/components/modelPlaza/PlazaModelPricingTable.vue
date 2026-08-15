@@ -117,6 +117,16 @@
                 &gt;{{ formatTokenCount(longContextThreshold(m)) }}
               </span>
             </div>
+            <div
+              v-if="m.pricing?.time_versions?.length"
+              class="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-gray-500 dark:text-dark-400"
+              :title="timePricingTitle(m)"
+            >
+              <span class="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                {{ currentTimePeriod(m) }}
+              </span>
+              <span>{{ compactTimeWindows(m) }}</span>
+            </div>
           </td>
 
           <!-- token 计费:输入 / 输出(阶梯内联)/ 缓存(写/读) -->
@@ -254,7 +264,8 @@ import {
   type BillingMode
 } from '@/constants/channel'
 import type { PlazaModel } from '@/api/modelPlaza'
-import type { UserPricingInterval } from '@/api/channels'
+import type { UserPricingInterval, UserPricingTimeVersion } from '@/api/channels'
+import { formatPricingMinute, formatPricingVersionDate, formatPricingWindow } from '@/utils/timePricing'
 
 const props = defineProps<{
   models: PlazaModel[]
@@ -269,7 +280,7 @@ const props = defineProps<{
   imageRateMultiplier?: number | null
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const pricingMode = ref<'standard' | 'long_context'>('standard')
 const modeActiveClass = 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
 const modeInactiveClass = 'text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-100'
@@ -313,6 +324,45 @@ function billingModeLabel(m: PlazaModel): string {
   return billingMode(m) === BILLING_MODE_IMAGE
     ? t('modelPlaza.table.perImage')
     : t('modelPlaza.table.perRequest')
+}
+
+function currentTimePeriod(m: PlazaModel): string {
+  const resolution = m.pricing?.time_resolution
+  if (!resolution) return t('modelPlaza.table.timePricingUpcoming')
+  if (resolution.period_label === 'peak') return t('modelPlaza.table.timePricingPeak')
+  if (resolution.period_label === 'off_peak') return t('modelPlaza.table.timePricingOffPeak')
+  return resolution.period_label
+}
+
+function compactTimeWindows(m: PlazaModel): string {
+  const version = displayedTimeVersion(m)
+  if (!version) return ''
+  return version.windows
+    .map(window => `${formatPricingMinute(window.start_minute)}-${formatPricingMinute(window.end_minute)}`)
+    .join(' / ')
+}
+
+function timePricingTitle(m: PlazaModel): string {
+  const version = displayedTimeVersion(m)
+  if (!version) return ''
+  const windows = version.windows.map(window => `${formatPricingWindow(window, locale.value)} ${window.multiplier}x`).join('; ')
+  return `${t('modelPlaza.table.timePricingEffective')} ${formatPricingVersionDate(version, locale.value)} (${version.timezone}); ${windows}; ${t('modelPlaza.table.timePricingOffPeak')} ${version.default_multiplier}x`
+}
+
+function displayedTimeVersion(m: PlazaModel): UserPricingTimeVersion | undefined {
+  const versions = m.pricing?.time_versions
+  if (!versions?.length) return undefined
+  const pricingAt = m.pricing?.time_resolution?.pricing_at
+  if (!pricingAt) return versions[0]
+
+  const instant = Date.parse(pricingAt)
+  return [...versions]
+    .filter(version => {
+      const from = Date.parse(version.effective_from)
+      const until = version.effective_until ? Date.parse(version.effective_until) : Number.POSITIVE_INFINITY
+      return from <= instant && instant < until
+    })
+    .sort((a, b) => Date.parse(b.effective_from) - Date.parse(a.effective_from))[0] || versions[0]
 }
 
 /** 价格统一保底 2 位小数,更长的有效小数原样保留。 */

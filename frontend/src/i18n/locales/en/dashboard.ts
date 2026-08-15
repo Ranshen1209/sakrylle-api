@@ -528,6 +528,11 @@ export default {
       imageOutputPrice: 'Image Output',
       perRequestPrice: 'Per Request',
       intervals: 'Tiered Pricing',
+      timePricing: 'Peak / Off-Peak',
+      peak: 'Peak',
+      offPeak: 'Off-Peak',
+      notEffective: 'Not effective yet',
+      effectiveFrom: 'Effective',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
     }
@@ -569,13 +574,17 @@ export default {
       paidPrice: 'Your Price (Discounted)',
       officialPrice: 'Official Price',
       rate: 'Rate',
-      unitPerMillion: '$ / 1M tokens',
+      unitPerMillion: '￥ / 1M tokens',
       perUnitRequest: '/ request',
       perUnitImage: '/ image',
       perRequest: 'Per request',
       perImage: 'Per image',
       standard: 'Standard',
-      longContext: 'Long context'
+      longContext: 'Long context',
+      timePricingPeak: 'Peak now',
+      timePricingOffPeak: 'Off-peak now',
+      timePricingUpcoming: 'Scheduled pricing pending',
+      timePricingEffective: 'Effective'
     },
     nav: {
       login: 'Sign In',

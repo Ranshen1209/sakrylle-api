@@ -2,8 +2,10 @@ package handler
 
 import (
 	"sort"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -66,16 +68,47 @@ type userAvailableGroup struct {
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
 type userSupportedModelPricing struct {
-	BillingMode      string                   `json:"billing_mode"`
-	InputPrice       *float64                 `json:"input_price"`
-	OutputPrice      *float64                 `json:"output_price"`
-	CacheWritePrice  *float64                 `json:"cache_write_price"`
-	CacheReadPrice   *float64                 `json:"cache_read_price"`
-	ImageInputPrice  *float64                 `json:"image_input_price"`
-	ImageOutputPrice *float64                 `json:"image_output_price"`
-	PerRequestPrice  *float64                 `json:"per_request_price"`
-	ImageInputRatio  *float64                 `json:"image_input_ratio"`
-	Intervals        []userPricingIntervalDTO `json:"intervals"`
+	BillingMode      string                     `json:"billing_mode"`
+	InputPrice       *float64                   `json:"input_price"`
+	OutputPrice      *float64                   `json:"output_price"`
+	CacheWritePrice  *float64                   `json:"cache_write_price"`
+	CacheReadPrice   *float64                   `json:"cache_read_price"`
+	ImageInputPrice  *float64                   `json:"image_input_price"`
+	ImageOutputPrice *float64                   `json:"image_output_price"`
+	PerRequestPrice  *float64                   `json:"per_request_price"`
+	ImageInputRatio  *float64                   `json:"image_input_ratio"`
+	Intervals        []userPricingIntervalDTO   `json:"intervals"`
+	TimeVersions     []userPricingTimeVersion   `json:"time_versions"`
+	TimeResolution   *userPricingTimeResolution `json:"time_resolution"`
+}
+
+type userPricingTimeVersion struct {
+	EffectiveFrom     time.Time               `json:"effective_from"`
+	EffectiveUntil    *time.Time              `json:"effective_until"`
+	Timezone          string                  `json:"timezone"`
+	DefaultMultiplier float64                 `json:"default_multiplier"`
+	InputPrice        *float64                `json:"input_price"`
+	OutputPrice       *float64                `json:"output_price"`
+	CacheWritePrice   *float64                `json:"cache_write_price"`
+	CacheReadPrice    *float64                `json:"cache_read_price"`
+	ImageInputPrice   *float64                `json:"image_input_price"`
+	ImageOutputPrice  *float64                `json:"image_output_price"`
+	Windows           []userPricingTimeWindow `json:"windows"`
+}
+
+type userPricingTimeWindow struct {
+	Label       string  `json:"label"`
+	Weekdays    int     `json:"weekdays"`
+	StartMinute int     `json:"start_minute"`
+	EndMinute   int     `json:"end_minute"`
+	Multiplier  float64 `json:"multiplier"`
+}
+
+type userPricingTimeResolution struct {
+	PricingAt   time.Time `json:"pricing_at"`
+	Timezone    string    `json:"timezone"`
+	PeriodLabel string    `json:"period_label"`
+	Multiplier  float64   `json:"multiplier"`
 }
 
 // userPricingIntervalDTO 定价区间白名单（去掉内部 ID、SortOrder 等前端不渲染的字段）。
@@ -297,6 +330,9 @@ func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *flo
 	if p == nil {
 		return nil
 	}
+	source := p
+	resolved, resolution := p.ResolveAt(timezone.Now())
+	p = &resolved
 	intervals := make([]userPricingIntervalDTO, 0, len(p.Intervals))
 	for _, iv := range p.Intervals {
 		intervals = append(intervals, userPricingIntervalDTO{
@@ -314,6 +350,31 @@ func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *flo
 	if billingMode == "" {
 		billingMode = string(service.BillingModeToken)
 	}
+	timeVersions := make([]userPricingTimeVersion, 0, len(source.TimeVersions))
+	for _, version := range source.TimeVersions {
+		windows := make([]userPricingTimeWindow, 0, len(version.Windows))
+		for _, window := range version.Windows {
+			windows = append(windows, userPricingTimeWindow{
+				Label: window.Label, Weekdays: window.Weekdays, StartMinute: window.StartMinute,
+				EndMinute: window.EndMinute, Multiplier: window.Multiplier,
+			})
+		}
+		timeVersions = append(timeVersions, userPricingTimeVersion{
+			EffectiveFrom: version.EffectiveFrom, EffectiveUntil: version.EffectiveUntil,
+			Timezone: version.Timezone, DefaultMultiplier: version.DefaultMultiplier,
+			InputPrice: version.InputPrice, OutputPrice: version.OutputPrice,
+			CacheWritePrice: version.CacheWritePrice, CacheReadPrice: version.CacheReadPrice,
+			ImageInputPrice: version.ImageInputPrice, ImageOutputPrice: version.ImageOutputPrice,
+			Windows: windows,
+		})
+	}
+	var timeResolution *userPricingTimeResolution
+	if resolution != nil {
+		timeResolution = &userPricingTimeResolution{
+			PricingAt: resolution.PricingAt, Timezone: resolution.Timezone,
+			PeriodLabel: resolution.PeriodLabel, Multiplier: resolution.Multiplier,
+		}
+	}
 	return &userSupportedModelPricing{
 		BillingMode:      billingMode,
 		InputPrice:       p.InputPrice,
@@ -325,5 +386,7 @@ func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *flo
 		PerRequestPrice:  p.PerRequestPrice,
 		ImageInputRatio:  imageInputRatio,
 		Intervals:        intervals,
+		TimeVersions:     timeVersions,
+		TimeResolution:   timeResolution,
 	}
 }

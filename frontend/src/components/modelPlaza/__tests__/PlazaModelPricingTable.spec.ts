@@ -8,7 +8,8 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key
+      t: (key: string) => key,
+      locale: { value: 'zh-CN' }
     })
   }
 })
@@ -61,6 +62,91 @@ describe('PlazaModelPricingTable', () => {
     expect(text).toContain('￥0.30')
     // 倍率列
     expect(text).toContain('1x')
+  })
+
+  it('展示当前峰谷时段和两个高峰窗口', () => {
+    const model = tokenModel({
+      name: 'deepseek-v4-flash',
+      pricing: {
+        ...tokenModel().pricing!,
+        input_price: 1.5e-6,
+        output_price: 4.5e-6,
+        time_resolution: {
+          pricing_at: '2026-08-17T00:30:00+08:00',
+          timezone: 'Asia/Shanghai',
+          period_label: 'off_peak',
+          multiplier: 0.5,
+        },
+        time_versions: [{
+          effective_from: '2026-08-17T00:00:00+08:00',
+          effective_until: null,
+          timezone: 'Asia/Shanghai',
+          default_multiplier: 0.5,
+          input_price: 3e-6,
+          output_price: 9e-6,
+          cache_write_price: null,
+          cache_read_price: 1e-7,
+          image_input_price: null,
+          image_output_price: null,
+          windows: [
+            { label: 'peak', weekdays: 127, start_minute: 540, end_minute: 720, multiplier: 1 },
+            { label: 'peak', weekdays: 127, start_minute: 840, end_minute: 1080, multiplier: 1 },
+          ],
+        }],
+      },
+    })
+    const wrapper = mountTable([model], 1)
+    expect(wrapper.text()).toContain('modelPlaza.table.timePricingOffPeak')
+    expect(wrapper.text()).toContain('09:00-12:00 / 14:00-18:00')
+    expect(wrapper.text()).toContain('￥1.50')
+    expect(wrapper.text()).toContain('￥4.50')
+  })
+
+  it('存在多个价卡版本时展示当前生效版本的窗口', () => {
+    const model = tokenModel({
+      name: 'deepseek-v4-flash',
+      pricing: {
+        ...tokenModel().pricing!,
+        time_resolution: {
+          pricing_at: '2026-08-17T15:00:00+08:00',
+          timezone: 'Asia/Shanghai',
+          period_label: 'peak',
+          multiplier: 1,
+        },
+        time_versions: [
+          {
+            effective_from: '2026-08-01T00:00:00+08:00',
+            effective_until: '2026-08-17T00:00:00+08:00',
+            timezone: 'Asia/Shanghai',
+            default_multiplier: 0.8,
+            input_price: 2e-6,
+            output_price: 6e-6,
+            cache_write_price: null,
+            cache_read_price: null,
+            image_input_price: null,
+            image_output_price: null,
+            windows: [{ label: 'old_peak', weekdays: 127, start_minute: 480, end_minute: 540, multiplier: 1 }],
+          },
+          {
+            effective_from: '2026-08-17T00:00:00+08:00',
+            effective_until: null,
+            timezone: 'Asia/Shanghai',
+            default_multiplier: 0.5,
+            input_price: 3e-6,
+            output_price: 9e-6,
+            cache_write_price: null,
+            cache_read_price: 1e-7,
+            image_input_price: null,
+            image_output_price: null,
+            windows: [{ label: 'peak', weekdays: 127, start_minute: 840, end_minute: 1080, multiplier: 1 }],
+          },
+        ],
+      },
+    })
+
+    const wrapper = mountTable([model], 1)
+    expect(wrapper.text()).toContain('14:00-18:00')
+    expect(wrapper.text()).not.toContain('08:00-09:00')
   })
 
   it('倍率 ≠ 1 时价格列为折后实付价,官方价列保持原价', () => {

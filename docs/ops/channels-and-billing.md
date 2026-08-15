@@ -33,6 +33,34 @@ Change group multiplier for margin. Do not mutate pricing rows for margin; those
 
 Upstream v0.1.176 added `groups.model_pricing` (per-model overrides) and `groups.long_context_pricing_enabled` (default true). Do not use group `model_pricing` for Sakrylle margin; keep channel rows as the baseline and apply `rate_multiplier`. Leave long-context pricing enabled unless a specific group must ignore official long-context tiers.
 
+### Versioned peak/off-peak channel pricing
+
+Migration `222_channel_time_pricing.sql` adds scheduled versions to a token price card:
+
+- `channel_model_pricing_versions` stores an effective range, IANA timezone, version base prices, and the multiplier used outside configured windows.
+- `channel_pricing_time_windows` stores weekday masks and local minute ranges. Windows are left-closed and right-open: `09:00-12:00` includes 09:00 and excludes 12:00.
+- Existing `channel_model_pricing` prices remain active whenever no version is effective, including before the first version and in any configured gap. This makes future price announcements safe to configure before their effective date.
+- The request start time selects the version and window. Long-running or asynchronously settled requests do not change price after crossing a boundary.
+- The resolved provider price is still multiplied by `groups.rate_multiplier`; the schedule does not replace the Sakrylle margin layer.
+
+Do not model an upstream peak/off-peak policy with the group-level `peak_rate_*` fields. Those fields are a separate Sakrylle surcharge and would multiply the scheduled channel price again if enabled.
+
+The admin UI is under Channel Management -> Channel Pricing -> Peak / Off-Peak Versions. Account-stats pricing rules and group model overrides intentionally do not expose this editor because their persistence tables do not own channel price-card versions.
+
+For the DeepSeek schedule announced for 2026-08-17 Beijing time, configure each affected DeepSeek channel price row as follows:
+
+| Field | Value |
+| --- | --- |
+| Effective from | `2026-08-17 00:00` |
+| Timezone | `Asia/Shanghai` |
+| Off-peak multiplier | `0.5` |
+| Peak window 1 | Every day, `09:00-12:00`, `1.0x` |
+| Peak window 2 | Every day, `14:00-18:00`, `1.0x` |
+| `deepseek-v4-flash` version prices | cache read `￥0.10`, input/cache miss `￥3.00`, output `￥9.00` per MTok |
+| `deepseek-v4-pro` version prices | cache read `￥0.30`, input/cache miss `￥9.00`, output `￥27.00` per MTok |
+
+The user Available Channels popover and Model Plaza receive both the current resolved price and the schedule. Frontends must display the backend resolution instead of independently deciding whether the current instant is peak.
+
 Account-level `model_mapping` lives in `accounts.credentials.model_mapping` (jsonb), not `accounts.extra`. Empty or absent mapping passes all models.
 
 ## codex-auto-review Two-Gate Rule
@@ -74,7 +102,7 @@ The image billing path bills the first candidate only. With `channel_mapped`, th
 
 3. `/v1/models` routes by `group.platform`; Deepseek groups must use `platform='anthropic'`. If set to `openai`, pricing lookup misses and the models list is empty while calls can still succeed.
 
-Deepseek pricing rows store upstream promotional rates. Refresh them when promotion ends.
+Deepseek pricing rows may use scheduled upstream rates. Add a future version when a promotion starts or ends instead of editing the active baseline at the boundary.
 
 ## GPT-Plus-Special
 
@@ -105,10 +133,12 @@ No free image risk: these groups use channel 9 with `restrict_models=true` and t
 - true image groups: 5, 11, 21 -> `image_only=true`
 - text groups such as 3/14 -> `image_only=false`
 
-New image-only groups must be manually set:
+Create or edit image-only groups in Admin -> Groups -> Image Generation Pricing and enable **Image-only group**. The switch is independent from **Allow image generation** and updates the group cache through the normal admin path.
+
+For emergency DB repair only:
 
 ```sql
 UPDATE groups SET image_only = true WHERE id = ...;
 ```
 
-Then restart `sub2api`.
+Direct SQL bypasses cache invalidation, so restart `sub2api` afterward.

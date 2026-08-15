@@ -17,6 +17,8 @@ The `primary-*` Tailwind palette is backed by CSS variables in `frontend/src/sty
 - `GET /v1/models?groups=all` lists all allowed groups with prefixed model IDs and `group{}` metadata.
 - Routing and billing rebind to the selected group's `rate_multiplier`, bounded by the token's `allowed_groups` snapshot.
 - Group override is OAuth-only and limited to non-subscription groups.
+- Channel token price cards support future-effective, timezone-aware peak/off-peak versions. Admin Channel Pricing owns the editor; Available Channels and Model Plaza show the current backend-resolved period and schedule.
+- Channel Management also exposes the Sakrylle-only `channels.features` product metadata and `features_config.image_input_ratio` display ratio. The latter is display-only and must match the account `async_image_synth.image_input_ratio` used for billing.
 
 Implementation references:
 
@@ -46,3 +48,27 @@ grep -rEn '￥\{[a-zA-Z_]' frontend/src
 ```
 
 `￥{identifier}` is likely mangled JS interpolation; real i18n should look like `￥{usd}` only when intentionally formatted.
+
+When adding Sakrylle-only configuration, update every explicit field boundary in the same change: admin request/response DTOs, form/API conversion, edit hydration, persistence, user-facing whitelist DTOs where relevant, and i18n. Several older custom fields reached the backend but were absent from edit forms because only one of these boundaries was updated.
+
+## Custom Configuration Frontend Coverage
+
+The fork-only configuration audit compares `upstream/main...HEAD` and the local non-merge commit history. All administrator-safe runtime fields found by that audit have a frontend owner:
+
+| Configuration | Frontend owner |
+| --- | --- |
+| Channel peak/off-peak price versions | Admin Channel Pricing; current period and schedule also appear in Available Channels and Model Plaza |
+| `channels.features`, `features_config.image_input_ratio` | Admin Channel create/edit |
+| `groups.image_only` | Admin Group create/edit; one-click duplicate preserves it |
+| `accounts.credentials.image_models`, `image_default_size` | OpenAI API Key account create/edit, **Image and video bridge** |
+| Async image task and `async_image_synth` fields | Same account panel, including the full size/quality token matrix |
+| Agnes video model/path/timing/host fields | Same account panel |
+| `qq_email_warning_enabled` | Admin Settings -> Features |
+
+The following fork configuration intentionally remains operational rather than browser-editable:
+
+- OAuth/OIDC client registrations, issuer identity, client secrets, and signing-key rotation. These define the security boundary and are managed by migrations, reconciliation tooling, and deployment settings.
+- Agiso delivery credentials (`app_secret`, `access_token`, seller identity, and API endpoint). These are service secrets loaded from deployment configuration.
+- Imported agent identity private keys and task/runtime IDs. Their dedicated import flow owns their lifecycle; the generic account editor must not expose private key material.
+
+If a new Sakrylle field is safe for an administrator to change at runtime, absence from the relevant create and edit forms is a regression. Document operational-only exceptions here with the reason.

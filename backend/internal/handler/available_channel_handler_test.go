@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -172,6 +173,36 @@ func TestToUserPricing_ImageInputRatioNilWhenNotSet(t *testing.T) {
 	dto := toUserPricingWithRatio(p, nil)
 	require.NotNil(t, dto)
 	require.Nil(t, dto.ImageInputRatio)
+}
+
+func TestToUserPricing_ResolvesCurrentTimeVersionAndExposesSchedule(t *testing.T) {
+	staticInput := 4.0
+	versionInput := 6.0
+	dto := toUserPricingWithRatio(&service.ChannelModelPricing{
+		BillingMode: service.BillingModeToken,
+		InputPrice:  &staticInput,
+		TimeVersions: []service.PricingTimeVersion{{
+			ID:                99,
+			EffectiveFrom:     time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+			Timezone:          "Asia/Shanghai",
+			DefaultMultiplier: 0.5,
+			InputPrice:        &versionInput,
+			Windows: []service.PricingTimeWindow{{
+				ID: 12, Label: "peak", Weekdays: 127, StartMinute: 540, EndMinute: 720, Multiplier: 1,
+			}},
+		}},
+	}, nil)
+
+	require.NotNil(t, dto)
+	require.NotNil(t, dto.InputPrice)
+	require.Contains(t, []float64{3, 6}, *dto.InputPrice)
+	require.NotNil(t, dto.TimeResolution)
+	require.Len(t, dto.TimeVersions, 1)
+	require.Len(t, dto.TimeVersions[0].Windows, 1)
+	raw, err := json.Marshal(dto.TimeVersions[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), `"id"`)
+	require.NotContains(t, string(raw), `"sort_order"`)
 }
 
 func TestBuildPlatformSections_ImageInputRatioStampedOnModels(t *testing.T) {

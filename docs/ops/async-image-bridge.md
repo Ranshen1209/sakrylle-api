@@ -23,6 +23,8 @@ No single hop stays open longer than 100 seconds.
 
 Config lives in `accounts.credentials`, not channel `features_config`, because the account is threaded into `ForwardImages`.
 
+Admin -> Accounts exposes these values under **Image and video bridge** for OpenAI API Key accounts in both create and edit flows. Use the form for routine changes; it writes the top-level feature flags and timing values in the string form consumed by `GetCredential`, validates URL/host boundaries, and keeps the synth table structured. Disabling a bridge removes that bridge's account credential keys.
+
 ```jsonc
 "async_enabled": "true",
 "async_base_url": "https://cdn.12ai.org",

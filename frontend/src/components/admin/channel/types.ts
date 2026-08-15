@@ -1,4 +1,8 @@
-import type { BillingMode, PricingInterval } from '@/api/admin/channels'
+import type {
+  BillingMode,
+  PricingInterval,
+  PricingTimeVersion,
+} from '@/api/admin/channels'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
@@ -25,9 +29,34 @@ export interface PricingFormEntry {
   image_output_price: number | string | null
   per_request_price: number | string | null
   intervals: IntervalFormEntry[]
+  time_versions: PricingTimeVersionFormEntry[]
 }
 
-// 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)
+export interface PricingTimeWindowFormEntry {
+  label: string
+  weekdays: number
+  start_minute: number
+  end_minute: number
+  multiplier: number | string
+  sort_order: number
+}
+
+export interface PricingTimeVersionFormEntry {
+  effective_from: string
+  effective_until: string | null
+  timezone: string
+  default_multiplier: number | string
+  input_price: number | string | null
+  output_price: number | string | null
+  cache_write_price: number | string | null
+  cache_read_price: number | string | null
+  image_input_price: number | string | null
+  image_output_price: number | string | null
+  sort_order: number
+  windows: PricingTimeWindowFormEntry[]
+}
+
+// 价格转换：后端存 per-token，前端显示 per-MTok (￥/1M tokens)
 const MTOK = 1_000_000
 
 export function toNullableNumber(val: number | string | null | undefined): number | null {
@@ -75,6 +104,147 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     per_request_price: toNullableNumber(iv.per_request_price),
     sort_order: iv.sort_order
   }))
+}
+
+export function apiTimeVersionsToForm(versions: PricingTimeVersion[]): PricingTimeVersionFormEntry[] {
+  return (versions || []).map(version => ({
+    effective_from: toZonedDatetimeLocal(version.effective_from, version.timezone),
+    effective_until: version.effective_until ? toZonedDatetimeLocal(version.effective_until, version.timezone) : null,
+    timezone: version.timezone || 'Asia/Shanghai',
+    default_multiplier: version.default_multiplier,
+    input_price: perTokenToMTok(version.input_price),
+    output_price: perTokenToMTok(version.output_price),
+    cache_write_price: perTokenToMTok(version.cache_write_price),
+    cache_read_price: perTokenToMTok(version.cache_read_price),
+    image_input_price: perTokenToMTok(version.image_input_price),
+    image_output_price: perTokenToMTok(version.image_output_price),
+    sort_order: version.sort_order,
+    windows: (version.windows || []).map(window => ({ ...window })),
+  }))
+}
+
+export function formTimeVersionsToAPI(versions: PricingTimeVersionFormEntry[]): PricingTimeVersion[] {
+  return (versions || []).map(version => ({
+    effective_from: zonedDatetimeLocalToISO(version.effective_from, version.timezone),
+    effective_until: version.effective_until ? zonedDatetimeLocalToISO(version.effective_until, version.timezone) : null,
+    timezone: version.timezone.trim(),
+    default_multiplier: Number(version.default_multiplier),
+    input_price: mTokToPerToken(version.input_price),
+    output_price: mTokToPerToken(version.output_price),
+    cache_write_price: mTokToPerToken(version.cache_write_price),
+    cache_read_price: mTokToPerToken(version.cache_read_price),
+    image_input_price: mTokToPerToken(version.image_input_price),
+    image_output_price: mTokToPerToken(version.image_output_price),
+    sort_order: version.sort_order,
+    windows: (version.windows || []).map(window => ({
+      ...window,
+      multiplier: Number(window.multiplier),
+    })),
+  }))
+}
+
+export function toZonedDatetimeLocal(value: string, timezone: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const parts = zonedDateParts(date, timezone)
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
+}
+
+export function zonedDatetimeLocalToISO(value: string, timezone: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value)
+  if (!match) throw new RangeError('invalid datetime-local value')
+  const desiredWallTime = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]))
+  let instant = desiredWallTime
+  // Two passes handle offsets that differ around daylight-saving transitions.
+  for (let pass = 0; pass < 2; pass++) {
+    const parts = zonedDateParts(new Date(instant), timezone)
+    const representedWallTime = Date.UTC(
+      Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute),
+    )
+    instant += desiredWallTime - representedWallTime
+  }
+  return new Date(instant).toISOString()
+}
+
+function zonedDateParts(date: Date, timezone: string): Record<'year' | 'month' | 'day' | 'hour' | 'minute', string> {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  })
+  const result = {} as Record<'year' | 'month' | 'day' | 'hour' | 'minute', string>
+  for (const part of formatter.formatToParts(date)) {
+    if (part.type === 'year' || part.type === 'month' || part.type === 'day' || part.type === 'hour' || part.type === 'minute') {
+      result[part.type] = part.value
+    }
+  }
+  return result
+}
+
+function timeVersionEpoch(version: PricingTimeVersionFormEntry, field: 'effective_from' | 'effective_until'): number | null {
+  const value = version[field]
+  if (!value) return null
+  try {
+    return Date.parse(zonedDatetimeLocalToISO(value, version.timezone))
+  } catch {
+    return Number.NaN
+  }
+}
+
+export function validateTimeVersions(
+  versions: PricingTimeVersionFormEntry[],
+  hasIntervals: boolean,
+  t: TranslateFn,
+): string | null {
+  if (!versions || versions.length === 0) return null
+  if (hasIntervals) return t('admin.channels.timePricingValidation.intervalsConflict')
+
+  for (let i = 0; i < versions.length; i++) {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: versions[i].timezone }).format()
+    } catch {
+      return t('admin.channels.timePricingValidation.timezone', { index: i + 1 })
+    }
+  }
+
+  const sorted = [...versions].sort((a, b) => (timeVersionEpoch(a, 'effective_from') ?? 0) - (timeVersionEpoch(b, 'effective_from') ?? 0))
+  for (let i = 0; i < sorted.length; i++) {
+    const version = sorted[i]
+    const from = timeVersionEpoch(version, 'effective_from')
+    const until = timeVersionEpoch(version, 'effective_until')
+    if (!version.effective_from || from == null || Number.isNaN(from)) {
+      return t('admin.channels.timePricingValidation.effectiveFrom', { index: i + 1 })
+    }
+    if (version.default_multiplier === '' || !Number.isFinite(Number(version.default_multiplier)) || Number(version.default_multiplier) < 0) {
+      return t('admin.channels.timePricingValidation.multiplier', { index: i + 1 })
+    }
+    if (until != null && (Number.isNaN(until) || until <= from)) {
+      return t('admin.channels.timePricingValidation.effectiveUntil', { index: i + 1 })
+    }
+    if (i > 0) {
+      const previousUntil = timeVersionEpoch(sorted[i - 1], 'effective_until')
+      if (previousUntil == null || previousUntil > from) {
+        return t('admin.channels.timePricingValidation.versionOverlap')
+      }
+    }
+    for (let w = 0; w < version.windows.length; w++) {
+      const window = version.windows[w]
+      if (window.weekdays < 1 || window.start_minute < 0 || window.end_minute > 1440 || window.start_minute >= window.end_minute) {
+        return t('admin.channels.timePricingValidation.windowRange', { index: i + 1, window: w + 1 })
+      }
+      if (window.multiplier === '' || !Number.isFinite(Number(window.multiplier)) || Number(window.multiplier) < 0) {
+        return t('admin.channels.timePricingValidation.windowMultiplier', { index: i + 1, window: w + 1 })
+      }
+      for (let previous = 0; previous < w; previous++) {
+        const other = version.windows[previous]
+        if ((window.weekdays & other.weekdays) !== 0 && window.start_minute < other.end_minute && other.start_minute < window.end_minute) {
+          return t('admin.channels.timePricingValidation.windowOverlap', { index: i + 1 })
+        }
+      }
+    }
+  }
+  return null
 }
 
 // ── 模型模式冲突检测 ──────────────────────────────────────

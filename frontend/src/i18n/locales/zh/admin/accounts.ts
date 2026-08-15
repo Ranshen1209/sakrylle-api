@@ -582,6 +582,48 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      mediaBridge: {
+        title: '图片与视频桥接',
+        description: 'OpenAI API Key 账号的模型路由、异步图片任务与视频转发配置',
+        imageRouting: '图片模型路由',
+        imageModels: '图片模型白名单',
+        imageDefaultSize: '默认图片尺寸',
+        commaSeparatedHint: '多个值使用英文逗号分隔。',
+        asyncImage: '异步图片任务桥接',
+        asyncImageHint: '将图片请求提交为异步任务，并按尺寸、质量和参考图合成计费 token。',
+        asyncBaseUrl: '异步任务 Base URL',
+        allowedImageHost: '允许的图片下载域名后缀',
+        pollIntervalMs: '轮询间隔（毫秒）',
+        maxWaitMs: '最长等待（毫秒）',
+        outputTokenTable: '输出 token 校准表',
+        outputTokenTableHint: '每张图片的合成输出 token；缺失或为 0 会导致计费失败并拒绝交付。',
+        imageInputRatio: '参考图输入倍率',
+        size: '尺寸',
+        refImageTokens: '参考图 token',
+        quality: {
+          low: '低质量',
+          medium: '中质量',
+          high: '高质量'
+        },
+        video: '视频任务转发',
+        videoHint: '为声明的视频模型启用提交与状态查询，并按时长合成计费。',
+        videoModels: '视频模型白名单',
+        videoSubmitPath: '提交路径',
+        videoPollPath: '状态查询路径',
+        videoDefaultSeconds: '默认计费时长（秒）',
+        allowedVideoHosts: '允许的视频输出域名后缀',
+        errors: {
+          asyncBaseUrlRequired: '请输入异步任务 Base URL',
+          asyncBaseUrlInvalid: '异步任务 Base URL 必须是有效的 HTTP(S) 地址',
+          asyncHostSuffixRequired: '请输入允许的图片下载域名后缀',
+          asyncTimingInvalid: '异步图片轮询间隔与最长等待必须是正整数',
+          asyncTokenTableInvalid: '异步图片 token 表、参考图 token 与输入倍率必须大于 0',
+          videoModelsRequired: '请输入至少一个视频模型',
+          videoPathsInvalid: '视频提交和查询路径必须以 / 开头',
+          videoHostSuffixRequired: '请输入至少一个允许的视频输出域名后缀',
+          videoTimingInvalid: '视频轮询、最长等待与默认计费时长必须大于 0'
+        }
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',

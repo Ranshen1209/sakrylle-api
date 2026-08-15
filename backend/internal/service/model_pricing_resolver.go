@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 )
 
 // PricingSource 定价来源标识
@@ -37,6 +38,9 @@ type ResolvedPricing struct {
 	// 是否支持缓存细分
 	SupportsCacheBreakdown bool
 
+	// 渠道峰谷定价命中信息；nil 表示使用静态价格。
+	TimeResolution *PricingTimeResolution
+
 	// 渠道定价原始配置（用于区间模式下获取 ImageOutputPrice）
 	channelPricing *ChannelModelPricing
 
@@ -60,9 +64,10 @@ func NewModelPricingResolver(channelService *ChannelService, billingService *Bil
 
 // PricingInput 定价解析输入
 type PricingInput struct {
-	Model   string
-	GroupID *int64 // nil 表示不检查渠道
-	Group   *Group
+	Model     string
+	GroupID   *int64 // nil 表示不检查渠道
+	Group     *Group
+	PricingAt time.Time // 零值表示以解析时刻计价
 }
 
 // Resolve 解析模型定价。
@@ -84,9 +89,21 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	}
 
 	var chPricing *ChannelModelPricing
+	var timeResolution *PricingTimeResolution
 	if input.GroupID != nil && r.channelService != nil {
 		chPricing = r.channelService.GetChannelModelPricing(ctx, *input.GroupID, input.Model)
 		if chPricing != nil {
+			pricingAt := input.PricingAt
+			if pricingAt.IsZero() {
+				pricingAt = pricingAtFromContext(ctx)
+			}
+			if pricingAt.IsZero() {
+				pricingAt = time.Now()
+			}
+			resolvedCard, resolution := chPricing.ResolveAt(pricingAt)
+			chPricing = &resolvedCard
+			timeResolution = resolution
+
 			mode := chPricing.BillingMode
 			if mode == "" {
 				mode = BillingModeToken
@@ -95,6 +112,7 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 				resolved := &ResolvedPricing{
 					Mode:           mode,
 					Source:         PricingSourceChannel,
+					TimeResolution: timeResolution,
 					channelPricing: chPricing,
 				}
 				resolved.longContextPricingEnabled = longContextPricingEnabled
@@ -118,6 +136,7 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	// 2. 如果有 GroupID，尝试渠道覆盖
 	if chPricing != nil {
 		resolved.Source = PricingSourceChannel
+		resolved.TimeResolution = timeResolution
 		resolved.channelPricing = chPricing
 		r.applyTokenOverrides(chPricing, resolved)
 		if !longContextPricingEnabled {

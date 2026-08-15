@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -264,6 +265,46 @@ func TestResolve_WithChannelOverride_TokenFlat(t *testing.T) {
 	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
 	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
+}
+
+func TestResolve_WithChannelTimePricingAndGroupMultiplier(t *testing.T) {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(2e-6),
+		TimeVersions: []PricingTimeVersion{{
+			EffectiveFrom:     time.Date(2026, 8, 17, 0, 0, 0, 0, location),
+			Timezone:          "Asia/Shanghai",
+			DefaultMultiplier: 0.5,
+			InputPrice:        testPtrFloat64(3e-6),
+			Windows: []PricingTimeWindow{{
+				Label: "peak", Weekdays: 127, StartMinute: 540, EndMinute: 720, Multiplier: 1,
+			}},
+		}},
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:     "claude-sonnet-4",
+		GroupID:   groupIDPtr(),
+		PricingAt: time.Date(2026, 8, 17, 8, 59, 0, 0, location),
+	})
+	require.NotNil(t, resolved.TimeResolution)
+	require.Equal(t, "off_peak", resolved.TimeResolution.PeriodLabel)
+	require.InDelta(t, 1.5e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+
+	cost, err := r.billingService.CalculateCostUnified(CostInput{
+		Model:          "claude-sonnet-4",
+		Tokens:         UsageTokens{InputTokens: 1_000_000},
+		RateMultiplier: 1.2,
+		Resolver:       r,
+		Resolved:       resolved,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 1.5, cost.TotalCost, 1e-9)
+	require.InDelta(t, 1.8, cost.ActualCost, 1e-9)
 }
 
 func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {

@@ -1111,6 +1111,11 @@
         </div>
       </div>
 
+      <MediaBridgeSettings
+        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
+        v-model="mediaBridgeForm"
+      />
+
       <div
         v-if="account.platform === 'antigravity' && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -2739,6 +2744,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import MediaBridgeSettings from '@/components/account/MediaBridgeSettings.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -2754,6 +2760,12 @@ import {
   HEADER_OVERRIDES_CREDENTIAL_KEY,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
+import {
+  applyMediaBridgeCredentials,
+  createMediaBridgeForm,
+  readMediaBridgeCredentials,
+  validateMediaBridgeForm
+} from '@/components/account/mediaBridgeCredentials'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
@@ -2975,6 +2987,7 @@ const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const mediaBridgeForm = ref(createMediaBridgeForm())
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -3401,6 +3414,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
+  mediaBridgeForm.value =
+    newAccount.platform === 'openai' && newAccount.type === 'apikey'
+      ? readMediaBridgeCredentials(credentials)
+      : createMediaBridgeForm()
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
@@ -4323,6 +4340,12 @@ const handleSubmit = async () => {
         newCredentials.model_mapping = currentCredentials.model_mapping
       }
       if (props.account.platform === 'openai') {
+        const mediaBridgeError = validateMediaBridgeForm(mediaBridgeForm.value)
+        if (mediaBridgeError) {
+          appStore.showError(t(`admin.accounts.mediaBridge.errors.${mediaBridgeError}`))
+          return
+        }
+        applyMediaBridgeCredentials(newCredentials, mediaBridgeForm.value)
         applyOpenAIEndpointCapabilities(newCredentials)
         const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
         if (compactModelMapping) {

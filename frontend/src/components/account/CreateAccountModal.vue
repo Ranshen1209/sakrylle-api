@@ -2721,6 +2721,11 @@
         </div>
       </div>
 
+      <MediaBridgeSettings
+        v-if="form.platform === 'openai' && accountCategory === 'apikey'"
+        v-model="mediaBridgeForm"
+      />
+
       <div>
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
@@ -3610,6 +3615,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import MediaBridgeSettings from '@/components/account/MediaBridgeSettings.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3618,6 +3624,11 @@ import {
   validateHeaderOverrideRows,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
+import {
+  applyMediaBridgeCredentials,
+  createMediaBridgeForm,
+  validateMediaBridgeForm
+} from '@/components/account/mediaBridgeCredentials'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
@@ -3850,6 +3861,7 @@ const openAILongContextBillingTouched = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const mediaBridgeForm = ref(createMediaBridgeForm())
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -4737,6 +4749,7 @@ const resetForm = () => {
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  mediaBridgeForm.value = createMediaBridgeForm()
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
@@ -5164,6 +5177,12 @@ const handleSubmit = async () => {
     }
   }
   if (form.platform === 'openai') {
+    const mediaBridgeError = validateMediaBridgeForm(mediaBridgeForm.value)
+    if (mediaBridgeError) {
+      appStore.showError(t(`admin.accounts.mediaBridge.errors.${mediaBridgeError}`))
+      return
+    }
+    applyMediaBridgeCredentials(credentials, mediaBridgeForm.value)
     applyOpenAIEndpointCapabilities(credentials)
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {

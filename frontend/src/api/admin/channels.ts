@@ -21,6 +21,32 @@ export interface PricingInterval {
   sort_order: number
 }
 
+export interface PricingTimeWindow {
+  id?: number
+  label: string
+  weekdays: number
+  start_minute: number
+  end_minute: number
+  multiplier: number
+  sort_order: number
+}
+
+export interface PricingTimeVersion {
+  id?: number
+  effective_from: string
+  effective_until: string | null
+  timezone: string
+  default_multiplier: number
+  input_price: number | null
+  output_price: number | null
+  cache_write_price: number | null
+  cache_read_price: number | null
+  image_input_price: number | null
+  image_output_price: number | null
+  sort_order: number
+  windows: PricingTimeWindow[]
+}
+
 export interface ChannelModelPricing {
   id?: number
   platform: string
@@ -34,6 +60,7 @@ export interface ChannelModelPricing {
   image_output_price: number | null
   per_request_price: number | null
   intervals: PricingInterval[]
+  time_versions?: PricingTimeVersion[]
 }
 
 export interface AccountStatsPricingRule {
@@ -51,6 +78,7 @@ export interface Channel {
   status: ChannelStatus
   billing_model_source: BillingModelSource
   restrict_models: boolean
+  features?: string
   features_config?: Record<string, unknown>
   group_ids: number[]
   model_pricing: ChannelModelPricing[]
@@ -69,6 +97,7 @@ export interface CreateChannelRequest {
   model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
+  features?: string
   features_config?: Record<string, unknown>
   apply_pricing_to_account_stats?: boolean
   account_stats_pricing_rules?: AccountStatsPricingRule[]
@@ -83,6 +112,7 @@ export interface UpdateChannelRequest {
   model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
+  features?: string
   features_config?: Record<string, unknown>
   apply_pricing_to_account_stats?: boolean
   account_stats_pricing_rules?: AccountStatsPricingRule[]

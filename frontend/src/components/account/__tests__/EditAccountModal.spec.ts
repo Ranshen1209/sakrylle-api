@@ -808,6 +808,54 @@ describe('EditAccountModal', () => {
     ])
   })
 
+  it('hydrates and resubmits async image bridge credentials', async () => {
+    const account = buildAccount()
+    account.credentials = {
+      base_url: 'https://api.openai.com',
+      image_models: 'gpt-image-2-async',
+      async_enabled: 'true',
+      async_base_url: 'https://cdn.12ai.org',
+      async_image_host_suffix: '12ai.org',
+      poll_interval_ms: '2000',
+      max_wait_ms: '180000',
+      async_image_synth: {
+        output_token_table: {
+          '1K': { low: 196, medium: 1756, high: 7023 },
+          '2K': { low: 397, medium: 3571, high: 14281 },
+          '4K': { low: 367, medium: 3299, high: 13195 }
+        },
+        ref_image_tokens: { '1K': 1024, '2K': 1521, '4K': 1508 },
+        image_input_ratio: 1.75
+      }
+    }
+    account.credentials_status = { has_api_key: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="media-bridge-image-models"]').element).toHaveProperty(
+      'value',
+      'gpt-image-2-async'
+    )
+    expect(wrapper.get('[data-testid="media-bridge-async-enabled"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-testid="media-bridge-image-input-ratio"]').element).toHaveProperty(
+      'value',
+      '1.75'
+    )
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = updateAccountMock.mock.calls[0]?.[1]?.credentials
+    expect(credentials).toMatchObject({
+      async_enabled: 'true',
+      async_base_url: 'https://cdn.12ai.org',
+      async_image_host_suffix: '12ai.org',
+      poll_interval_ms: '2000',
+      max_wait_ms: '180000'
+    })
+    expect(credentials.async_image_synth.image_input_ratio).toBe(1.75)
+  })
+
 	it('submits OpenAI quota auto-pause thresholds in extra', async () => {
 	  const account = buildAccount()
 	  account.extra = {

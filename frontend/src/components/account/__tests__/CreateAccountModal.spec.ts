@@ -167,6 +167,34 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
+  it('submits async image bridge credentials from the OpenAI API Key form', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+
+    expect(wrapper.find('[data-testid="media-bridge-settings"]').exists()).toBe(true)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Async image account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="media-bridge-image-models"]').setValue('gpt-image-2-async')
+    await wrapper.get('[data-testid="media-bridge-async-enabled"]').trigger('click')
+    await wrapper.get('[data-testid="media-bridge-async-base-url"]').setValue('https://cdn.12ai.org/')
+    await wrapper.get('[data-testid="media-bridge-async-host-suffix"]').setValue('12ai.org')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    const credentials = createAccountMock.mock.calls[0]?.[0]?.credentials
+    expect(credentials).toMatchObject({
+      image_models: 'gpt-image-2-async',
+      async_enabled: 'true',
+      async_base_url: 'https://cdn.12ai.org',
+      async_image_host_suffix: '12ai.org',
+      poll_interval_ms: '3000',
+      max_wait_ms: '240000'
+    })
+    expect(credentials.async_image_synth.image_input_ratio).toBe(1.6)
+  })
+
   // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平
   it('shows the Codex namespace flatten toggle only for OpenAI OAuth accounts', async () => {
     const wrapper = mountModal()

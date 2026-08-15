@@ -646,6 +646,9 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validatePricingIntervals(pricing); err != nil {
 		return err
 	}
+	if err := validatePricingTimeRules(pricing); err != nil {
+		return err
+	}
 	return validatePricingBillingMode(pricing)
 }
 
@@ -756,6 +759,9 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		return nil, err
 	}
 	for i, rule := range channel.AccountStatsPricingRules {
+		if hasTimePricing(rule.Pricing) {
+			return nil, infraerrors.BadRequest("ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED", fmt.Sprintf("account stats pricing rule #%d cannot use time pricing", i+1))
+		}
 		if err := validatePricingEntries(rule.Pricing); err != nil {
 			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
 		}
@@ -800,6 +806,9 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 		return nil, err
 	}
 	for i, rule := range channel.AccountStatsPricingRules {
+		if hasTimePricing(rule.Pricing) {
+			return nil, infraerrors.BadRequest("ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED", fmt.Sprintf("account stats pricing rule #%d cannot use time pricing", i+1))
+		}
 		if err := validatePricingEntries(rule.Pricing); err != nil {
 			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
 		}
@@ -820,6 +829,15 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	}
 	updated.normalizeBillingModelSource()
 	return updated, nil
+}
+
+func hasTimePricing(pricing []ChannelModelPricing) bool {
+	for i := range pricing {
+		if len(pricing[i].TimeVersions) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // applyUpdateInput 将更新请求的字段应用到渠道实体上。
@@ -1030,6 +1048,33 @@ func validatePricingIntervals(pricingList []ChannelModelPricing) error {
 				fmt.Sprintf("invalid pricing intervals for platform '%s' models %v: %v",
 					pricing.Platform, pricing.Models, err),
 			)
+		}
+	}
+	return nil
+}
+
+func validatePricingTimeRules(pricingList []ChannelModelPricing) error {
+	for _, pricing := range pricingList {
+		if err := ValidatePricingTimeVersions(pricing.TimeVersions, pricing.BillingMode, len(pricing.Intervals) > 0); err != nil {
+			return infraerrors.BadRequest(
+				"INVALID_TIME_PRICING",
+				fmt.Sprintf("invalid time pricing for platform '%s' models %v: %v", pricing.Platform, pricing.Models, err),
+			)
+		}
+		for versionIndex, version := range pricing.TimeVersions {
+			checks := []struct {
+				name  string
+				price *float64
+			}{
+				{"input_price", version.InputPrice}, {"output_price", version.OutputPrice},
+				{"cache_write_price", version.CacheWritePrice}, {"cache_read_price", version.CacheReadPrice},
+				{"image_input_price", version.ImageInputPrice}, {"image_output_price", version.ImageOutputPrice},
+			}
+			for _, check := range checks {
+				if check.price != nil && *check.price < 0 {
+					return infraerrors.BadRequest("INVALID_TIME_PRICING", fmt.Sprintf("time version %d: %s must be >= 0", versionIndex+1, check.name))
+				}
+			}
 		}
 	}
 	return nil

@@ -1027,6 +1027,7 @@ type CostInput struct {
 	Model                     string
 	GroupID                   *int64 // 用于渠道定价查找
 	Group                     *Group
+	PricingAt                 time.Time // 请求开始时冻结的定价时刻
 	Tokens                    UsageTokens
 	RequestCount              int     // 按次计费时使用
 	UsageUnits                float64 // 音频等连续计量单位（分钟/小时/百万字符）
@@ -1061,9 +1062,10 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 	resolved := input.Resolved
 	if resolved == nil {
 		resolved = input.Resolver.Resolve(input.Ctx, PricingInput{
-			Model:   input.Model,
-			GroupID: input.GroupID,
-			Group:   input.Group,
+			Model:     input.Model,
+			GroupID:   input.GroupID,
+			Group:     input.Group,
+			PricingAt: input.PricingAt,
 		})
 	}
 

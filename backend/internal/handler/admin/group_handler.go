@@ -110,6 +110,7 @@ type CreateGroupRequest struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool                          `json:"allow_image_generation"`
 	AllowBatchImageGeneration       bool                          `json:"allow_batch_image_generation"`
+	ImageOnly                       bool                          `json:"image_only"`
 	ImageRateIndependent            bool                          `json:"image_rate_independent"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
@@ -179,6 +180,7 @@ type UpdateGroupRequest struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool                         `json:"allow_image_generation"`
 	AllowBatchImageGeneration       *bool                         `json:"allow_batch_image_generation"`
+	ImageOnly                       *bool                         `json:"image_only"`
 	ImageRateIndependent            *bool                         `json:"image_rate_independent"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
@@ -516,6 +518,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ModelPricing:                    req.ModelPricing,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
+		ImageOnly:                       req.ImageOnly,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
@@ -645,6 +648,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ModelPricing:                    req.ModelPricing,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
+		ImageOnly:                       req.ImageOnly,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,

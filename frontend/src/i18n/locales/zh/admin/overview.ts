@@ -971,6 +971,8 @@ export default {
         title: '图片生成计费',
         description: '配置图片生成能力和图片基础单价，留空则使用默认价格',
         allowImageGeneration: '允许当前分组生图',
+        imageOnly: '图片专用分组',
+        imageOnlyHint: '仅供图片 API 使用，并用于 OAuth/OIDC scope 分流；不要把普通 Codex 文本分组设为图片专用。',
         allowBatchImageGeneration: '允许当前分组批量生图',
         independentMultiplier: '生图倍率独立',
         imageMultiplier: '生图独立倍率',

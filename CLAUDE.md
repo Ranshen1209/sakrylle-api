@@ -9,10 +9,10 @@ Do not load every referenced document by default. Open the smallest relevant fil
 | When the task touches... | Read |
 | --- | --- |
 | production topology, deploy commands, compose, domains, companion services, SSH, common ops | `docs/ops/infrastructure.md` |
-| Sakrylle fork behavior, visual theme, model-list fallback, currency display | `docs/ops/customizations.md` |
+| Sakrylle fork behavior, visual theme, model-list fallback, currency display, custom configuration frontend coverage | `docs/ops/customizations.md` |
 | SMTP, OAuth/OIDC, clients, scopes, Sakrylle Web SSO, notification email templates | `docs/ops/identity-email.md` |
-| groups, channels, pricing, billing source, model mappings, Codex 403, Deepseek, GPT-Plus-Special | `docs/ops/channels-and-billing.md` |
-| group 21, channel 13, `gpt-image-2-async`, 12ai async image billing | `docs/ops/async-image-bridge.md` |
+| groups, channels, pricing, peak/off-peak schedules, billing source, model mappings, Codex 403, Deepseek, GPT-Plus-Special | `docs/ops/channels-and-billing.md` |
+| group 21, channel 13, `gpt-image-2-async`, 12ai async image billing, account Media Bridge credentials | `docs/ops/async-image-bridge.md` |
 | admin password rotation, Cloudflare DNS, DNS-01 certificates, `sub.sakrylle.com` China-access history | `docs/ops/admin-dns.md` |
 | upstream sync, merges, Wire regeneration, recurring merge conflicts, pricing drift, test stubs | `docs/ops/upstream-sync.md` |
 | local setup, build/test commands, pnpm, Ent, Wire, dev pitfalls | `docs/development.md` |
@@ -39,7 +39,10 @@ Quick commands (full list in `docs/development.md`): `make build`, `make test-ba
 - Do not reintroduce default model-list fallback in `/v1/models`.
 - Currency is display-only `￥`; do not convert stored numeric values.
 - Treat `channel_model_pricing` as upstream baseline pricing; apply margin with `groups.rate_multiplier`.
+- Resolve channel peak/off-peak versions in the backend using the request start time. Do not duplicate the decision in the frontend or model an upstream schedule with group `peak_rate_*` fields.
 - Keep OpenAI text/coding groups compatible with Codex tool declarations; see channel docs before changing `allow_image_generation`.
+- Every new backend feature must ship with its corresponding frontend in the same change. A backend-only implementation is incomplete: add the relevant create/edit/display surfaces, API and type wiring, validation, i18n, and frontend tests. The only exception is when the user explicitly requests a backend-only change; document that exception and the missing frontend follow-up.
+- For Sakrylle-only configuration fields, update every explicit boundary: admin DTOs, form/API conversion, edit hydration, persistence, user-facing whitelist DTOs where relevant, i18n, and tests. Operational-only exceptions must be documented in `docs/ops/customizations.md`.
 - If Wire providers change, regenerate committed `wire_gen.go` and verify OIDC key rotation is still consumed by cleanup.
 
 For "what changed", use `git log` / `git diff upstream/main`. For operational "why", update the matching doc under `docs/ops/`.

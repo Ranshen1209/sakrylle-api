@@ -44,6 +44,14 @@
         >
           {{ billingModeLabel }}
         </span>
+        <span
+          v-if="entry.time_versions?.length"
+          class="inline-flex flex-shrink-0 items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+          :title="t('admin.channels.form.timePricing')"
+        >
+          <Icon name="clock" size="xs" />
+          {{ entry.time_versions.length }}
+        </span>
       </div>
 
       <!-- Expanded: show the label "Pricing Entry" or similar -->
@@ -87,7 +95,7 @@
             </label>
             <Select
               :modelValue="entry.billing_mode"
-              @update:modelValue="emit('update', { ...entry, billing_mode: $event as BillingMode, intervals: [] })"
+              @update:modelValue="emit('update', { ...entry, billing_mode: $event as BillingMode, intervals: [], time_versions: [] })"
               :options="billingModeOptions"
               class="mt-1"
             />
@@ -133,6 +141,12 @@
                 type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder')" />
             </div>
           </div>
+
+          <TimePricingEditor
+            v-if="!hideTimePricing"
+            :versions="entry.time_versions || []"
+            @update="emit('update', { ...entry, time_versions: $event })"
+          />
 
           <!-- Token intervals (channel-only; group long-context uses official presets) -->
           <div v-if="!hideTokenIntervals" class="mt-3">
@@ -238,6 +252,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
+import TimePricingEditor from './TimePricingEditor.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
 import { perTokenToMTok, getPlatformTagClass } from './types'
 import type { BillingMode } from '@/api/admin/channels'
@@ -249,8 +264,10 @@ const props = withDefaults(defineProps<{
   entry: PricingFormEntry
   platform?: string
   hideTokenIntervals?: boolean
+  hideTimePricing?: boolean
 }>(), {
   hideTokenIntervals: false,
+  hideTimePricing: false,
 })
 
 const emit = defineEmits<{

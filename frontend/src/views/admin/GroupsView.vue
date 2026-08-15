@@ -874,7 +874,7 @@
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
             {{ t(imagePricingI18nKey(createForm.platform, "description")) }}
           </p>
-          <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
                 v-model="createForm.allow_image_generation"
@@ -882,6 +882,19 @@
                 class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               {{ t(imagePricingI18nKey(createForm.platform, "allowImageGeneration")) }}
+            </label>
+            <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="createForm.image_only"
+                type="checkbox"
+                class="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>
+                <span class="block">{{ t("admin.groups.imagePricing.imageOnly") }}</span>
+                <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.groups.imagePricing.imageOnlyHint") }}
+                </span>
+              </span>
             </label>
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
@@ -1146,7 +1159,7 @@
 
         <!-- 高峰时段倍率配置（仅订阅类型分组） -->
         <div v-if="createForm.subscription_type === 'subscription'" class="border-t pt-4">
-          <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
                 v-model="createForm.peak_rate_enabled"
@@ -1499,7 +1512,7 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals hide-time-pricing @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
 
@@ -2609,6 +2622,19 @@
               />
               {{ t(imagePricingI18nKey(editForm.platform, "allowImageGeneration")) }}
             </label>
+            <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                v-model="editForm.image_only"
+                type="checkbox"
+                class="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>
+                <span class="block">{{ t("admin.groups.imagePricing.imageOnly") }}</span>
+                <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.groups.imagePricing.imageOnlyHint") }}
+                </span>
+              </span>
+            </label>
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input
                 v-model="editForm.image_rate_independent"
@@ -3221,7 +3247,7 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals hide-time-pricing @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
 
@@ -4489,6 +4515,7 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   image_output_price: null,
   per_request_price: null,
   intervals: [],
+  time_versions: [],
 });
 
 const addGroupPricing = (entries: PricingFormEntry[]) =>
@@ -4508,6 +4535,7 @@ const groupPricingFromAPI = (
     image_output_price: perTokenToMTok(entry.image_output_price),
     per_request_price: entry.per_request_price,
     intervals: apiIntervalsToForm(entry.intervals || []),
+    time_versions: [],
   }));
 
 const groupPricingToAPI = (
@@ -4531,6 +4559,7 @@ const groupPricingToAPI = (
         entry.billing_mode === "token"
           ? []
           : formIntervalsToAPI(entry.intervals || []),
+      time_versions: [],
     }));
 
 const { t } = useI18n();
@@ -5021,6 +5050,7 @@ const createForm = reactive({
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
+  image_only: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
@@ -5382,6 +5412,7 @@ const editForm = reactive({
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
+  image_only: false,
   image_rate_independent: false,
   image_rate_multiplier: 1,
   batch_image_discount_multiplier: 0.5,
@@ -5838,6 +5869,7 @@ const closeCreateModal = () => {
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
   createForm.allow_batch_image_generation = false;
+  createForm.image_only = false;
   createForm.image_rate_independent = false;
   createForm.image_rate_multiplier = 1;
   createForm.batch_image_discount_multiplier = 0.5;
@@ -6084,6 +6116,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
+  editForm.image_only = group.image_only ?? false;
   editForm.image_rate_independent = group.image_rate_independent ?? false;
   editForm.image_rate_multiplier = group.image_rate_multiplier ?? 1;
   editForm.batch_image_discount_multiplier =
@@ -6172,6 +6205,7 @@ const closeEditModal = () => {
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
+  editForm.image_only = false;
   editForm.peak_rate_enabled = false;
   editForm.peak_start = "";
   editForm.peak_end = "";

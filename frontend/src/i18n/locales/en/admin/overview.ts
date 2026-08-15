@@ -974,6 +974,8 @@ export default {
         title: 'Image Generation Pricing',
         description: 'Configure image generation access and base image prices. Leave empty to use default prices.',
         allowImageGeneration: 'Allow image generation for this group',
+        imageOnly: 'Image-only group',
+        imageOnlyHint: 'Serves only image APIs and drives OAuth/OIDC scope routing. Do not enable it for regular Codex text groups.',
         allowBatchImageGeneration: 'Allow batch image generation for this group',
         independentMultiplier: 'Use independent image multiplier',
         imageMultiplier: 'Image multiplier',

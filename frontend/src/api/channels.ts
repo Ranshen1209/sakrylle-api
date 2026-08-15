@@ -33,6 +33,35 @@ export interface UserPricingInterval {
   per_request_price: number | null
 }
 
+export interface UserPricingTimeWindow {
+  label: string
+  weekdays: number
+  start_minute: number
+  end_minute: number
+  multiplier: number
+}
+
+export interface UserPricingTimeVersion {
+  effective_from: string
+  effective_until: string | null
+  timezone: string
+  default_multiplier: number
+  input_price: number | null
+  output_price: number | null
+  cache_write_price: number | null
+  cache_read_price: number | null
+  image_input_price: number | null
+  image_output_price: number | null
+  windows: UserPricingTimeWindow[]
+}
+
+export interface UserPricingTimeResolution {
+  pricing_at: string
+  timezone: string
+  period_label: string
+  multiplier: number
+}
+
 export interface UserSupportedModelPricing {
   billing_mode: BillingMode
   input_price: number | null
@@ -44,6 +73,8 @@ export interface UserSupportedModelPricing {
   image_input_ratio: number | null
   per_request_price: number | null
   intervals: UserPricingInterval[]
+  time_versions?: UserPricingTimeVersion[]
+  time_resolution?: UserPricingTimeResolution | null
 }
 
 export interface UserSupportedModel {

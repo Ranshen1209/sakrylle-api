@@ -533,6 +533,11 @@ export default {
       imageOutputPrice: '图片输出',
       perRequestPrice: '每次请求',
       intervals: '阶梯定价',
+      timePricing: '峰谷定价',
+      peak: '高峰时段',
+      offPeak: '空闲时段',
+      notEffective: '尚未生效',
+      effectiveFrom: '生效',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
     }
@@ -574,13 +579,17 @@ export default {
       paidPrice: '实付价格(折后)',
       officialPrice: '官方价格',
       rate: '折扣倍率',
-      unitPerMillion: '$ / 1M token',
+      unitPerMillion: '￥ / 1M token',
       perUnitRequest: '/ 次',
       perUnitImage: '/ 张',
       perRequest: '按次计费',
       perImage: '按图片计费',
       standard: '标准',
-      longContext: '长上下文'
+      longContext: '长上下文',
+      timePricingPeak: '当前高峰',
+      timePricingOffPeak: '当前空闲',
+      timePricingUpcoming: '峰谷价待生效',
+      timePricingEffective: '生效时间'
     },
     nav: {
       login: '登录',

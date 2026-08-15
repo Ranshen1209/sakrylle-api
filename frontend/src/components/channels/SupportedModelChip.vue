@@ -65,6 +65,27 @@
               <span>{{ billingModeLabel }}</span>
             </div>
 
+            <div
+              v-if="model.pricing.time_versions?.length"
+              class="border-y py-2"
+              :class="[popoverBorderClass]"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-medium text-gray-600 dark:text-gray-300">{{ t(prefixKey('timePricing')) }}</span>
+                <span v-if="model.pricing.time_resolution" class="font-medium text-primary-600 dark:text-primary-400">
+                  {{ periodLabel }} · {{ model.pricing.time_resolution.multiplier }}x
+                </span>
+                <span v-else class="text-gray-400">{{ t(prefixKey('notEffective')) }}</span>
+              </div>
+              <div v-for="(version, versionIndex) in model.pricing.time_versions" :key="versionIndex" class="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                <div>{{ t(prefixKey('effectiveFrom')) }} {{ formatPricingVersionDate(version, locale) }} · {{ version.timezone }}</div>
+                <div v-for="(window, windowIndex) in version.windows" :key="windowIndex">
+                  {{ formatPricingWindow(window, locale) }} · {{ window.multiplier }}x
+                </div>
+                <div>{{ t(prefixKey('offPeak')) }} · {{ version.default_multiplier }}x</div>
+              </div>
+            </div>
+
             <template v-if="model.pricing.billing_mode === BILLING_MODE_TOKEN">
               <PricingRow
                 :label="t(prefixKey('inputPrice'))"
@@ -174,6 +195,7 @@ import type { UserPricingInterval, UserSupportedModel } from '@/api/channels'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import type { GroupPlatform } from '@/types'
 import { platformBadgeClass, platformBorderClass, platformBadgeLightClass } from '@/utils/platformColors'
+import { formatPricingVersionDate, formatPricingWindow } from '@/utils/timePricing'
 
 const props = withDefaults(
   defineProps<{
@@ -198,7 +220,14 @@ const props = withDefaults(
 
 const effectivePlatform = computed<string>(() => props.model.platform || props.platformHint || '')
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+
+const periodLabel = computed(() => {
+  const label = props.model.pricing?.time_resolution?.period_label
+  if (label === 'peak') return t(prefixKey('peak'))
+  if (label === 'off_peak') return t(prefixKey('offPeak'))
+  return label || '-'
+})
 
 /** 按 token 定价展示时的换算单位：每百万 token。 */
 const perMillionScale = 1_000_000
