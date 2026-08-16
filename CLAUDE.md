@@ -8,7 +8,7 @@ Do not load every referenced document by default. Open the smallest relevant fil
 
 | When the task touches... | Read |
 | --- | --- |
-| production topology, deploy commands, compose, domains, companion services, SSH, common ops | `docs/ops/infrastructure.md` |
+| production branch and image source, topology, deploy commands, compose, domains, companion services, SSH, common ops | `docs/ops/infrastructure.md` |
 | Sakrylle fork behavior, visual theme, model-list fallback, currency display, custom configuration frontend coverage | `docs/ops/customizations.md` |
 | SMTP, OAuth/OIDC, clients, scopes, Sakrylle Web SSO, notification email templates | `docs/ops/identity-email.md` |
 | groups, channels, pricing, peak/off-peak schedules, billing source, model mappings, Codex 403, Deepseek, GPT-Plus-Special | `docs/ops/channels-and-billing.md` |
@@ -34,6 +34,7 @@ Quick commands (full list in `docs/development.md`): `make build`, `make test-ba
 
 ## Always-On Constraints
 
+- `main` is the only production branch. Build production images only from a reviewed `main` commit, and deploy that exact build by digest while retaining the previous digest for rollback.
 - Sync upstream with `git merge --no-ff upstream/main`; do not rebase this long-lived fork unless the user explicitly requests it. Replaying hundreds of commits causes repeated conflicts and excessive time/token usage.
 - Before public 443 stream, firewall, or `sshd` changes, establish and keep open a direct `admin@154.44.8.202:22` fallback session; never rely only on SSH-over-443.
 - Do not reintroduce default model-list fallback in `/v1/models`.

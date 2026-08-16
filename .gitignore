@@ -129,6 +129,7 @@ code-reviews/
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
+.pnpm-store/
 vite.config.js
 docs/*
 !docs/ops/
@@ -152,6 +153,7 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+outputs/
 frontend/pnpm-workspace.yaml
 
 # Vitest / Vite cache at repo root
