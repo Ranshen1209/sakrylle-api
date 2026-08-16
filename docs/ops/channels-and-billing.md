@@ -33,6 +33,8 @@ Change group multiplier for margin. Do not mutate pricing rows for margin; those
 
 Upstream v0.1.176 added `groups.model_pricing` (per-model overrides) and `groups.long_context_pricing_enabled` (default true). Do not use group `model_pricing` for Sakrylle margin; keep channel rows as the baseline and apply `rate_multiplier`. Leave long-context pricing enabled unless a specific group must ignore official long-context tiers.
 
+Upstream v0.1.177 made Codex OAuth fingerprint convergence opt-in (default off / passthrough). Accounts that never set `codex_fingerprint_mode` stop converging after this upgrade; only explicitly stored `device` / `session` / `full` keep converging. Compaction tests and routing now use native remote compaction v2.
+
 ### Versioned peak/off-peak channel pricing
 
 Migration `222_channel_time_pricing.sql` adds scheduled versions to a token price card:

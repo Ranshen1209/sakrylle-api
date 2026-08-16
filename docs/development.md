@@ -8,7 +8,7 @@ This document replaces the old root `DEV_GUIDE.md`, which contained outdated for
 | --- | --- |
 | Upstream | `Wei-Shaw/sub2api` |
 | Fork branch | `theme/monet-purple` |
-| Backend | Go `1.26.4`, Gin, Ent |
+| Backend | Go `1.26.6`, Gin, Ent |
 | Frontend | Vue 3, Vite, pnpm |
 | Runtime services | PostgreSQL 18, Redis 8 |
 | Release image | `ghcr.io/ranshen1209/sakrylle-api:purple` |
