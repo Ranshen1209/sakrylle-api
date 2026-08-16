@@ -8,6 +8,10 @@ git checkout theme/monet-purple
 git merge --no-ff upstream/main
 ```
 
+`theme/monet-purple` remains the upstream integration branch. After validation,
+merge it into `main`; only successful builds of the reviewed `main` commit may
+be deployed to production.
+
 This long-lived fork must use a merge by default. Do not rebase it unless explicitly requested: replaying hundreds of local commits repeats equivalent conflicts and consumes excessive time and review tokens. Resolve each conflict once in the merge commit, preserving both new upstream behavior and the Sakrylle constraints below.
 
 Likely conflicts:

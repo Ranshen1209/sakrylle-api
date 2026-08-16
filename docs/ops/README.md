@@ -4,7 +4,7 @@ This directory holds Sakrylle API operational facts, gotchas, and "why" decision
 
 ## Index
 
-- [infrastructure.md](infrastructure.md) — production topology, digest-pinned deploys, companion services, and common SSH/Docker ops.
+- [infrastructure.md](infrastructure.md) — main-branch image builds, production topology, digest-pinned deploys, companion services, and common SSH/Docker ops.
 - [customizations.md](customizations.md) — Sakrylle fork behavior changes and currency policy.
 - [identity-email.md](identity-email.md) — SMTP, OAuth/OIDC, Sakrylle Web SSO, notification templates.
 - [channels-and-billing.md](channels-and-billing.md) — channel/group topology, pricing, model mapping, operational traps.

@@ -3,7 +3,9 @@
 ## Repository And Production
 
 - **Upstream**: [Wei-Shaw/sub2api](https://github.com/Wei-Shaw/sub2api)
-- **Fork**: [Ranshen1209/sub2api](https://github.com/Ranshen1209/sub2api), branch `theme/monet-purple`
+- **Fork**: [Ranshen1209/sakrylle-api](https://github.com/Ranshen1209/sakrylle-api)
+- **Production branch**: `main`
+- **Integration branch**: `theme/monet-purple`
 - **Production node**: `sakrylle-la` (`154.44.8.202`), Ubuntu 24.04.4 LTS, SSH user `admin`
 - **Daily SSH entry**: `ssh ssh-sakrylle`, resolving to `ssh-sakrylle.sakrylle.com:443`
 - **Compose file**: `/opt/stack/docker-compose.yml`
@@ -56,9 +58,10 @@ ssh ssh-sakrylle 'cd /opt/stack && docker compose config --services'
 ```
 
 The production Compose file pins deployed images by digest (`image@sha256:...`).
-CI still publishes the Sakrylle image and its human-friendly `:purple` tag, but
-that floating tag is not the production version lock. A deployment must update
-the Compose digest to the reviewed CI artifact before recreating `sub2api`.
+CI publishes the Sakrylle image from `main` under the human-friendly `:purple`
+and `:latest` aliases, but those floating tags are not the production version
+lock. A deployment must update the Compose digest to the reviewed CI artifact
+before recreating `sub2api`.
 Record the old digest for rollback; do not convert production back to tag-only
 deployment.
 
@@ -72,8 +75,9 @@ from `.env` as `ADMIN_PASSWORD`. Restarts do not reseed an existing admin user.
 
 ## Build And Deploy
 
-A push to `theme/monet-purple` triggers GitHub Actions and publishes the image.
-Production deployment is a separate, deliberate operation:
+A push to `main` triggers GitHub Actions and publishes the production image.
+Production deployment is a separate, deliberate operation, and must use the
+digest produced from the reviewed `main` commit:
 
 1. Confirm CI succeeded and identify the published image digest.
 2. Back up the current Compose file and database.

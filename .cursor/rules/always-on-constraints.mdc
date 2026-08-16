@@ -5,6 +5,7 @@ alwaysApply: true
 
 # Always-On Constraints
 
+- `main` is the only production branch. Build production images only from a reviewed `main` commit, and deploy that exact build by digest while retaining the previous digest for rollback.
 - Sync upstream with `git merge --no-ff upstream/main`; do not rebase this long-lived fork unless the user explicitly requests it. Replaying hundreds of commits causes repeated conflicts and excessive time/token usage.
 - Before public 443 stream, firewall, or `sshd` changes, establish and keep open a direct `admin@154.44.8.202:22` fallback session; never rely only on SSH-over-443.
 - Do not reintroduce default model-list fallback in `/v1/models`.
