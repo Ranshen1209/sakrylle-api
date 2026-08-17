@@ -123,7 +123,7 @@
               :title="timePricingTitle(m)"
             >
               <span class="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
-                {{ currentTimePeriod(m) }}
+                {{ displayedTimePeriod(m) }}
               </span>
               <span>{{ compactTimeWindows(m) }}</span>
             </div>
@@ -142,7 +142,7 @@
                   {{ paidPerMillion(iv.input_price) }}
                 </div>
               </template>
-              <template v-else>{{ paidTokenPerMillion(m, m.pricing?.input_price, 'input') }}</template>
+              <template v-else>{{ paidTokenPerMillion(m, displayedTimePrice(m, 'input_price'), 'input') }}</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
               <template v-if="tokenIntervals(m).length">
@@ -155,7 +155,7 @@
                   {{ paidPerMillion(iv.output_price) }}
                 </div>
               </template>
-              <template v-else>{{ paidTokenPerMillion(m, m.pricing?.output_price, 'output') }}</template>
+              <template v-else>{{ paidTokenPerMillion(m, displayedTimePrice(m, 'output_price'), 'output') }}</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle">
               <div
@@ -164,11 +164,11 @@
               >
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWrite') }}</span>
-                  {{ paidTokenPerMillion(m, m.pricing?.cache_write_price, 'input') }}
+                  {{ paidTokenPerMillion(m, displayedTimePrice(m, 'cache_write_price'), 'input') }}
                 </div>
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') }}</span>
-                  {{ paidTokenPerMillion(m, m.pricing?.cache_read_price, 'input') }}
+                  {{ paidTokenPerMillion(m, displayedTimePrice(m, 'cache_read_price'), 'input') }}
                 </div>
               </div>
               <span v-else class="text-gray-400 dark:text-dark-500">-</span>
@@ -263,9 +263,14 @@ import {
   BILLING_MODE_IMAGE,
   type BillingMode
 } from '@/constants/channel'
-import type { PlazaModel } from '@/api/modelPlaza'
-import type { UserPricingInterval, UserPricingTimeVersion } from '@/api/channels'
+import type { ModelPlazaPricingMode, PlazaModel } from '@/api/modelPlaza'
+import type { UserPricingInterval } from '@/api/channels'
 import { formatPricingMinute, formatPricingVersionDate, formatPricingWindow } from '@/utils/timePricing'
+import {
+  displayedTimePrice as getDisplayedTimePrice,
+  displayedTimeVersion as getDisplayedTimeVersion,
+  type ModelPlazaTimePriceField,
+} from '@/utils/modelPlaza'
 
 const props = defineProps<{
   models: PlazaModel[]
@@ -278,6 +283,8 @@ const props = defineProps<{
   /** 生图独立倍率:true 时图片计费模型的实付倍率取 imageRateMultiplier,不取分组/专属倍率。 */
   imageRateIndependent?: boolean
   imageRateMultiplier?: number | null
+  /** 价格展示模式;current 使用后端当前解析值,peak/off_peak 使用版本价卡预览。 */
+  timePricingMode?: ModelPlazaPricingMode
 }>()
 
 const { t, locale } = useI18n()
@@ -326,7 +333,9 @@ function billingModeLabel(m: PlazaModel): string {
     : t('modelPlaza.table.perRequest')
 }
 
-function currentTimePeriod(m: PlazaModel): string {
+function displayedTimePeriod(m: PlazaModel): string {
+  if (props.timePricingMode === 'peak') return t('modelPlaza.table.timePricingPeakPreview')
+  if (props.timePricingMode === 'off_peak') return t('modelPlaza.table.timePricingOffPeakPreview')
   const resolution = m.pricing?.time_resolution
   if (!resolution) return t('modelPlaza.table.timePricingUpcoming')
   if (resolution.period_label === 'peak') return t('modelPlaza.table.timePricingPeak')
@@ -349,20 +358,12 @@ function timePricingTitle(m: PlazaModel): string {
   return `${t('modelPlaza.table.timePricingEffective')} ${formatPricingVersionDate(version, locale.value)} (${version.timezone}); ${windows}; ${t('modelPlaza.table.timePricingOffPeak')} ${version.default_multiplier}x`
 }
 
-function displayedTimeVersion(m: PlazaModel): UserPricingTimeVersion | undefined {
-  const versions = m.pricing?.time_versions
-  if (!versions?.length) return undefined
-  const pricingAt = m.pricing?.time_resolution?.pricing_at
-  if (!pricingAt) return versions[0]
+function displayedTimeVersion(m: PlazaModel) {
+  return getDisplayedTimeVersion(m.pricing)
+}
 
-  const instant = Date.parse(pricingAt)
-  return [...versions]
-    .filter(version => {
-      const from = Date.parse(version.effective_from)
-      const until = version.effective_until ? Date.parse(version.effective_until) : Number.POSITIVE_INFINITY
-      return from <= instant && instant < until
-    })
-    .sort((a, b) => Date.parse(b.effective_from) - Date.parse(a.effective_from))[0] || versions[0]
+function displayedTimePrice(m: PlazaModel, field: ModelPlazaTimePriceField): number | null | undefined {
+  return getDisplayedTimePrice(m.pricing, props.timePricingMode, field)
 }
 
 /** 价格统一保底 2 位小数,更长的有效小数原样保留。 */
@@ -442,7 +443,7 @@ function perUnitSuffix(m: PlazaModel): string {
 }
 
 function hasCachePricing(m: PlazaModel): boolean {
-  return m.pricing?.cache_write_price != null || m.pricing?.cache_read_price != null
+  return displayedTimePrice(m, 'cache_write_price') != null || displayedTimePrice(m, 'cache_read_price') != null
 }
 
 function hasOfficialCache(o: NonNullable<PlazaModel['official_pricing']>): boolean {

@@ -584,7 +584,13 @@ export default {
       timePricingPeak: 'Peak now',
       timePricingOffPeak: 'Off-peak now',
       timePricingUpcoming: 'Scheduled pricing pending',
-      timePricingEffective: 'Effective'
+      timePricingEffective: 'Effective',
+      timePricingMode: 'Pricing period',
+      timePricingModeCurrent: 'Current',
+      timePricingModePeak: 'Peak',
+      timePricingModeOffPeak: 'Off-peak',
+      timePricingPeakPreview: 'Peak price',
+      timePricingOffPeakPreview: 'Off-peak price'
     },
     nav: {
       login: 'Sign In',

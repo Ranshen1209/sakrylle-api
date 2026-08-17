@@ -589,7 +589,13 @@ export default {
       timePricingPeak: '当前高峰',
       timePricingOffPeak: '当前空闲',
       timePricingUpcoming: '峰谷价待生效',
-      timePricingEffective: '生效时间'
+      timePricingEffective: '生效时间',
+      timePricingMode: '价格时段',
+      timePricingModeCurrent: '当前',
+      timePricingModePeak: '峰值',
+      timePricingModeOffPeak: '谷值',
+      timePricingPeakPreview: '峰值价格',
+      timePricingOffPeakPreview: '谷值价格'
     },
     nav: {
       login: '登录',

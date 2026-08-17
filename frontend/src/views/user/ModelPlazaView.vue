@@ -84,6 +84,28 @@
             </button>
           </div>
 
+          <div
+            v-if="hasTimePricing"
+            class="inline-flex min-h-9 flex-shrink-0 items-center gap-0.5 rounded-md border border-gray-200 bg-gray-50 p-0.5 text-xs font-medium dark:border-dark-600 dark:bg-dark-900"
+            role="group"
+            :aria-label="t('modelPlaza.table.timePricingMode')"
+          >
+            <Icon name="clock" size="xs" class="mx-1.5 h-3.5 w-3.5 text-gray-500 dark:text-dark-400" />
+            <button
+              v-for="mode in timePricingModes"
+              :key="mode.value"
+              type="button"
+              class="min-h-8 rounded px-2.5 transition-colors"
+              :class="timePricingMode === mode.value
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+                : 'text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-100'"
+              :aria-pressed="timePricingMode === mode.value"
+              @click="timePricingMode = mode.value"
+            >
+              {{ t(mode.label) }}
+            </button>
+          </div>
+
           <button
             type="button"
             class="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200 dark:hover:bg-dark-700"
@@ -124,6 +146,7 @@
             :show-original="showOriginal"
             :long-context-pricing="longContextPricingByModel[model.name]"
             :long-context="pricingMode === 'long_context'"
+            :time-pricing-mode="timePricingMode"
           />
         </div>
       </div>
@@ -140,7 +163,7 @@ import PlazaSidebar from '@/components/plaza/PlazaSidebar.vue'
 import PlazaModelCard from '@/components/plaza/PlazaModelCard.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
-import { getModelPlaza, type PlazaOfficialPricing } from '@/api/modelPlaza'
+import { getModelPlaza, type ModelPlazaPricingMode, type PlazaOfficialPricing } from '@/api/modelPlaza'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { flattenChannelsToPlaza, type PlazaModel } from '@/utils/modelPlaza'
@@ -161,6 +184,12 @@ const filterGroup = ref('')
 const filterBilling = ref('')
 const showOriginal = ref(true)
 const pricingMode = ref<'standard' | 'long_context'>('standard')
+const timePricingMode = ref<ModelPlazaPricingMode>('current')
+const timePricingModes = [
+  { value: 'current' as const, label: 'modelPlaza.table.timePricingModeCurrent' },
+  { value: 'peak' as const, label: 'modelPlaza.table.timePricingModePeak' },
+  { value: 'off_peak' as const, label: 'modelPlaza.table.timePricingModeOffPeak' }
+]
 const pricingModeActiveClass = 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
 const pricingModeInactiveClass = 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
 const longContextPricingByModel = ref<Record<string, PlazaOfficialPricing>>({})
@@ -189,6 +218,9 @@ const filteredModels = computed<PlazaModel[]>(() => {
 
 const hasLongContextPricing = computed(() =>
   plazaModels.value.some((model) => longContextPricingByModel.value[model.name] != null),
+)
+const hasTimePricing = computed(() =>
+  filteredModels.value.some((model) => model.pricing?.time_versions?.length),
 )
 
 async function loadAll() {
