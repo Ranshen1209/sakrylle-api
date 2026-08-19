@@ -14,8 +14,65 @@
 
 import type {
   UserAvailableChannel,
+  UserPricingTimeVersion,
   UserSupportedModelPricing,
 } from '@/api/channels'
+import type { ModelPlazaPricingMode } from '@/api/modelPlaza'
+
+export type ModelPlazaTimePriceField =
+  | 'input_price'
+  | 'output_price'
+  | 'cache_write_price'
+  | 'cache_read_price'
+  | 'image_input_price'
+  | 'image_output_price'
+
+/** Resolve the version card that was active when the backend calculated current pricing. */
+export function displayedTimeVersion(
+  pricing: UserSupportedModelPricing | null | undefined,
+): UserPricingTimeVersion | undefined {
+  const versions = pricing?.time_versions
+  if (!versions?.length) return undefined
+  const pricingAt = pricing?.time_resolution?.pricing_at
+  if (!pricingAt) return versions[0]
+
+  const instant = Date.parse(pricingAt)
+  return [...versions]
+    .filter((version) => {
+      const from = Date.parse(version.effective_from)
+      const until = version.effective_until ? Date.parse(version.effective_until) : Number.POSITIVE_INFINITY
+      return from <= instant && instant < until
+    })
+    .sort((a, b) => Date.parse(b.effective_from) - Date.parse(a.effective_from))[0] || versions[0]
+}
+
+/** Return the price shown for the selected period without changing backend billing. */
+export function displayedTimePrice(
+  pricing: UserSupportedModelPricing | null | undefined,
+  mode: ModelPlazaPricingMode | undefined,
+  field: ModelPlazaTimePriceField,
+): number | null | undefined {
+  const current = pricing?.[field]
+  if (mode == null || mode === 'current') return current
+
+  const version = displayedTimeVersion(pricing)
+  if (!version) return current
+
+  let base = version[field]
+  if (base == null && current != null) {
+    const currentMultiplier = pricing?.time_resolution?.multiplier
+    base = currentMultiplier != null && currentMultiplier !== 0
+      ? current / currentMultiplier
+      : current
+  }
+  if (base == null) return base
+
+  if (mode === 'off_peak') return base * version.default_multiplier
+  const peakMultiplier = version.windows.length
+    ? Math.max(...version.windows.map((window) => window.multiplier))
+    : 1
+  return base * peakMultiplier
+}
 
 /** A group with the effective multiplier resolved (user override or default). */
 export interface PlazaGroupAccess {

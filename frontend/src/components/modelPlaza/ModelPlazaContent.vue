@@ -48,9 +48,37 @@
         @update:search="searchQuery = $event"
       />
 
+      <div v-if="hasTimePricing" class="flex flex-wrap items-center justify-end gap-2">
+        <div
+          class="inline-flex min-h-9 items-center gap-0.5 rounded-md border border-gray-200 bg-gray-50 p-0.5 text-xs font-medium dark:border-dark-600 dark:bg-dark-900"
+          role="group"
+          :aria-label="t('modelPlaza.table.timePricingMode')"
+        >
+          <Icon name="clock" size="xs" class="mx-1.5 h-3.5 w-3.5 text-gray-500 dark:text-dark-400" />
+          <button
+            v-for="mode in timePricingModes"
+            :key="mode.value"
+            type="button"
+            class="min-h-8 rounded px-2.5 transition-colors"
+            :class="timePricingMode === mode.value
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-800 dark:text-dark-400 dark:hover:text-dark-100'"
+            :aria-pressed="timePricingMode === mode.value"
+            @click="timePricingMode = mode.value"
+          >
+            {{ t(mode.label) }}
+          </button>
+        </div>
+      </div>
+
       <!-- 分组分节的模型清单(默认按生效倍率升序) -->
       <div v-if="filteredGroups.length > 0" class="space-y-5">
-        <PlazaGroupSection v-for="g in filteredGroups" :key="g.id" :group="g" />
+        <PlazaGroupSection
+          v-for="g in filteredGroups"
+          :key="g.id"
+          :group="g"
+          :time-pricing-mode="timePricingMode"
+        />
       </div>
       <div
         v-else
@@ -70,7 +98,7 @@ import DOMPurify from 'dompurify'
 import Icon from '@/components/icons/Icon.vue'
 import PlazaFilterBar from './PlazaFilterBar.vue'
 import PlazaGroupSection from './PlazaGroupSection.vue'
-import type { ModelPlazaGroup, ModelPlazaResponse } from '@/api/modelPlaza'
+import type { ModelPlazaGroup, ModelPlazaPricingMode, ModelPlazaResponse } from '@/api/modelPlaza'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
@@ -89,6 +117,13 @@ const selectedPlatform = ref<string>('all')
 const selectedGroupId = ref<number | 'all'>('all')
 const selectedRate = ref<number | 'all'>('all')
 const searchQuery = ref('')
+const timePricingMode = ref<ModelPlazaPricingMode>('current')
+
+const timePricingModes = [
+  { value: 'current' as const, label: 'modelPlaza.table.timePricingModeCurrent' },
+  { value: 'peak' as const, label: 'modelPlaza.table.timePricingModePeak' },
+  { value: 'off_peak' as const, label: 'modelPlaza.table.timePricingModeOffPeak' }
+]
 
 const searchActive = computed(() => searchQuery.value.trim() !== '')
 
@@ -151,6 +186,10 @@ const filteredGroups = computed(() => {
     (a, b) => effectiveRate(a) - effectiveRate(b) || a.name.localeCompare(b.name)
   )
 })
+
+const hasTimePricing = computed(() =>
+  filteredGroups.value.some((group) => group.models.some((model) => model.pricing?.time_versions?.length))
+)
 </script>
 
 <style scoped>

@@ -25,6 +25,15 @@
               {{ rateLabel }}
             </span>
           </p>
+          <div
+            v-if="model.pricing?.time_versions?.length"
+            class="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-gray-500 dark:text-dark-400"
+          >
+            <span class="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+              {{ displayedTimePeriod }}
+            </span>
+            <span>{{ compactTimeWindows }}</span>
+          </div>
         </div>
       </div>
 
@@ -44,14 +53,14 @@
       <template v-if="isToken">
         <PlazaPriceRow
           :label="t('plaza.pricing.input')"
-          :value="longContextValue(model.pricing.input_price, 'input')"
+          :value="longContextValue(displayedTimePrice('input_price'), 'input')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
           :show-original="showOriginal"
         />
         <PlazaPriceRow
-          v-if="model.pricing.image_input_ratio != null && model.pricing.input_price != null"
+          v-if="model.pricing.image_input_ratio != null && displayedTimePrice('input_price') != null"
           :label="t('plaza.pricing.imageInput')"
           :value="longContextValue(imageInputPrice, 'input')"
           :rate="effectiveRate"
@@ -61,25 +70,25 @@
         />
         <PlazaPriceRow
           :label="t('plaza.pricing.output')"
-          :value="longContextValue(model.pricing.output_price, 'output')"
+          :value="longContextValue(displayedTimePrice('output_price'), 'output')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
           :show-original="showOriginal"
         />
         <PlazaPriceRow
-          v-if="model.pricing.cache_read_price != null"
+          v-if="displayedTimePrice('cache_read_price') != null"
           :label="t('plaza.pricing.cacheRead')"
-          :value="longContextValue(model.pricing.cache_read_price, 'input')"
+          :value="longContextValue(displayedTimePrice('cache_read_price'), 'input')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
           :show-original="showOriginal"
         />
         <PlazaPriceRow
-          v-if="model.pricing.cache_write_price != null"
+          v-if="displayedTimePrice('cache_write_price') != null"
           :label="t('plaza.pricing.cacheWrite')"
-          :value="longContextValue(model.pricing.cache_write_price, 'input')"
+          :value="longContextValue(displayedTimePrice('cache_write_price'), 'input')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -99,7 +108,7 @@
       <template v-else-if="isImage">
         <PlazaPriceRow
           :label="t('plaza.pricing.image')"
-          :value="model.pricing.per_request_price ?? model.pricing.image_output_price"
+          :value="model.pricing.per_request_price ?? displayedTimePrice('image_output_price')"
           :rate="effectiveRate"
           :scale="1"
           :unit="t('plaza.pricing.unitPerRequest')"
@@ -144,10 +153,16 @@ import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import PlazaPriceRow from './PlazaPriceRow.vue'
+import {
+  displayedTimePrice as getDisplayedTimePrice,
+  displayedTimeVersion,
+  type ModelPlazaTimePriceField,
+} from '@/utils/modelPlaza'
+import type { ModelPlazaPricingMode, PlazaOfficialPricing } from '@/api/modelPlaza'
 import type { PlazaModel } from '@/utils/modelPlaza'
-import type { PlazaOfficialPricing } from '@/api/modelPlaza'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBorderClass, platformTextClass } from '@/utils/platformColors'
+import { formatPricingMinute } from '@/utils/timePricing'
 import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_PER_REQUEST,
@@ -161,18 +176,38 @@ const props = withDefaults(
     showOriginal?: boolean
     longContextPricing?: PlazaOfficialPricing
     longContext?: boolean
+    timePricingMode?: ModelPlazaPricingMode
   }>(),
-  { showOriginal: true, longContext: false },
+  { showOriginal: true, longContext: false, timePricingMode: 'current' },
 )
 
 const { t } = useI18n()
 const perMillionScale = 1_000_000
 const effectiveRate = computed(() => props.model.group.effectiveRate)
 
+const displayedTimePeriod = computed(() => {
+  if (props.timePricingMode === 'peak') return t('modelPlaza.table.timePricingPeakPreview')
+  if (props.timePricingMode === 'off_peak') return t('modelPlaza.table.timePricingOffPeakPreview')
+  const resolution = props.model.pricing?.time_resolution
+  if (!resolution) return t('modelPlaza.table.timePricingUpcoming')
+  if (resolution.period_label === 'peak') return t('modelPlaza.table.timePricingPeak')
+  if (resolution.period_label === 'off_peak') return t('modelPlaza.table.timePricingOffPeak')
+  return resolution.period_label
+})
+
+const compactTimeWindows = computed(() => {
+  const version = displayedTimeVersion(props.model.pricing)
+  if (!version) return ''
+  return version.windows
+    .map((window) => `${formatPricingMinute(window.start_minute)}-${formatPricingMinute(window.end_minute)}`)
+    .join(' / ')
+})
+
 const imageInputPrice = computed(() => {
   const pricing = props.model.pricing
-  if (pricing == null || pricing.input_price == null || pricing.image_input_ratio == null) return null
-  return pricing.input_price * pricing.image_input_ratio
+  const inputPrice = displayedTimePrice('input_price')
+  if (pricing == null || inputPrice == null || pricing.image_input_ratio == null) return null
+  return inputPrice * pricing.image_input_ratio
 })
 
 const billingMode = computed(() => props.model.pricing?.billing_mode ?? BILLING_MODE_TOKEN)
@@ -186,6 +221,10 @@ function longContextValue(value: number | null, side: 'input' | 'output'): numbe
     ? props.longContextPricing.long_context_input_multiplier
     : props.longContextPricing.long_context_output_multiplier
   return value * (multiplier ?? 1)
+}
+
+function displayedTimePrice(field: ModelPlazaTimePriceField): number | null {
+  return getDisplayedTimePrice(props.model.pricing, props.timePricingMode, field) ?? null
 }
 
 function formatThreshold(value: number | undefined): string {

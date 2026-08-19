@@ -54,6 +54,7 @@
         :user-rate-multiplier="group.user_rate_multiplier ?? null"
         :image-rate-independent="group.image_rate_independent"
         :image-rate-multiplier="group.image_rate_multiplier"
+        :time-pricing-mode="timePricingMode"
       />
       <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') }}
@@ -68,7 +69,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import PlazaModelPricingTable from './PlazaModelPricingTable.vue'
-import type { ModelPlazaGroup } from '@/api/modelPlaza'
+import type { ModelPlazaGroup, ModelPlazaPricingMode } from '@/api/modelPlaza'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBorderStrongClass } from '@/utils/platformColors'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
@@ -76,6 +77,7 @@ import { useAppStore } from '@/stores/app'
 
 const props = defineProps<{
   group: ModelPlazaGroup
+  timePricingMode: ModelPlazaPricingMode
 }>()
 
 const { t } = useI18n()

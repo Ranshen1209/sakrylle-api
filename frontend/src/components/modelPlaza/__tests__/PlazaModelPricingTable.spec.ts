@@ -44,7 +44,11 @@ function mountTable(
   models: PlazaModel[],
   rateMultiplier: number,
   userRateMultiplier?: number | null,
-  extraProps?: { imageRateIndependent?: boolean; imageRateMultiplier?: number | null }
+  extraProps?: {
+    imageRateIndependent?: boolean
+    imageRateMultiplier?: number | null
+    timePricingMode?: 'current' | 'peak' | 'off_peak'
+  }
 ) {
   return mount(PlazaModelPricingTable, {
     props: { models, rateMultiplier, userRateMultiplier: userRateMultiplier ?? null, ...extraProps }
@@ -100,6 +104,57 @@ describe('PlazaModelPricingTable', () => {
     expect(wrapper.text()).toContain('09:00-12:00 / 14:00-18:00')
     expect(wrapper.text()).toContain('￥1.50')
     expect(wrapper.text()).toContain('￥4.50')
+  })
+
+  it('可切换查看峰值和谷值版本价格', async () => {
+    const model = tokenModel({
+      name: 'deepseek-v4-flash',
+      pricing: {
+        ...tokenModel().pricing!,
+        input_price: 1.5e-6,
+        output_price: 4.5e-6,
+        cache_read_price: 5e-8,
+        time_resolution: {
+          pricing_at: '2026-08-17T08:00:00+08:00',
+          timezone: 'Asia/Shanghai',
+          period_label: 'off_peak',
+          multiplier: 0.5
+        },
+        time_versions: [{
+          effective_from: '2026-08-17T00:00:00+08:00',
+          effective_until: null,
+          timezone: 'Asia/Shanghai',
+          default_multiplier: 0.5,
+          input_price: 3e-6,
+          output_price: 9e-6,
+          cache_write_price: null,
+          cache_read_price: 1e-7,
+          image_input_price: null,
+          image_output_price: null,
+          windows: [
+            { label: 'peak', weekdays: 127, start_minute: 540, end_minute: 720, multiplier: 1 },
+            { label: 'peak', weekdays: 127, start_minute: 840, end_minute: 1080, multiplier: 1 }
+          ]
+        }]
+      }
+    })
+    const wrapper = mountTable([model], 1, null, { timePricingMode: 'current' })
+
+    expect(wrapper.text()).toContain('￥1.50')
+    expect(wrapper.text()).toContain('￥4.50')
+    expect(wrapper.text()).toContain('￥0.05')
+
+    await wrapper.setProps({ timePricingMode: 'peak' })
+    expect(wrapper.text()).toContain('modelPlaza.table.timePricingPeakPreview')
+    expect(wrapper.text()).toContain('￥3.00')
+    expect(wrapper.text()).toContain('￥9.00')
+    expect(wrapper.text()).toContain('￥0.10')
+
+    await wrapper.setProps({ timePricingMode: 'off_peak' })
+    expect(wrapper.text()).toContain('modelPlaza.table.timePricingOffPeakPreview')
+    expect(wrapper.text()).toContain('￥1.50')
+    expect(wrapper.text()).toContain('￥4.50')
+    expect(wrapper.text()).toContain('￥0.05')
   })
 
   it('存在多个价卡版本时展示当前生效版本的窗口', () => {

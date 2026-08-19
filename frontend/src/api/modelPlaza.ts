@@ -7,6 +7,8 @@
 import { apiClient } from './client'
 import type { UserSupportedModelPricing } from './channels'
 
+export type ModelPlazaPricingMode = 'current' | 'peak' | 'off_peak'
+
 /** LiteLLM 官方参考价（USD per token，字段缺失 = 官方数据未覆盖）。 */
 export interface PlazaOfficialPricing {
   input_price: number | null
