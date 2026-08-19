@@ -102,6 +102,7 @@ type ChannelModelPricing struct {
 	PerRequestPrice  *float64             `json:"per_request_price"`
 	Intervals        []PricingInterval    `json:"intervals"`
 	TimeVersions     []PricingTimeVersion `json:"time_versions"`
+	TimePricing      *ChannelTimePricing  `json:"time_pricing,omitempty"`
 	CreatedAt        time.Time            `json:"created_at,omitempty"`
 	UpdatedAt        time.Time            `json:"updated_at,omitempty"`
 }
@@ -151,6 +152,19 @@ type PricingTimeResolution struct {
 	Timezone    string    `json:"timezone"`
 	PeriodLabel string    `json:"period_label"`
 	Multiplier  float64   `json:"multiplier"`
+}
+
+// ChannelTimePricing 渠道模型定价的分时倍率配置。
+type ChannelTimePricing struct {
+	Timezone string                     `json:"timezone"`
+	Periods  []ChannelTimePricingPeriod `json:"periods"`
+}
+
+// ChannelTimePricingPeriod 是秒级的左闭右开分时倍率区间，并兼容历史 HH:mm 数据。
+type ChannelTimePricingPeriod struct {
+	StartTime  string  `json:"start_time"`
+	EndTime    string  `json:"end_time"`
+	Multiplier float64 `json:"multiplier"`
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
@@ -252,6 +266,12 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 				cp.TimeVersions[i].Windows = make([]PricingTimeWindow, len(p.TimeVersions[i].Windows))
 				copy(cp.TimeVersions[i].Windows, p.TimeVersions[i].Windows)
 			}
+		}
+	}
+	if p.TimePricing != nil {
+		cp.TimePricing = &ChannelTimePricing{Timezone: p.TimePricing.Timezone}
+		if p.TimePricing.Periods != nil {
+			cp.TimePricing.Periods = append([]ChannelTimePricingPeriod(nil), p.TimePricing.Periods...)
 		}
 	}
 	return cp

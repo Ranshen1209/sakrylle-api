@@ -466,6 +466,7 @@
                   :key="idx"
                   :entry="entry"
                   :platform="section.platform"
+                  enable-time-pricing
                   @update="updatePricingEntry(sIdx, idx, $event)"
                   @remove="removePricingEntry(sIdx, idx)"
                 />
@@ -659,9 +660,14 @@ import {
   formIntervalsToAPI,
   apiTimeVersionsToForm,
   formTimeVersionsToAPI,
+  apiTimePricingToForm,
+  createDefaultTimePricingForm,
+  formTimePricingToAPI,
   findModelConflict,
   validateIntervals,
   validateTimeVersions,
+  validateTimePricing,
+  validateTimePricingCompatibility,
 } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
@@ -793,7 +799,10 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek']
+// composite 分组仅覆盖主平台（与后端 isConcreteRequestPlatform / composite-routes target_platform 一致），
+// 不含国产供应商平台。
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -832,7 +841,9 @@ function togglePlatform(platform: GroupPlatform) {
 }
 
 function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
-  return allGroups.value.filter(g => g.platform === platform || g.platform === 'composite')
+  return allGroups.value.filter(
+    g => g.platform === platform || (g.platform === 'composite' && compositePlatforms.includes(platform))
+  )
 }
 
 // ── Group helpers ──
@@ -893,6 +904,7 @@ function addPricingEntry(sectionIdx: number) {
     per_request_price: null,
     intervals: [],
     time_versions: [],
+    time_pricing: createDefaultTimePricingForm()
   })
 }
 
@@ -927,6 +939,7 @@ async function syncLatestModels(sectionIdx: number) {
       per_request_price: null,
       intervals: [],
       time_versions: [],
+      time_pricing: createDefaultTimePricingForm()
     })
     appStore.showSuccess(t('admin.channels.form.syncModelsSuccess', { count: newModels.length }))
   } catch (error) {
@@ -993,6 +1006,7 @@ function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
     per_request_price: null,
     intervals: [],
     time_versions: [],
+    time_pricing: createDefaultTimePricingForm()
   })
 }
 
@@ -1110,6 +1124,7 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
             intervals: formIntervalsToAPI(p.intervals || []),
             time_versions: [],
+            time_pricing: null
           }))
       })
     }
@@ -1152,6 +1167,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
         intervals: formIntervalsToAPI(entry.intervals || []),
         time_versions: formTimeVersionsToAPI(entry.time_versions || []),
+        time_pricing: formTimePricingToAPI(entry.time_pricing)
       })
     }
   }
@@ -1221,7 +1237,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
   for (const gid of channel.group_ids || []) {
     const p = groupPlatformMap.get(gid)
     if (p === 'composite') {
-      platformOrder.forEach(platform => activePlatforms.add(platform))
+      compositePlatforms.forEach(platform => activePlatforms.add(platform))
     } else if (p) {
       activePlatforms.add(p)
     }
@@ -1240,7 +1256,8 @@ function apiToForm(channel: Channel): PlatformSection[] {
 
     const groupIds = (channel.group_ids || []).filter(gid => {
       const groupPlatform = groupPlatformMap.get(gid)
-      return groupPlatform === platform || groupPlatform === 'composite'
+      return groupPlatform === platform ||
+        (groupPlatform === 'composite' && compositePlatforms.includes(platform))
     })
     const mapping = (channel.model_mapping || {})[platform] || {}
     const pricing = (channel.model_pricing || [])
@@ -1257,6 +1274,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
         per_request_price: p.per_request_price,
         intervals: apiIntervalsToForm(p.intervals || []),
         time_versions: apiTimeVersionsToForm(p.time_versions || []),
+        time_pricing: apiTimePricingToForm(p.time_pricing)
       } as PricingFormEntry))
 
     // Read web_search_emulation from features_config
@@ -1452,6 +1470,7 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
         per_request_price: p.per_request_price,
         intervals: apiIntervalsToForm(p.intervals || []),
         time_versions: [],
+        time_pricing: createDefaultTimePricingForm()
       } as PricingFormEntry))
     }
     section.account_stats_pricing_rules.push(formRule)
@@ -1588,12 +1607,30 @@ async function handleSubmit() {
   // 校验峰谷版本及日内窗口；峰谷价与上下文区间价不能同时开启。
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
-      if (!entry.time_versions || entry.time_versions.length === 0) continue
-      const timePricingErr = validateTimeVersions(entry.time_versions, (entry.intervals || []).length > 0, t)
-      if (timePricingErr) {
+      const compatibilityError = validateTimePricingCompatibility(entry.time_versions, entry.time_pricing, t)
+      if (compatibilityError) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
         const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
-        appStore.showError(`${platformLabel} - ${modelLabel}: ${timePricingErr}`)
+        appStore.showError(`${platformLabel} - ${modelLabel}: ${compatibilityError}`)
+        activeTab.value = section.platform
+        return
+      }
+      if (entry.time_versions && entry.time_versions.length > 0) {
+        const timeVersionError = validateTimeVersions(entry.time_versions, (entry.intervals || []).length > 0, t)
+        if (timeVersionError) {
+          const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+          const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
+          appStore.showError(`${platformLabel} - ${modelLabel}: ${timeVersionError}`)
+          activeTab.value = section.platform
+          return
+        }
+      }
+
+      const timePricingError = validateTimePricing(entry.time_pricing, t)
+      if (timePricingError) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
+        appStore.showError(`${platformLabel} - ${modelLabel}: ${timePricingError}`)
         activeTab.value = section.platform
         return
       }
