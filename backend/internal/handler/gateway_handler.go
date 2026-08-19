@@ -1132,7 +1132,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 // 缺这个字段会让 CherryStudio 等客户端按 channel UUID 分组，UI 显示成乱码。
 func platformOwnedBy(platform string) string {
 	switch platform {
-	case service.PlatformOpenAI:
+	case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek:
 		return "openai"
 	case service.PlatformGemini:
 		return "google"

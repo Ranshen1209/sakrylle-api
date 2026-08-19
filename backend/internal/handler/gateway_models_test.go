@@ -95,6 +95,19 @@ func TestGatewayModels_NoConfigurationReturnsEmpty(t *testing.T) {
 	require.Empty(t, got.Data)
 }
 
+func TestPlatformOwnedByCNProviders(t *testing.T) {
+	for _, platform := range []string{
+		service.PlatformOpenAI,
+		service.PlatformKimi,
+		service.PlatformZhipu,
+		service.PlatformDeepseek,
+	} {
+		require.Equal(t, "openai", platformOwnedBy(platform), platform)
+	}
+	require.Equal(t, "google", platformOwnedBy(service.PlatformGemini))
+	require.Equal(t, "composite", platformOwnedBy(service.PlatformComposite))
+}
+
 func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

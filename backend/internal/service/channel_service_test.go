@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -2481,7 +2482,8 @@ func TestValidatePricingTimePricing(t *testing.T) {
 		TimePricing:  validTimePricingForTest(),
 	}}
 	conflictErr := infraerrors.FromError(validatePricingTimePricing(conflicting))
-	require.Equal(t, "TIME_PRICING_CONFLICT", conflictErr.Code)
+	require.Equal(t, int32(http.StatusBadRequest), conflictErr.Code)
+	require.Equal(t, "TIME_PRICING_CONFLICT", conflictErr.Reason)
 
 	image := []ChannelModelPricing{{BillingMode: BillingModeImage, TimePricing: validTimePricingForTest()}}
 	modeErr := infraerrors.FromError(validatePricingTimePricing(image))

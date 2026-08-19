@@ -85,8 +85,20 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 	}
 
 	// A nil slice means an older caller did not send the versioned schedule.
-	// Preserve existing versions in that case; an explicit empty slice clears them.
+	// Preserve existing versions unless a recurring schedule is being enabled;
+	// the two schedule systems must never coexist and compound billing multipliers.
 	if pricing.TimeVersions == nil {
+		if pricing.TimePricing != nil && len(pricing.TimePricing.Periods) > 0 {
+			return r.runInTx(ctx, func(tx *sql.Tx) error {
+				if err := updatePricing(tx); err != nil {
+					return err
+				}
+				if _, err := tx.ExecContext(ctx, `DELETE FROM channel_model_pricing_versions WHERE pricing_id = $1`, pricing.ID); err != nil {
+					return fmt.Errorf("delete old time pricing versions: %w", err)
+				}
+				return nil
+			})
+		}
 		return updatePricing(r.db)
 	}
 	return r.runInTx(ctx, func(tx *sql.Tx) error {

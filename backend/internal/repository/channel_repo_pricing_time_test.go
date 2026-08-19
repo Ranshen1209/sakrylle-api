@@ -44,12 +44,19 @@ func expectEmptyModelPricingIntervals(mock sqlmock.Sqlmock) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 }
 
+func expectEmptyModelPricingTimeVersions(mock sqlmock.Sqlmock) {
+	mock.ExpectQuery(`SELECT id, pricing_id, effective_from, effective_until, timezone, default_multiplier`).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+}
+
 func TestChannelModelPricingTimePricingListRoundTrip(t *testing.T) {
 	repo, mock := newChannelModelPricingTimePricingRepo(t)
 	mock.ExpectQuery(`(?s)SELECT .*per_request_price, time_pricing, created_at, updated_at.*FROM channel_model_pricing.*channel_id = \$1`).
 		WithArgs(int64(7)).
 		WillReturnRows(modelPricingTimePricingRow(channelModelPricingTimePricingJSON))
 	expectEmptyModelPricingIntervals(mock)
+	expectEmptyModelPricingTimeVersions(mock)
 
 	pricing, err := repo.ListModelPricing(context.Background(), 7)
 	require.NoError(t, err)
@@ -68,6 +75,7 @@ func TestChannelModelPricingTimePricingListNullAndMalformed(t *testing.T) {
 			WithArgs(int64(7)).
 			WillReturnRows(modelPricingTimePricingRow(nil))
 		expectEmptyModelPricingIntervals(mock)
+		expectEmptyModelPricingTimeVersions(mock)
 
 		pricing, err := repo.ListModelPricing(context.Background(), 7)
 		require.NoError(t, err)
@@ -118,12 +126,17 @@ func TestChannelModelPricingTimePricingCreateAndUpdateRoundTrip(t *testing.T) {
 
 	t.Run("update writes JSON and entry ID", func(t *testing.T) {
 		repo, mock := newChannelModelPricingTimePricingRepo(t)
+		mock.ExpectBegin()
 		mock.ExpectExec(`(?s)UPDATE channel_model_pricing.*per_request_price = \$9, time_pricing = \$10, platform = \$11.*WHERE id = \$12`).
 			WithArgs(
 				[]byte(`["gpt-5"]`), service.BillingModeToken,
 				nil, nil, nil, nil, nil, nil, nil, channelModelPricingTimePricingJSON, "openai", int64(11),
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectExec(`DELETE FROM channel_model_pricing_versions WHERE pricing_id = \$1`).
+			WithArgs(int64(11)).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectCommit()
 
 		require.NoError(t, repo.UpdateModelPricing(context.Background(), pricing))
 		require.NoError(t, mock.ExpectationsWereMet())
