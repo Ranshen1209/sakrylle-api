@@ -53,6 +53,11 @@ html.theme-toggling * {
 
   html {
     @apply scroll-smooth antialiased;
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
   }
 
   body {

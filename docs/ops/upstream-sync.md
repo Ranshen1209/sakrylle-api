@@ -30,6 +30,8 @@ v0.1.176 also conflicted generated Ent Group files (`group.go`, `mutation.go`, `
 
 v0.1.177 conflicted `backend/internal/handler/openai_gateway_handler.go`: keep Sakrylle `allowsOpenAICompatibleMessagesDispatch` (OpenAI + Grok groups always dispatch) and take upstream `openAIResponsesRequiredCapabilityForRequest` for native compaction v2. Do not add unused `allowOpenAICompatibleMessagesDispatch`. Groups usage cells must stay `￥`; the new yesterday-cost row arrived with `$`. Filenames `222_channel_time_pricing.sql` and `222_group_usage_daily_rollups.sql` can coexist because migrations are keyed by filename. When `backend/go.mod` bumps a patch (for example 1.26.5 → 1.26.6), also bump `Dockerfile`, `backend/Dockerfile`, and `deploy/Dockerfile`; official `golang:*` images set `GOTOOLCHAIN=local` and will not auto-download.
 
+v0.1.178 adds upstream recurring daily `time_pricing` JSON beside Sakrylle's versioned `time_versions`. Keep both storage and API formats for compatibility, but reject a pricing row that enables both systems so multipliers cannot be applied twice. A nil `time_versions` update preserves existing versions; an explicit empty list clears them. Use distinct frontend i18n keys for the recurring editor. Extend `allowsOpenAICompatibleMessagesDispatch` to Kimi, Zhipu, and DeepSeek while retaining the OpenAI/Grok default dispatch behavior, and do not reintroduce the singular wrapper. Regenerate `wire_gen.go` and verify both the CN balance checker and OIDC key rotation scheduler are consumed by cleanup.
+
 ## Wire / OIDC Scheduler Footgun
 
 `wire_gen.go` is committed. CI and Docker builds do not regenerate it.

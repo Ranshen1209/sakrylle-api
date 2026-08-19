@@ -85,6 +85,13 @@ export default {
           perRequestPrice: '单次价格'
         }
       },
+      recurringTimePricingValidation: {
+        timezone: '请选择有效的 IANA 时区',
+        format: '开始时间和结束时间必须使用 HH:mm:ss 格式',
+        range: '开始时间必须早于结束时间；跨午夜请拆分为两个时间段',
+        overlap: '时间段不能重叠',
+        multiplier: '倍率必须大于 0，且最多保留两位小数'
+      },
       deleteConfirm: '确定要删除渠道「{name}」吗？此操作不可撤销。',
       columns: {
         name: '名称',
@@ -112,6 +119,7 @@ export default {
       },
       timePricingValidation: {
         intervalsConflict: '峰谷定价不能与上下文区间定价同时启用',
+        pricingSystemsConflict: '版本化峰谷价与每日循环倍率只能启用一种',
         effectiveFrom: '版本 {index} 必须填写有效的生效时间',
         effectiveUntil: '版本 {index} 的失效时间必须晚于生效时间',
         timezone: '版本 {index} 必须填写时区',
@@ -164,6 +172,13 @@ export default {
         multiplier: '倍率',
         pricePlaceholder: '默认',
         intervals: '上下文区间定价（可选）',
+        recurringTimePricing: '每日循环倍率（可选）',
+        recurringTimezone: '每日倍率时区',
+        addRecurringTimePeriod: '添加每日时段',
+        recurringStartTime: '开始时间',
+        recurringEndTime: '结束时间',
+        recurringMultiplier: '倍率',
+        removeRecurringTimePeriod: '删除每日时段',
         minTokens: '最小',
         maxTokens: '最大',
         inclusive: '（含）',
@@ -545,6 +560,7 @@ export default {
       deleteConfirm: '确定要删除监控「{name}」吗？此操作不可撤销。',
       nameRequired: '请输入监控名称',
       primaryModelRequired: '请输入主模型',
+      linkedAccountRequired: '请选择关联账号',
       columns: {
         name: '名称',
         provider: '供应商',
@@ -558,6 +574,19 @@ export default {
         name: '名称',
         namePlaceholder: '输入监控名称',
         provider: '平台',
+        checkMode: '检查方式',
+        checkModeProbe: '探活',
+        checkModeProbeHint: '向上游发送轻量 LLM 请求，检测可用性与延迟',
+        checkModeQuota: '配额',
+        checkModeQuotaHint: '只查询关联账号的用量滚动窗口/余额，不发送探活请求',
+        checkModeQuotaProbe: '探活 + 配额',
+        checkModeQuotaProbeHint: '探活的同时查询配额，用量快照附加在主模型结果上',
+        linkedAccount: '关联账号',
+        linkedAccountPlaceholder: '选择账号',
+        linkedAccountHint: '配额数据来自所选账号（复用账号管理侧的用量/余额查询）',
+        linkedAccountEmpty: '当前平台暂无账号，请先在账号管理中添加',
+        linkedAccountMissing: '关联账号已不存在或不可访问，请重新选择账号',
+        openAIQuotaProbeHint: '注意：OpenAI 平台的用量查询可能触发 Codex 探测请求，会消耗账号自身的额度（每 10 分钟最多触发一次）',
         apiMode: 'OpenAI 协议',
         apiModeChatCompletions: 'OpenAI Compatible',
         apiModeChatCompletionsHint: '使用 /v1/chat/completions，发送 messages；适合大多数兼容站。',

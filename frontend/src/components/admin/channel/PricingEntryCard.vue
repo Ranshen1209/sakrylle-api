@@ -95,7 +95,13 @@
             </label>
             <Select
               :modelValue="entry.billing_mode"
-              @update:modelValue="emit('update', { ...entry, billing_mode: $event as BillingMode, intervals: [], time_versions: [] })"
+              @update:modelValue="emit('update', {
+                ...entry,
+                billing_mode: $event as BillingMode,
+                intervals: [],
+                ...(entry.time_versions === undefined ? {} : { time_versions: [] }),
+                time_pricing: { ...entry.time_pricing, periods: [] },
+              })"
               :options="billingModeOptions"
               class="mt-1"
             />
@@ -170,6 +176,12 @@
               />
             </div>
           </div>
+
+          <TimePricingSection
+            v-if="enableTimePricing"
+            :model-value="entry.time_pricing"
+            @update:model-value="emit('update', { ...entry, time_pricing: $event })"
+          />
         </div>
 
         <!-- Per-request mode -->
@@ -253,6 +265,7 @@ import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
 import TimePricingEditor from './TimePricingEditor.vue'
+import TimePricingSection from './TimePricingSection.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
 import { perTokenToMTok, getPlatformTagClass } from './types'
 import type { BillingMode } from '@/api/admin/channels'
@@ -265,9 +278,11 @@ const props = withDefaults(defineProps<{
   platform?: string
   hideTokenIntervals?: boolean
   hideTimePricing?: boolean
+  enableTimePricing?: boolean
 }>(), {
   hideTokenIntervals: false,
   hideTimePricing: false,
+  enableTimePricing: false,
 })
 
 const emit = defineEmits<{

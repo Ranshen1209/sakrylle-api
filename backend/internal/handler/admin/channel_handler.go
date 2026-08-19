@@ -70,6 +70,7 @@ type channelModelPricingRequest struct {
 	PerRequestPrice  *float64                    `json:"per_request_price" binding:"omitempty,min=0"`
 	Intervals        []pricingIntervalRequest    `json:"intervals"`
 	TimeVersions     []pricingTimeVersionRequest `json:"time_versions"`
+	TimePricing      *channelTimePricingRequest  `json:"time_pricing"`
 }
 
 type pricingTimeVersionRequest struct {
@@ -94,6 +95,19 @@ type pricingTimeWindowRequest struct {
 	EndMinute   int     `json:"end_minute" binding:"min=1,max=1440"`
 	Multiplier  float64 `json:"multiplier" binding:"min=0"`
 	SortOrder   int     `json:"sort_order"`
+}
+
+// channelTimePricingRequest is the compact recurring schedule retained from
+// upstream alongside Sakrylle's effective-dated time_versions schedule.
+type channelTimePricingRequest struct {
+	Timezone string                            `json:"timezone"`
+	Periods  []channelTimePricingPeriodRequest `json:"periods"`
+}
+
+type channelTimePricingPeriodRequest struct {
+	StartTime  string  `json:"start_time"`
+	EndTime    string  `json:"end_time"`
+	Multiplier float64 `json:"multiplier"`
 }
 
 type pricingIntervalRequest struct {
@@ -147,6 +161,7 @@ type channelModelPricingResponse struct {
 	PerRequestPrice  *float64                     `json:"per_request_price"`
 	Intervals        []pricingIntervalResponse    `json:"intervals"`
 	TimeVersions     []pricingTimeVersionResponse `json:"time_versions"`
+	TimePricing      *channelTimePricingResponse  `json:"time_pricing"`
 }
 
 type pricingTimeVersionResponse struct {
@@ -173,6 +188,17 @@ type pricingTimeWindowResponse struct {
 	EndMinute   int     `json:"end_minute"`
 	Multiplier  float64 `json:"multiplier"`
 	SortOrder   int     `json:"sort_order"`
+}
+
+type channelTimePricingResponse struct {
+	Timezone string                             `json:"timezone"`
+	Periods  []channelTimePricingPeriodResponse `json:"periods"`
+}
+
+type channelTimePricingPeriodResponse struct {
+	StartTime  string  `json:"start_time"`
+	EndTime    string  `json:"end_time"`
+	Multiplier float64 `json:"multiplier"`
 }
 
 type pricingIntervalResponse struct {
@@ -301,7 +327,23 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 		PerRequestPrice:  p.PerRequestPrice,
 		Intervals:        intervals,
 		TimeVersions:     timeVersions,
+		TimePricing:      timePricingToResponse(p.TimePricing),
 	}
+}
+
+func timePricingToResponse(value *service.ChannelTimePricing) *channelTimePricingResponse {
+	if value == nil {
+		return nil
+	}
+	periods := make([]channelTimePricingPeriodResponse, 0, len(value.Periods))
+	for _, period := range value.Periods {
+		periods = append(periods, channelTimePricingPeriodResponse{
+			StartTime:  period.StartTime,
+			EndTime:    period.EndTime,
+			Multiplier: period.Multiplier,
+		})
+	}
+	return &channelTimePricingResponse{Timezone: value.Timezone, Periods: periods}
 }
 
 func intervalToResponse(iv service.PricingInterval) pricingIntervalResponse {
@@ -373,9 +415,25 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 			PerRequestPrice:  r.PerRequestPrice,
 			Intervals:        intervals,
 			TimeVersions:     timeVersions,
+			TimePricing:      timePricingRequestToService(r.TimePricing),
 		})
 	}
 	return result
+}
+
+func timePricingRequestToService(value *channelTimePricingRequest) *service.ChannelTimePricing {
+	if value == nil {
+		return nil
+	}
+	periods := make([]service.ChannelTimePricingPeriod, 0, len(value.Periods))
+	for _, period := range value.Periods {
+		periods = append(periods, service.ChannelTimePricingPeriod{
+			StartTime:  period.StartTime,
+			EndTime:    period.EndTime,
+			Multiplier: period.Multiplier,
+		})
+	}
+	return &service.ChannelTimePricing{Timezone: value.Timezone, Periods: periods}
 }
 
 func accountStatsPricingRuleRequestToService(r accountStatsPricingRuleRequest) service.AccountStatsPricingRule {
@@ -605,9 +663,12 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 var platformToLiteLLMProvider = map[string]string{
 	service.PlatformAnthropic:   "anthropic",
 	service.PlatformOpenAI:      "openai",
-	service.PlatformGemini:      "google",
+	service.PlatformGemini:      "gemini",
 	service.PlatformAntigravity: "anthropic",
 	service.PlatformGrok:        "xai",
+	service.PlatformKimi:        "moonshot",
+	service.PlatformZhipu:       "zhipu",
+	service.PlatformDeepseek:    "deepseek",
 }
 
 // SyncPricingModels 返回 LiteLLM 定价目录中指定平台的最新模型列表
