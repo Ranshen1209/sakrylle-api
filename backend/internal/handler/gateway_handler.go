@@ -1149,7 +1149,7 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	}
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek} {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		for _, model := range platformModels {
 			model = strings.TrimSpace(model)

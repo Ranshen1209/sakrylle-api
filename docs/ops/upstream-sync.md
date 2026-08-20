@@ -32,6 +32,8 @@ v0.1.177 conflicted `backend/internal/handler/openai_gateway_handler.go`: keep S
 
 v0.1.178 adds upstream recurring daily `time_pricing` JSON beside Sakrylle's versioned `time_versions`. Keep both storage and API formats for compatibility, but reject a pricing row that enables both systems so multipliers cannot be applied twice. A nil `time_versions` update preserves existing versions; an explicit empty list clears them. Use distinct frontend i18n keys for the recurring editor. Extend `allowsOpenAICompatibleMessagesDispatch` to Kimi, Zhipu, and DeepSeek while retaining the OpenAI/Grok default dispatch behavior, and do not reintroduce the singular wrapper. Regenerate `wire_gen.go` and verify both the CN balance checker and OIDC key rotation scheduler are consumed by cleanup.
 
+v0.1.179 changes long-context billing activation from requiring both the group and account switches to allowing either switch. Before production deployment, explicitly review the existing group settings and preserve the intended Sakrylle billing policy. The release also adds channel fast/flex and context-range multipliers; keep `channel_model_pricing` as the upstream baseline and continue applying the Sakrylle margin through `groups.rate_multiplier`.
+
 ## Wire / OIDC Scheduler Footgun
 
 `wire_gen.go` is committed. CI and Docker builds do not regenerate it.
