@@ -9,10 +9,7 @@
     <script nonce="__CSP_NONCE_VALUE__">
       ;(() => {
         try {
-          const savedTheme = localStorage.getItem('theme')
-          const dark =
-            savedTheme === 'dark' ||
-            (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          const dark = window.matchMedia('(prefers-color-scheme: dark)').matches
           document.documentElement.classList.toggle('dark', dark)
           document
             .querySelector('meta[name="theme-color"]')

@@ -646,21 +646,21 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 				},
 			},
 		}
-		require.Equal(t, "gpt-5.4-mini", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5-20250929"))
-		require.Equal(t, "gpt-5.6-sol", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-fable-5"))
+		require.Equal(t, "gpt-5.4-mini", resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "claude-sonnet-4-5-20250929"))
+		require.Equal(t, "gpt-5.6-sol", resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "claude-fable-5"))
 	})
 
 	t.Run("uses_family_default_when_no_override", func(t *testing.T) {
 		apiKey := &service.APIKey{Group: &service.Group{}}
-		require.Equal(t, "gpt-5.5", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-opus-4-6"))
-		require.Equal(t, "gpt-5.4", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5-20250929"))
-		require.Equal(t, "gpt-5.4-mini", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-haiku-4-5-20251001"))
+		require.Equal(t, "gpt-5.5", resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "claude-opus-4-6"))
+		require.Equal(t, "gpt-5.4", resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "claude-sonnet-4-5-20250929"))
+		require.Equal(t, "gpt-5.4-mini", resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "claude-haiku-4-5-20251001"))
 	})
 
 	t.Run("returns_empty_for_non_claude_or_missing_group", func(t *testing.T) {
-		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(nil, "claude-sonnet-4-5-20250929"))
-		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(&service.APIKey{}, "claude-sonnet-4-5-20250929"))
-		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(&service.APIKey{Group: &service.Group{}}, "gpt-5.4"))
+		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(nil, nil, "claude-sonnet-4-5-20250929"))
+		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(nil, &service.APIKey{}, "claude-sonnet-4-5-20250929"))
+		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(nil, &service.APIKey{Group: &service.Group{}}, "gpt-5.4"))
 	})
 
 	t.Run("grok_group_maps_claude_cli_model_to_grok_default", func(t *testing.T) {
@@ -672,8 +672,8 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 				Platform: service.PlatformGrok,
 			},
 		}
-		require.Equal(t, "grok-4.5", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5"))
-		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(apiKey, "grok"))
+		require.Equal(t, "grok-4.5", resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "claude-sonnet-4-5"))
+		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "grok"))
 	})
 
 	t.Run("does_not_fall_back_to_group_default_mapped_model", func(t *testing.T) {
@@ -682,8 +682,8 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 				DefaultMappedModel: "gpt-5.4",
 			},
 		}
-		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(apiKey, "gpt-5.4"))
-		require.Equal(t, "gpt-5.4", resolveOpenAIMessagesDispatchMappedModel(apiKey, "claude-sonnet-4-5-20250929"))
+		require.Empty(t, resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "gpt-5.4"))
+		require.Equal(t, "gpt-5.4", resolveOpenAIMessagesDispatchMappedModel(nil, apiKey, "claude-sonnet-4-5-20250929"))
 	})
 }
 
@@ -748,7 +748,7 @@ func TestAllowsOpenAICompatibleMessagesDispatch(t *testing.T) {
 			AllowMessagesDispatch: false,
 		}
 
-		require.True(t, allowsOpenAICompatibleMessagesDispatch(group))
+		require.True(t, allowsOpenAICompatibleMessagesDispatch(nil, &service.APIKey{Group: group}))
 	})
 
 	t.Run("openai_group_allowed_when_flag_true", func(t *testing.T) {
@@ -757,7 +757,7 @@ func TestAllowsOpenAICompatibleMessagesDispatch(t *testing.T) {
 			AllowMessagesDispatch: true,
 		}
 
-		require.True(t, allowsOpenAICompatibleMessagesDispatch(group))
+		require.True(t, allowsOpenAICompatibleMessagesDispatch(nil, &service.APIKey{Group: group}))
 	})
 
 	t.Run("grok_group_allowed_even_when_flag_false", func(t *testing.T) {
@@ -766,22 +766,22 @@ func TestAllowsOpenAICompatibleMessagesDispatch(t *testing.T) {
 			AllowMessagesDispatch: false,
 		}
 
-		require.True(t, allowsOpenAICompatibleMessagesDispatch(group))
+		require.True(t, allowsOpenAICompatibleMessagesDispatch(nil, &service.APIKey{Group: group}))
 	})
 
 	t.Run("nil_and_non_openai_compatible_groups_not_allowed_by_default", func(t *testing.T) {
-		require.False(t, allowsOpenAICompatibleMessagesDispatch(nil))
-		require.False(t, allowsOpenAICompatibleMessagesDispatch(&service.Group{
+		require.False(t, allowsOpenAICompatibleMessagesDispatch(nil, nil))
+		require.False(t, allowsOpenAICompatibleMessagesDispatch(nil, &service.APIKey{Group: &service.Group{
 			Platform:              service.PlatformAnthropic,
 			AllowMessagesDispatch: false,
-		}))
+		}}))
 	})
 
 	t.Run("non_openai_compatible_group_can_still_opt_in", func(t *testing.T) {
-		require.True(t, allowsOpenAICompatibleMessagesDispatch(&service.Group{
+		require.True(t, allowsOpenAICompatibleMessagesDispatch(nil, &service.APIKey{Group: &service.Group{
 			Platform:              service.PlatformAnthropic,
 			AllowMessagesDispatch: true,
-		}))
+		}}))
 	})
 }
 

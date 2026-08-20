@@ -24,11 +24,8 @@ function initIOSViewportZoomFix() {
 
 function initThemeClass() {
   // index.html applies this before the first style calculation. Keep this
-  // idempotent pass as a fallback when storage access or the inline script is blocked.
-  const savedTheme = localStorage.getItem('theme')
-  const shouldUseDark =
-    savedTheme === 'dark' ||
-    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  // idempotent pass as a fallback when the inline script is blocked.
+  const shouldUseDark = window.matchMedia('(prefers-color-scheme: dark)').matches
   document.documentElement.classList.toggle('dark', shouldUseDark)
 
   // theme-color only. Do not set inline color-scheme — CSS :root / :root.dark

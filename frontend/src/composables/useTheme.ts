@@ -27,7 +27,6 @@ function commitToggle() {
   // cannot leave the module-level ref stale on the first toggle.
   const next = !document.documentElement.classList.contains('dark')
   applyTheme(next)
-  localStorage.setItem('theme', next ? 'dark' : 'light')
 }
 
 function ensureSystemThemeListener() {
@@ -35,9 +34,7 @@ function ensureSystemThemeListener() {
   mediaQueryInitialized = true
 
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    if (!localStorage.getItem('theme')) {
-      applyTheme(e.matches)
-    }
+    applyTheme(e.matches)
   })
 }
 
