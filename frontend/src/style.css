@@ -2,37 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Telegram-style circular reveal: the destination theme expands from the
-   pressed control without Chromium's default old/new crossfade. */
-::view-transition-group(root) {
-  animation-duration: 500ms;
-  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+.theme-ripple-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  contain: strict;
+  will-change: clip-path, opacity;
 }
 
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-  opacity: 1;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-::view-transition-old(root) {
-  z-index: 1;
-}
-
-::view-transition-new(root) {
-  z-index: 9999;
-}
-
-/* Fill any sub-pixel gap with the destination color while the snapshot owns
-   the reveal, and suppress component color transitions underneath it. */
-html.theme-toggling {
-  background-color: var(--theme-transition-bg, #f9fafb);
-}
-
+/* Prevent component color transitions from competing with the ripple. */
 html.theme-toggling,
 html.theme-toggling * {
   transition: none !important;
