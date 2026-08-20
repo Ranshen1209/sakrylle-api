@@ -44,7 +44,15 @@ function installAnimationMock() {
     configurable: true,
     value: animate
   })
-  return { animate, finished, finishAnimation }
+  const startViewTransition = vi.fn((update: () => void) => {
+    update()
+    return { ready: Promise.resolve() }
+  })
+  Object.defineProperty(document, 'startViewTransition', {
+    configurable: true,
+    value: startViewTransition
+  })
+  return { animate, finished, finishAnimation, startViewTransition }
 }
 
 describe('useTheme', () => {
@@ -69,23 +77,26 @@ describe('useTheme', () => {
 
     expect(document.documentElement.classList.contains('dark')).toBe(false)
     expect(localStorage.getItem('theme')).toBeNull()
-    const ripple = document.querySelector<HTMLElement>('[data-theme-ripple]')
-    expect(ripple).not.toBeNull()
     const radius = Math.hypot(Math.max(124, window.innerWidth - 124), Math.max(504, window.innerHeight - 504))
-    expect(ripple?.style.left).toBe(`${124 - radius}px`)
-    expect(ripple?.style.top).toBe(`${504 - radius}px`)
+    await Promise.resolve()
     expect(animate).toHaveBeenCalledWith(
-      [
-        { transform: 'scale(0)', opacity: 0.28 },
-        { transform: 'scale(1)', opacity: 0 }
-      ],
-      expect.objectContaining({ duration: 500 })
+      {
+        clipPath: [
+          'circle(0px at 124px 504px)',
+          `circle(${radius}px at 124px 504px)`
+        ]
+      },
+      expect.objectContaining({
+        duration: 500,
+        pseudoElement: '::view-transition-new(root)'
+      })
     )
 
     finishAnimation()
     await finished
-    await Promise.resolve()
-    expect(document.querySelector('[data-theme-ripple]')).toBeNull()
+    await vi.waitFor(() => {
+      expect(document.documentElement.classList.contains('theme-toggling')).toBe(false)
+    })
   })
 
   it('uses a visible theme control when the clicked control is off-screen', async () => {
@@ -104,14 +115,21 @@ describe('useTheme', () => {
     offscreenButton.dispatchEvent(new MouseEvent('click'))
 
     const radius = Math.hypot(Math.max(580, window.innerWidth - 580), Math.max(40, window.innerHeight - 40))
-    const ripple = document.querySelector<HTMLElement>('[data-theme-ripple]')
-    expect(ripple?.style.left).toBe(`${580 - radius}px`)
-    expect(ripple?.style.top).toBe(`${40 - radius}px`)
+    await Promise.resolve()
+    expect(animate).toHaveBeenCalledWith(
+      {
+        clipPath: [
+          'circle(0px at 580px 40px)',
+          `circle(${radius}px at 580px 40px)`
+        ]
+      },
+      expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })
+    )
     expect(animate).toHaveBeenCalledTimes(1)
     finishAnimation()
   })
 
-  it('ignores rapid repeated toggles until the current ripple finishes', async () => {
+  it('ignores rapid repeated toggles until the current reveal finishes', async () => {
     const { animate, finished, finishAnimation } = installAnimationMock()
     const { useTheme } = await import('../useTheme')
 
@@ -122,13 +140,17 @@ describe('useTheme', () => {
     button.dispatchEvent(new MouseEvent('click'))
     button.dispatchEvent(new MouseEvent('click'))
 
+    await Promise.resolve()
     expect(animate).toHaveBeenCalledTimes(1)
     expect(localStorage.getItem('theme')).toBeNull()
 
     finishAnimation()
     await finished
-    await Promise.resolve()
+    await vi.waitFor(() => {
+      expect(document.documentElement.classList.contains('theme-toggling')).toBe(false)
+    })
     button.dispatchEvent(new MouseEvent('click'))
+    await Promise.resolve()
     expect(animate).toHaveBeenCalledTimes(2)
     expect(localStorage.getItem('theme')).toBeNull()
   })

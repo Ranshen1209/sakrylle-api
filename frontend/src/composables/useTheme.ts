@@ -1,4 +1,4 @@
-import { ref, readonly } from 'vue'
+import { nextTick, ref, readonly } from 'vue'
 
 const isDark = ref(
   typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
@@ -9,6 +9,14 @@ let transitionActive = false
 let transitionSafetyTimer: ReturnType<typeof setTimeout> | null = null
 
 const TRANSITION_MS = 500
+
+type ThemeViewTransition = {
+  ready: Promise<void>
+}
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void | Promise<void>) => ThemeViewTransition
+}
 
 function syncBrowserChrome(dark: boolean) {
   document
@@ -50,6 +58,7 @@ function clearTransitionLock() {
   }
   transitionActive = false
   document.documentElement.classList.remove('theme-toggling')
+  document.documentElement.style.removeProperty('--theme-transition-bg')
 }
 
 type TransitionOrigin = { x: number; y: number }
@@ -97,12 +106,17 @@ export function useTheme() {
   syncFromDom()
 
   function toggleTheme(event?: MouseEvent) {
-    // Lock before any layout read or theme mutation. Chromium can crash when
-    // multiple full-viewport animations are created by rapid clicks.
+    // A single root snapshot transition is expensive enough that overlapping
+    // toggles can visibly tear, especially on mobile Chromium.
     if (transitionActive) return
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reducedMotion || typeof HTMLElement.prototype.animate !== 'function') {
+    const transitionDocument = document as ViewTransitionDocument
+    if (
+      reducedMotion ||
+      typeof transitionDocument.startViewTransition !== 'function' ||
+      typeof document.documentElement.animate !== 'function'
+    ) {
       commitToggle()
       return
     }
@@ -115,35 +129,41 @@ export function useTheme() {
     )
 
     const goingDark = !document.documentElement.classList.contains('dark')
+    document.documentElement.style.setProperty(
+      '--theme-transition-bg',
+      goingDark ? '#020617' : '#f9fafb'
+    )
     document.documentElement.classList.add('theme-toggling')
-    commitToggle()
-
-    const ripple = document.createElement('span')
-    ripple.dataset.themeRipple = ''
-    ripple.className = 'theme-ripple-overlay'
-    ripple.style.left = `${x - endRadius}px`
-    ripple.style.top = `${y - endRadius}px`
-    ripple.style.width = `${endRadius * 2}px`
-    ripple.style.height = `${endRadius * 2}px`
-    ripple.style.backgroundColor = goingDark ? '#020617' : '#f9fafb'
-    document.body.appendChild(ripple)
 
     try {
-      const animation = ripple.animate(
-        [
-          { transform: 'scale(0)', opacity: 0.28 },
-          { transform: 'scale(1)', opacity: 0 }
-        ],
-        { duration: TRANSITION_MS, easing: 'ease-out', fill: 'both' }
-      )
-      const finish = () => {
-        ripple.remove()
-        clearTransitionLock()
-      }
-      transitionSafetyTimer = setTimeout(finish, TRANSITION_MS + 250)
-      animation.finished.catch(() => {}).finally(finish)
+      const transition = transitionDocument.startViewTransition(async () => {
+        commitToggle()
+        await nextTick()
+      })
+      transitionSafetyTimer = setTimeout(clearTransitionLock, TRANSITION_MS + 500)
+
+      transition.ready
+        .then(() => {
+          const animation = document.documentElement.animate(
+            {
+              clipPath: [
+                `circle(0px at ${x}px ${y}px)`,
+                `circle(${endRadius}px at ${x}px ${y}px)`
+              ]
+            },
+            {
+              duration: TRANSITION_MS,
+              easing: 'cubic-bezier(0.2, 0, 0, 1)',
+              fill: 'both',
+              pseudoElement: '::view-transition-new(root)'
+            }
+          )
+          return animation.finished.catch(() => {})
+        })
+        .catch(() => {})
+        .finally(clearTransitionLock)
     } catch {
-      ripple.remove()
+      commitToggle()
       clearTransitionLock()
     }
   }
