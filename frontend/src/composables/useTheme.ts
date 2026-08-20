@@ -1,16 +1,34 @@
-import { ref, readonly } from 'vue'
+import { nextTick, ref, readonly } from 'vue'
 
 const isDark = ref(
   typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
 )
 
-let mediaQueryInitialized = false
-let transitionActive = false
-let transitionSafetyTimer: ReturnType<typeof setTimeout> | null = null
-let activeRipple: HTMLElement | null = null
-let transitionGeneration = 0
+type ThemeViewTransition = {
+  ready: Promise<void>
+  finished: Promise<void>
+  updateCallbackDone?: Promise<void>
+  skipTransition?: () => void
+}
 
-const TRANSITION_MS = 420
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void | Promise<void>) => ThemeViewTransition
+}
+
+type ThemeTransitionRun = {
+  transition: ThemeViewTransition | null
+  safetyTimer: ReturnType<typeof setTimeout> | null
+  skipRequested: boolean
+}
+
+let mediaQueryInitialized = false
+let activeTransition: ThemeTransitionRun | null = null
+let pendingSystemTheme: boolean | null = null
+let nativeTransitionsDisabled = false
+
+const TRANSITION_MS = 500
+const TRANSITION_SAFETY_MS = TRANSITION_MS + 1500
+const TRANSITION_COOLDOWN_MS = 80
 
 function syncBrowserChrome(dark: boolean) {
   document
@@ -27,17 +45,27 @@ function applyTheme(dark: boolean) {
 function commitToggle() {
   // Read the painted DOM state at click time so a blocked early initializer
   // cannot leave the module-level ref stale on the first toggle.
-  const next = !document.documentElement.classList.contains('dark')
-  applyTheme(next)
+  applyTheme(!document.documentElement.classList.contains('dark'))
 }
 
 function ensureSystemThemeListener() {
   if (mediaQueryInitialized || typeof window === 'undefined') return
   mediaQueryInitialized = true
 
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    applyTheme(e.matches)
-  })
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  const handleChange = (event: MediaQueryListEvent) => {
+    if (activeTransition) {
+      pendingSystemTheme = event.matches
+      return
+    }
+    applyTheme(event.matches)
+  }
+
+  if (typeof mediaQuery.addEventListener === 'function') {
+    mediaQuery.addEventListener('change', handleChange)
+  } else if (typeof mediaQuery.addListener === 'function') {
+    mediaQuery.addListener(handleChange)
+  }
 }
 
 function syncFromDom() {
@@ -45,19 +73,56 @@ function syncFromDom() {
   isDark.value = document.documentElement.classList.contains('dark')
 }
 
-function clearTransitionLock(generation: number, ripple: HTMLElement) {
-  if (generation !== transitionGeneration) {
-    ripple.remove()
+function clearTransition(run: ThemeTransitionRun) {
+  if (activeTransition !== run) return
+
+  if (run.safetyTimer) {
+    clearTimeout(run.safetyTimer)
+    run.safetyTimer = null
+  }
+
+  activeTransition = null
+  document.documentElement.classList.remove('theme-toggling')
+  document.documentElement.style.removeProperty('--theme-transition-bg')
+  document.documentElement.style.removeProperty('--theme-transition-x')
+  document.documentElement.style.removeProperty('--theme-transition-y')
+
+  if (pendingSystemTheme !== null) {
+    const browserTheme = pendingSystemTheme
+    pendingSystemTheme = null
+    applyTheme(browserTheme)
+  }
+}
+
+function scheduleTransitionCleanup(run: ThemeTransitionRun) {
+  if (activeTransition !== run) return
+
+  if (run.safetyTimer) {
+    clearTimeout(run.safetyTimer)
+    run.safetyTimer = null
+  }
+
+  const finishAfterCooldown = () => {
+    setTimeout(() => clearTransition(run), TRANSITION_COOLDOWN_MS)
+  }
+
+  if (typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(finishAfterCooldown))
     return
   }
-  if (transitionSafetyTimer) {
-    clearTimeout(transitionSafetyTimer)
-    transitionSafetyTimer = null
+  finishAfterCooldown()
+}
+
+function requestTransitionSkip(run: ThemeTransitionRun) {
+  if (activeTransition !== run || run.skipRequested) return
+  run.skipRequested = true
+  nativeTransitionsDisabled = true
+
+  try {
+    run.transition?.skipTransition?.()
+  } catch {
+    // ViewTransition.finished remains the lifecycle owner even if skip fails.
   }
-  ripple.remove()
-  if (activeRipple === ripple) activeRipple = null
-  transitionActive = false
-  document.documentElement.classList.remove('theme-toggling')
 }
 
 type TransitionOrigin = { x: number; y: number }
@@ -78,8 +143,8 @@ function getPointerOrigin(event?: MouseEvent): TransitionOrigin | null {
   if (event.clientX < 0 || event.clientX > window.innerWidth) return null
   if (event.clientY < 0 || event.clientY > window.innerHeight) return null
 
-  // Keyboard and synthetic clicks normally report (0, 0). In that case the
-  // control center is a more useful and accessible reveal origin.
+  // Keyboard and synthetic clicks normally report (0, 0). Use the control
+  // center for those instead of revealing from the viewport's top-left corner.
   if (event.clientX === 0 && event.clientY === 0) return null
   return { x: event.clientX, y: event.clientY }
 }
@@ -113,14 +178,13 @@ function getTransitionOrigin(event?: MouseEvent): TransitionOrigin {
   }
 
   // Responsive sidebars remain laid out while translated off-screen. Only use
-  // a theme control that actually intersects the viewport; clamping an
-  // off-screen center produces the erroneous left-edge reveal after refresh.
+  // a theme control that actually intersects the viewport.
   for (const element of document.querySelectorAll<HTMLElement>('[data-theme-toggle]')) {
     const origin = resolveElementOrigin(element, pointer)
     if (origin) return origin
   }
 
-  return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+  return pointer ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
 }
 
 export function useTheme() {
@@ -128,59 +192,82 @@ export function useTheme() {
   syncFromDom()
 
   function toggleTheme(event?: MouseEvent) {
-    // Lock before any layout read or theme mutation. A compositor-only ripple
-    // remains stable under rapid clicks and avoids Chromium root snapshots.
-    if (transitionActive) return
+    // Ignore repeat clicks until Chromium has torn down the current root
+    // snapshots. Starting another transition sooner can crash the renderer.
+    if (activeTransition) return
 
+    const transitionDocument = document as ViewTransitionDocument
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (reducedMotion || typeof HTMLElement.prototype.animate !== 'function') {
+    if (
+      reducedMotion ||
+      nativeTransitionsDisabled ||
+      typeof transitionDocument.startViewTransition !== 'function' ||
+      typeof document.documentElement.animate !== 'function'
+    ) {
       commitToggle()
       return
     }
 
-    transitionActive = true
-    const generation = ++transitionGeneration
     const { x, y } = getTransitionOrigin(event)
     const endRadius = Math.hypot(
       Math.max(x, window.innerWidth - x),
       Math.max(y, window.innerHeight - y)
     )
+    const nextDark = !document.documentElement.classList.contains('dark')
+    const run: ThemeTransitionRun = {
+      transition: null,
+      safetyTimer: null,
+      skipRequested: false
+    }
+    let themeCommitted = false
 
-    const goingDark = !document.documentElement.classList.contains('dark')
+    activeTransition = run
+    document.documentElement.style.setProperty(
+      '--theme-transition-bg',
+      nextDark ? '#020617' : '#f9fafb'
+    )
+    document.documentElement.style.setProperty('--theme-transition-x', `${x}px`)
+    document.documentElement.style.setProperty('--theme-transition-y', `${y}px`)
     document.documentElement.classList.add('theme-toggling')
-    commitToggle()
-
-    const ripple = document.createElement('span')
-    ripple.dataset.themeRipple = ''
-    ripple.dataset.themeRippleX = `${x}`
-    ripple.dataset.themeRippleY = `${y}`
-    ripple.className = 'theme-ripple-overlay'
-    ripple.style.backgroundColor = goingDark ? '#020617' : '#f9fafb'
-    document.body.appendChild(ripple)
-    activeRipple = ripple
 
     try {
-      const animation = ripple.animate(
-        [
-          { clipPath: `circle(0px at ${x}px ${y}px)`, opacity: 0.34 },
-          {
-            clipPath: `circle(${endRadius * 0.82}px at ${x}px ${y}px)`,
-            opacity: 0.12,
-            offset: 0.72
-          },
-          { clipPath: `circle(${endRadius}px at ${x}px ${y}px)`, opacity: 0 }
-        ],
-        {
-          duration: TRANSITION_MS,
-          easing: 'cubic-bezier(0.2, 0, 0, 1)',
-          fill: 'both'
-        }
-      )
-      const finish = () => clearTransitionLock(generation, ripple)
-      transitionSafetyTimer = setTimeout(finish, TRANSITION_MS + 250)
-      animation.finished.catch(() => {}).finally(finish)
+      const transition = transitionDocument.startViewTransition(async () => {
+        applyTheme(nextDark)
+        themeCommitted = true
+        await nextTick()
+      })
+      run.transition = transition
+      run.safetyTimer = setTimeout(() => requestTransitionSkip(run), TRANSITION_SAFETY_MS)
+
+      void transition.updateCallbackDone?.catch(() => {})
+      void transition.ready
+        .then(() => {
+          if (activeTransition !== run) return
+          const animation = document.documentElement.animate(
+            {
+              clipPath: [
+                `circle(0px at ${x}px ${y}px)`,
+                `circle(${endRadius}px at ${x}px ${y}px)`
+              ]
+            },
+            {
+              duration: TRANSITION_MS,
+              easing: 'cubic-bezier(0.2, 0, 0, 1)',
+              fill: 'both',
+              pseudoElement: '::view-transition-new(root)'
+            }
+          )
+          void animation.finished.catch(() => {})
+        })
+        .catch(() => requestTransitionSkip(run))
+
+      void transition.finished
+        .catch(() => {})
+        .finally(() => scheduleTransitionCleanup(run))
     } catch {
-      clearTransitionLock(generation, ripple)
+      nativeTransitionsDisabled = true
+      if (!themeCommitted) applyTheme(nextDark)
+      clearTransition(run)
     }
   }
 

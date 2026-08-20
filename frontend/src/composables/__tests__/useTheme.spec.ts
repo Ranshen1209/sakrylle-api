@@ -1,5 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+type Deferred = {
+  promise: Promise<void>
+  resolve: () => void
+  reject: (reason?: unknown) => void
+}
+
+function deferred(): Deferred {
+  let resolve: () => void = () => {}
+  let reject: (reason?: unknown) => void = () => {}
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function installMatchMedia(reducedMotion = false) {
   let colorSchemeListener: ((event: MediaQueryListEvent) => void) | undefined
   Object.defineProperty(window, 'matchMedia', {
@@ -34,48 +50,88 @@ function mockRect(element: HTMLElement, left: number, top: number, width: number
   })
 }
 
-function installAnimationMock() {
-  let finishAnimation: () => void = () => {}
-  const finished = new Promise<void>((resolve) => {
-    finishAnimation = resolve
+function installViewTransitionMock() {
+  const runs: Array<{
+    ready: Deferred
+    finished: Deferred
+    updateCallbackDone: Deferred
+    skipTransition: ReturnType<typeof vi.fn>
+  }> = []
+  const animationRuns: Deferred[] = []
+  const animate = vi.fn().mockImplementation(() => {
+    const animation = deferred()
+    animationRuns.push(animation)
+    return { finished: animation.promise }
   })
-  const animate = vi.fn().mockReturnValue({ finished })
-  Object.defineProperty(HTMLElement.prototype, 'animate', {
+  Object.defineProperty(document.documentElement, 'animate', {
     configurable: true,
     value: animate
   })
-  const startViewTransition = vi.fn()
+
+  const startViewTransition = vi.fn().mockImplementation((update: () => void | Promise<void>) => {
+    const ready = deferred()
+    const finished = deferred()
+    const updateCallbackDone = deferred()
+    const skipTransition = vi.fn()
+
+    try {
+      Promise.resolve(update()).then(updateCallbackDone.resolve, updateCallbackDone.reject)
+    } catch (error) {
+      updateCallbackDone.reject(error)
+    }
+
+    runs.push({ ready, finished, updateCallbackDone, skipTransition })
+    return {
+      ready: ready.promise,
+      finished: finished.promise,
+      updateCallbackDone: updateCallbackDone.promise,
+      skipTransition
+    }
+  })
   Object.defineProperty(document, 'startViewTransition', {
     configurable: true,
     value: startViewTransition
   })
-  return { animate, finished, finishAnimation, startViewTransition }
+
+  return { animate, animationRuns, runs, startViewTransition }
 }
 
-function installQueuedAnimationMock() {
-  const finishAnimations: Array<() => void> = []
-  const animate = vi.fn().mockImplementation(() => ({
-    finished: new Promise<void>((resolve) => finishAnimations.push(resolve))
-  }))
-  Object.defineProperty(HTMLElement.prototype, 'animate', {
-    configurable: true,
-    value: animate
-  })
-  return { animate, finishAnimations }
+async function flushPromises() {
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+async function finishNativeTransition(run: { finished: Deferred }) {
+  run.finished.resolve()
+  await flushPromises()
+  await vi.runAllTimersAsync()
 }
 
 describe('useTheme', () => {
   beforeEach(() => {
     vi.resetModules()
-    vi.useRealTimers()
+    vi.useFakeTimers()
     localStorage.clear()
     document.body.innerHTML = ''
     document.documentElement.className = ''
+    document.documentElement.removeAttribute('style')
+    Object.defineProperty(document, 'startViewTransition', {
+      configurable: true,
+      value: undefined
+    })
+    Object.defineProperty(document.documentElement, 'animate', {
+      configurable: true,
+      value: undefined
+    })
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+      window.setTimeout(() => callback(0), 0)
+    )
     installMatchMedia()
   })
 
-  it('uses the exact pointer position for the reveal origin', async () => {
-    const { animate, finished, finishAnimation, startViewTransition } = installAnimationMock()
+  it('reveals the destination theme from the exact pointer position', async () => {
+    const mock = installViewTransitionMock()
     const { useTheme } = await import('../useTheme')
     document.documentElement.classList.add('dark')
 
@@ -84,41 +140,46 @@ describe('useTheme', () => {
     button.addEventListener('click', useTheme().toggleTheme)
     button.dispatchEvent(new MouseEvent('click', { clientX: 38, clientY: 500 }))
 
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-x')).toBe('38px')
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-y')).toBe('500px')
     expect(localStorage.getItem('theme')).toBeNull()
+
+    const run = mock.runs[0]!
+    run.ready.resolve()
+    await flushPromises()
+
     const radius = Math.hypot(
       Math.max(38, window.innerWidth - 38),
       Math.max(500, window.innerHeight - 500)
     )
-    const ripple = document.querySelector<HTMLElement>('[data-theme-ripple]')
-    expect(ripple?.dataset.themeRippleX).toBe('38')
-    expect(ripple?.dataset.themeRippleY).toBe('500')
-    expect(animate).toHaveBeenCalledWith(
-      [
-        { clipPath: 'circle(0px at 38px 500px)', opacity: 0.34 },
-        {
-          clipPath: `circle(${radius * 0.82}px at 38px 500px)`,
-          opacity: 0.12,
-          offset: 0.72
-        },
-        { clipPath: `circle(${radius}px at 38px 500px)`, opacity: 0 }
-      ],
+    expect(mock.animate).toHaveBeenCalledWith(
+      {
+        clipPath: [
+          'circle(0px at 38px 500px)',
+          `circle(${radius}px at 38px 500px)`
+        ]
+      },
       expect.objectContaining({
-        duration: 420
+        duration: 500,
+        pseudoElement: '::view-transition-new(root)'
       })
     )
-    expect(startViewTransition).not.toHaveBeenCalled()
 
-    finishAnimation()
-    await finished
-    await vi.waitFor(() => {
-      expect(document.documentElement.classList.contains('theme-toggling')).toBe(false)
-    })
-    expect(document.querySelector('[data-theme-ripple]')).toBeNull()
+    mock.animationRuns[0]!.resolve()
+    await flushPromises()
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 501 }))
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
+    expect(document.documentElement.classList.contains('theme-toggling')).toBe(true)
+
+    await finishNativeTransition(run)
+    expect(document.documentElement.classList.contains('theme-toggling')).toBe(false)
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-x')).toBe('')
   })
 
-  it('uses a visible theme control when the clicked control is off-screen', async () => {
-    const { animate, finishAnimation } = installAnimationMock()
+  it('uses a visible control center for keyboard or off-screen clicks', async () => {
+    const mock = installViewTransitionMock()
     const { useTheme } = await import('../useTheme')
 
     const visibleButton = document.createElement('button')
@@ -132,22 +193,24 @@ describe('useTheme', () => {
     offscreenButton.addEventListener('click', useTheme().toggleTheme)
     offscreenButton.dispatchEvent(new MouseEvent('click'))
 
-    const radius = Math.hypot(Math.max(580, window.innerWidth - 580), Math.max(40, window.innerHeight - 40))
-    const ripple = document.querySelector<HTMLElement>('[data-theme-ripple]')
-    expect(ripple?.dataset.themeRippleX).toBe('580')
-    expect(ripple?.dataset.themeRippleY).toBe('40')
-    expect(animate).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ clipPath: `circle(${radius}px at 580px 40px)` })
-      ]),
-      expect.any(Object)
+    const run = mock.runs[0]!
+    run.ready.resolve()
+    await flushPromises()
+
+    expect(mock.animate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clipPath: [
+          'circle(0px at 580px 40px)',
+          expect.stringMatching(/^circle\(.+px at 580px 40px\)$/)
+        ]
+      }),
+      expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })
     )
-    expect(animate).toHaveBeenCalledTimes(1)
-    finishAnimation()
+    await finishNativeTransition(run)
   })
 
-  it('coalesces rapid repeated toggles without root snapshots', async () => {
-    const { animate, finished, finishAnimation, startViewTransition } = installAnimationMock()
+  it('coalesces 50 clicks until the native transition and compositor cooldown finish', async () => {
+    const mock = installViewTransitionMock()
     const { useTheme } = await import('../useTheme')
 
     const button = document.createElement('button')
@@ -157,58 +220,167 @@ describe('useTheme', () => {
       button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
     }
 
-    expect(animate).toHaveBeenCalledTimes(1)
-    expect(startViewTransition).not.toHaveBeenCalled()
+    const run = mock.runs[0]!
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
     expect(document.documentElement.classList.contains('dark')).toBe(true)
-    expect(document.querySelectorAll('[data-theme-ripple]')).toHaveLength(1)
-    expect(localStorage.getItem('theme')).toBeNull()
 
-    finishAnimation()
-    await finished
-    await vi.waitFor(() => {
-      expect(document.documentElement.classList.contains('theme-toggling')).toBe(false)
-    })
+    run.ready.resolve()
+    await flushPromises()
+    mock.animationRuns[0]!.resolve()
+    await flushPromises()
+    for (let index = 0; index < 50; index += 1) {
+      button.dispatchEvent(new MouseEvent('click', { clientX: 42, clientY: 501 }))
+    }
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+
+    run.finished.resolve()
+    await flushPromises()
     button.dispatchEvent(new MouseEvent('click'))
-    expect(animate).toHaveBeenCalledTimes(2)
-    expect(localStorage.getItem('theme')).toBeNull()
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
+
+    await vi.runAllTimersAsync()
+    button.dispatchEvent(new MouseEvent('click', { clientX: 42, clientY: 501 }))
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(2)
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 
-  it('does not let stale animation cleanup unlock a newer reveal', async () => {
-    vi.useFakeTimers()
-    const { animate, finishAnimations } = installQueuedAnimationMock()
+  it('uses the watchdog only to skip a stuck transition and never unlocks it early', async () => {
+    const mock = installViewTransitionMock()
     const { useTheme } = await import('../useTheme')
     const button = document.createElement('button')
     mockRect(button, 24, 480, 200, 48)
     button.addEventListener('click', useTheme().toggleTheme)
 
-    button.dispatchEvent(new MouseEvent('click'))
-    expect(animate).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(700)
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
+    const run = mock.runs[0]!
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(run.skipTransition).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(run.skipTransition).toHaveBeenCalledTimes(1)
 
-    button.dispatchEvent(new MouseEvent('click'))
-    expect(animate).toHaveBeenCalledTimes(2)
-    finishAnimations[0]?.()
-    await Promise.resolve()
-
+    for (let index = 0; index < 50; index += 1) {
+      button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
+    }
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
     expect(document.documentElement.classList.contains('theme-toggling')).toBe(true)
-    expect(document.querySelectorAll('[data-theme-ripple]')).toHaveLength(1)
 
-    finishAnimations[1]?.()
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(document.documentElement.classList.contains('theme-toggling')).toBe(false)
+    await finishNativeTransition(run)
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 
-  it('follows browser color-scheme changes after a manual toggle', async () => {
-    const media = installMatchMedia(true)
+  it('keeps the lock through ready failures and disables later native snapshots', async () => {
+    const mock = installViewTransitionMock()
     const { useTheme } = await import('../useTheme')
-    const { toggleTheme, isDark } = useTheme()
+    const button = document.createElement('button')
+    mockRect(button, 24, 480, 200, 48)
+    button.addEventListener('click', useTheme().toggleTheme)
 
-    toggleTheme()
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
+    const run = mock.runs[0]!
+    run.ready.reject(new Error('snapshot failed'))
+    await flushPromises()
+    expect(run.skipTransition).toHaveBeenCalledTimes(1)
+
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
+    await finishNativeTransition(run)
+
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('queues browser color-scheme changes until the reveal finishes', async () => {
+    const media = installMatchMedia()
+    const mock = installViewTransitionMock()
+    const { useTheme } = await import('../useTheme')
+    const button = document.createElement('button')
+    mockRect(button, 24, 480, 200, 48)
+    button.addEventListener('click', useTheme().toggleTheme)
+
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    media.setColorScheme(false)
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+
+    await finishNativeTransition(mock.runs[0]!)
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('keeps following live browser color-scheme changes after a manual toggle', async () => {
+    const media = installMatchMedia()
+    const { useTheme } = await import('../useTheme')
+    const { isDark, toggleTheme } = useTheme()
+
+    media.setColorScheme(true)
     expect(isDark.value).toBe(true)
 
-    media.setColorScheme(false)
+    toggleTheme()
     expect(isDark.value).toBe(false)
+    expect(localStorage.getItem('theme')).toBeNull()
+
+    media.setColorScheme(true)
+    expect(isDark.value).toBe(true)
+  })
+
+  it('ignores a stale ready callback after a newer transition starts', async () => {
+    const mock = installViewTransitionMock()
+    const { useTheme } = await import('../useTheme')
+    const button = document.createElement('button')
+    mockRect(button, 24, 480, 200, 48)
+    button.addEventListener('click', useTheme().toggleTheme)
+
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 500 }))
+    const firstRun = mock.runs[0]!
+    await finishNativeTransition(firstRun)
+
+    button.dispatchEvent(new MouseEvent('click', { clientX: 42, clientY: 501 }))
+    expect(mock.startViewTransition).toHaveBeenCalledTimes(2)
+    firstRun.ready.resolve()
+    await flushPromises()
+
+    expect(mock.animate).not.toHaveBeenCalled()
+    await finishNativeTransition(mock.runs[1]!)
+  })
+
+  it('falls back once and disables native transitions after a synchronous API failure', async () => {
+    const animate = vi.fn()
+    Object.defineProperty(document.documentElement, 'animate', {
+      configurable: true,
+      value: animate
+    })
+    const startViewTransition = vi.fn(() => {
+      throw new Error('view transition unavailable')
+    })
+    Object.defineProperty(document, 'startViewTransition', {
+      configurable: true,
+      value: startViewTransition
+    })
+    const { useTheme } = await import('../useTheme')
+
+    const { toggleTheme } = useTheme()
+    toggleTheme()
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(document.documentElement.classList.contains('theme-toggling')).toBe(false)
+
+    toggleTheme()
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+    expect(animate).not.toHaveBeenCalled()
+  })
+
+  it('switches immediately when reduced motion is requested', async () => {
+    installMatchMedia(true)
+    const mock = installViewTransitionMock()
+    const { useTheme } = await import('../useTheme')
+
+    useTheme().toggleTheme()
+
+    expect(mock.startViewTransition).not.toHaveBeenCalled()
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(localStorage.getItem('theme')).toBeNull()
   })
 })

@@ -2,19 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-.theme-ripple-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2147483647;
-  pointer-events: none;
-  contain: strict;
-  will-change: clip-path, opacity;
+/* Telegram-style reveal: the destination theme snapshot expands from the
+   pressed control while the previous theme remains visible underneath. */
+html.theme-toggling::view-transition-group(root),
+html.theme-toggling::view-transition-old(root),
+html.theme-toggling::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
-/* Prevent component color transitions from competing with the ripple. */
+html.theme-toggling::view-transition-old(root) {
+  z-index: 1;
+}
+
+html.theme-toggling::view-transition-new(root) {
+  z-index: 2;
+}
+
+/* Hide the new snapshot before WAAPI installs the expanding clip path. */
+html.theme-toggling::view-transition-new(root) {
+  clip-path: circle(
+    0 at var(--theme-transition-x, 50vw) var(--theme-transition-y, 50vh)
+  );
+}
+
 html.theme-toggling,
 html.theme-toggling * {
   transition: none !important;
+}
+
+html.theme-toggling {
+  background-color: var(--theme-transition-bg, #f9fafb);
 }
 
 @layer base {
