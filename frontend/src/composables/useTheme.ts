@@ -188,8 +188,7 @@ function getTransitionOrigin(event?: MouseEvent): TransitionOrigin {
 }
 
 export function useTheme() {
-  ensureSystemThemeListener()
-  syncFromDom()
+  initializeThemeSync()
 
   function toggleTheme(event?: MouseEvent) {
     // Ignore repeat clicks until Chromium has torn down the current root
@@ -272,4 +271,11 @@ export function useTheme() {
   }
 
   return { isDark: readonly(isDark), toggleTheme, applyTheme }
+}
+
+// Keep browser theme changes live even on routes that do not render a theme
+// button (for example the authentication pages).
+export function initializeThemeSync() {
+  ensureSystemThemeListener()
+  syncFromDom()
 }

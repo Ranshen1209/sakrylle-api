@@ -326,6 +326,16 @@ describe('useTheme', () => {
     expect(isDark.value).toBe(true)
   })
 
+  it('initializes browser theme syncing without requiring a rendered toggle', async () => {
+    const media = installMatchMedia()
+    const { initializeThemeSync } = await import('../useTheme')
+
+    initializeThemeSync()
+    media.setColorScheme(true)
+
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+  })
+
   it('ignores a stale ready callback after a newer transition starts', async () => {
     const mock = installViewTransitionMock()
     const { useTheme } = await import('../useTheme')

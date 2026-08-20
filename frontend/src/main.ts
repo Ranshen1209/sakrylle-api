@@ -6,6 +6,7 @@ import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
 import { updateFavicon } from '@/utils/branding'
 import { isIOSDevice } from '@/utils/device'
+import { initializeThemeSync } from '@/composables/useTheme'
 import './style.css'
 
 function initIOSViewportZoomFix() {
@@ -38,6 +39,7 @@ function initThemeClass() {
 async function bootstrap() {
   // Reconcile the early document theme before mounting the application.
   initThemeClass()
+  initializeThemeSync()
   initIOSViewportZoomFix()
 
   const app = createApp(App)
