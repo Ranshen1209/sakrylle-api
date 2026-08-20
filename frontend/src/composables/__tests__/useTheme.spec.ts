@@ -1,15 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 function installMatchMedia(reducedMotion = false) {
+  let colorSchemeListener: ((event: MediaQueryListEvent) => void) | undefined
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     value: vi.fn().mockImplementation((query: string) => ({
       matches: reducedMotion && query === '(prefers-reduced-motion: reduce)',
       media: query,
-      addEventListener: vi.fn(),
+      addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
+        if (query === '(prefers-color-scheme: dark)') colorSchemeListener = listener
+      }),
       removeEventListener: vi.fn()
     }))
   })
+  return {
+    setColorScheme(dark: boolean) {
+      colorSchemeListener?.({ matches: dark } as MediaQueryListEvent)
+    }
+  }
 }
 
 function mockRect(element: HTMLElement, left: number, top: number, width: number, height: number) {
@@ -60,7 +68,7 @@ describe('useTheme', () => {
     button.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0 }))
 
     expect(document.documentElement.classList.contains('dark')).toBe(false)
-    expect(localStorage.getItem('theme')).toBe('light')
+    expect(localStorage.getItem('theme')).toBeNull()
     const ripple = document.querySelector<HTMLElement>('[data-theme-ripple]')
     expect(ripple).not.toBeNull()
     const radius = Math.hypot(Math.max(124, window.innerWidth - 124), Math.max(504, window.innerHeight - 504))
@@ -115,13 +123,26 @@ describe('useTheme', () => {
     button.dispatchEvent(new MouseEvent('click'))
 
     expect(animate).toHaveBeenCalledTimes(1)
-    expect(localStorage.getItem('theme')).toBe('dark')
+    expect(localStorage.getItem('theme')).toBeNull()
 
     finishAnimation()
     await finished
     await Promise.resolve()
     button.dispatchEvent(new MouseEvent('click'))
     expect(animate).toHaveBeenCalledTimes(2)
-    expect(localStorage.getItem('theme')).toBe('light')
+    expect(localStorage.getItem('theme')).toBeNull()
+  })
+
+  it('follows browser color-scheme changes after a manual toggle', async () => {
+    const media = installMatchMedia(true)
+    const { useTheme } = await import('../useTheme')
+    const { toggleTheme, isDark } = useTheme()
+
+    toggleTheme()
+    expect(isDark.value).toBe(true)
+
+    media.setColorScheme(false)
+    expect(isDark.value).toBe(false)
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
 })

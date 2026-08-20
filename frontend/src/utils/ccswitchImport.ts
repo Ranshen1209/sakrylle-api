@@ -1,6 +1,7 @@
 import type { GroupPlatform } from '@/types'
 
-export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.5'
+export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-5.6-sol'
+export const OPENAI_CC_SWITCH_PROVIDER_NAME = 'OpenAI'
 export const GROK_CC_SWITCH_MODEL = 'grok-4.5'
 
 export type CcSwitchClientType = 'claude' | 'gemini'
@@ -9,6 +10,7 @@ export interface CcSwitchImportConfig {
   app: string
   endpoint: string
   model?: string
+  providerName?: string
 }
 
 export interface CcSwitchImportDeeplinkInput {
@@ -40,7 +42,10 @@ export function resolveCcSwitchImportConfig(
       return {
         app: 'codex',
         endpoint: baseUrl,
-        model: OPENAI_CC_SWITCH_CODEX_MODEL
+        model: OPENAI_CC_SWITCH_CODEX_MODEL,
+        // CC-Switch enables Codex remote compaction when the active custom
+        // model_providers entry is named exactly "OpenAI".
+        providerName: OPENAI_CC_SWITCH_PROVIDER_NAME
       }
     case 'gemini':
       return {
@@ -66,7 +71,7 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
   const entries: [string, string][] = [
     ['resource', 'provider'],
     ['app', config.app],
-    ['name', input.providerName],
+    ['name', config.providerName || input.providerName],
     ['homepage', input.baseUrl],
     ['endpoint', config.endpoint],
     ['apiKey', input.apiKey],
