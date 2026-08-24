@@ -784,31 +784,28 @@ func publicRSAJWK(pub *rsa.PublicKey, kid string) JWK {
 }
 
 func publicECJWK(pub *ecdsa.PublicKey, kid string) JWK {
+	x, y := mustECPublicKeyCoordinates(pub)
 	return JWK{
 		Kty: "EC",
 		Use: "sig",
 		Alg: "ES256",
 		Kid: kid,
 		Crv: "P-256",
-		X:   base64.RawURLEncoding.EncodeToString(ecCoordBytes(pub.X)),
-		Y:   base64.RawURLEncoding.EncodeToString(ecCoordBytes(pub.Y)),
+		X:   base64.RawURLEncoding.EncodeToString(x),
+		Y:   base64.RawURLEncoding.EncodeToString(y),
 	}
 }
 
-// ecCoordBytes renders a P-256 affine coordinate as exactly 32 big-endian bytes,
-// left-padded with zeros. RFC 7518 §6.2.1.2 requires the x/y octet strings to be
-// the full field-element size; big.Int.Bytes() strips leading zero bytes, which
-// would intermittently (~1/256 per coordinate) yield a short, non-spec encoding
-// that strict RP JWK parsers reject. See TestOIDCKeyService_ES256_CoordinatePadding.
-func ecCoordBytes(c *big.Int) []byte {
-	const p256CoordLen = 32
-	b := c.Bytes()
-	if len(b) >= p256CoordLen {
-		return b
+// mustECPublicKeyCoordinates splits the SEC 1 uncompressed encoding returned by
+// crypto/ecdsa. This keeps JWK coordinates fixed-width without accessing the
+// deprecated mutable X/Y fields.
+func mustECPublicKeyCoordinates(pub *ecdsa.PublicKey) ([]byte, []byte) {
+	encoded, err := pub.Bytes()
+	if err != nil {
+		panic(fmt.Sprintf("encode validated EC public key: %v", err))
 	}
-	padded := make([]byte, p256CoordLen)
-	copy(padded[p256CoordLen-len(b):], b)
-	return padded
+	coordinateLen := (len(encoded) - 1) / 2
+	return encoded[1 : 1+coordinateLen], encoded[1+coordinateLen:]
 }
 
 // rsaKID derives a stable RFC 7638 JWK thumbprint (SHA-256 over the canonical
@@ -824,8 +821,9 @@ func rsaKID(pub *rsa.PublicKey) string {
 // ecKID derives a stable RFC 7638 JWK thumbprint for EC keys (SHA-256 over
 // the canonical {crv,kty,x,y} JSON object), base64url-encoded.
 func ecKID(pub *ecdsa.PublicKey) string {
-	x := base64.RawURLEncoding.EncodeToString(ecCoordBytes(pub.X))
-	y := base64.RawURLEncoding.EncodeToString(ecCoordBytes(pub.Y))
+	xBytes, yBytes := mustECPublicKeyCoordinates(pub)
+	x := base64.RawURLEncoding.EncodeToString(xBytes)
+	y := base64.RawURLEncoding.EncodeToString(yBytes)
 	canonical := fmt.Sprintf(`{"crv":"P-256","kty":"EC","x":"%s","y":"%s"}`, x, y)
 	sum := sha256.Sum256([]byte(canonical))
 	return base64.RawURLEncoding.EncodeToString(sum[:])

@@ -475,9 +475,6 @@ func parseECJWK(jwk JWK) (*ecdsa.PublicKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode EC y: %w", err)
 	}
-	x := new(big.Int).SetBytes(xBytes)
-	y := new(big.Int).SetBytes(yBytes)
-
 	// Map curve name to elliptic.Curve
 	var curve elliptic.Curve
 	switch jwk.Crv {
@@ -491,7 +488,19 @@ func parseECJWK(jwk JWK) (*ecdsa.PublicKey, error) {
 		return nil, fmt.Errorf("unsupported EC curve %q", jwk.Crv)
 	}
 
-	return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
+	coordinateLen := (curve.Params().BitSize + 7) / 8
+	if len(xBytes) > coordinateLen || len(yBytes) > coordinateLen {
+		return nil, fmt.Errorf("EC JWK coordinate exceeds %s field size", jwk.Crv)
+	}
+	encoded := make([]byte, 1+2*coordinateLen)
+	encoded[0] = 4
+	copy(encoded[1+coordinateLen-len(xBytes):1+coordinateLen], xBytes)
+	copy(encoded[1+2*coordinateLen-len(yBytes):], yBytes)
+	pub, err := ecdsa.ParseUncompressedPublicKey(curve, encoded)
+	if err != nil {
+		return nil, fmt.Errorf("parse EC public key: %w", err)
+	}
+	return pub, nil
 }
 
 // FetchRequestURI fetches the request object from a request_uri (OIDC Core §6.3).

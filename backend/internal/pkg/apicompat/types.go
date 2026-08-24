@@ -164,12 +164,26 @@ func AnthropicStopReasonString(p *string) string {
 	return *p
 }
 
+// AnthropicPromptTokensDetails holds OpenAI-compatible prompt token details
+// occasionally included by Anthropic-compatible providers.
+type AnthropicPromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+}
+
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
 	InputTokens              int `json:"input_tokens"`
 	OutputTokens             int `json:"output_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	// Anthropic-compatible providers can also expose their native OpenAI-style
+	// total/cache fields. Preserve them so callers can normalize provider totals
+	// into Anthropic's mutually-exclusive billing buckets.
+	PromptTokens          int                           `json:"prompt_tokens,omitempty"`
+	CachedTokens          int                           `json:"cached_tokens,omitempty"`
+	PromptTokensDetails   *AnthropicPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
+	PromptCacheHitTokens  *int                          `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens *int                          `json:"prompt_cache_miss_tokens,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -324,24 +338,39 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
+	Type     string `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
 	Detail   string `json:"detail,omitempty"`
 	FileID   string `json:"file_id,omitempty"`
-	// FileData/Filename are bridge-only fields. DeepSeek's Responses API
-	// accepts file_id or image_url; Chat's file_data is normalized to the
-	// image_url data URI before this type is marshaled upstream.
+	// FileData/Filename are emitted only for type=input_file. DeepSeek image
+	// bridges keep them local and normalize image data to image_url.
 	FileData string `json:"-"`
 	Filename string `json:"-"`
 }
 
+func (p ResponsesContentPart) MarshalJSON() ([]byte, error) {
+	wire := struct {
+		Type     string `json:"type"`
+		Text     string `json:"text,omitempty"`
+		ImageURL string `json:"image_url,omitempty"`
+		Detail   string `json:"detail,omitempty"`
+		Filename string `json:"filename,omitempty"`
+		FileData string `json:"file_data,omitempty"`
+		FileID   string `json:"file_id,omitempty"`
+	}{
+		Type: p.Type, Text: p.Text, ImageURL: p.ImageURL, Detail: p.Detail, FileID: p.FileID,
+	}
+	if p.Type == "input_file" {
+		wire.Filename = p.Filename
+		wire.FileData = p.FileData
+	}
+	return json.Marshal(wire)
+}
+
 // UnmarshalJSON accepts both the Responses wire form (image_url as a string)
-// and the OpenAI Chat-compatible form (image_url as {url, detail}). DeepSeek
-// accepts both forms at different compatibility endpoints, so normalizing them
-// here prevents a bridge from rejecting or silently dropping an image part.
+// and the OpenAI Chat-compatible form (image_url as {url, detail}).
 func (p *ResponsesContentPart) UnmarshalJSON(data []byte) error {
-	type alias ResponsesContentPart
 	var wire struct {
 		Type     string          `json:"type"`
 		Text     string          `json:"text,omitempty"`
@@ -422,12 +451,13 @@ func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
 
 // ResponsesResponse is the non-streaming response from POST /v1/responses.
 type ResponsesResponse struct {
-	ID     string            `json:"id"`
-	Object string            `json:"object"` // "response"
-	Model  string            `json:"model"`
-	Status string            `json:"status"` // "completed" | "incomplete" | "failed"
-	Output []ResponsesOutput `json:"output"`
-	Usage  *ResponsesUsage   `json:"usage,omitempty"`
+	ID          string            `json:"id"`
+	Object      string            `json:"object"` // "response"
+	Model       string            `json:"model"`
+	Status      string            `json:"status"` // "completed" | "incomplete" | "failed"
+	Output      []ResponsesOutput `json:"output"`
+	Usage       *ResponsesUsage   `json:"usage,omitempty"`
+	ServiceTier string            `json:"service_tier,omitempty"` // upstream tier, echoed back verbatim
 
 	// incomplete_details is present when status="incomplete"
 	IncompleteDetails *ResponsesIncompleteDetails `json:"incomplete_details,omitempty"`
@@ -825,9 +855,10 @@ type ChatMessage struct {
 
 // ChatContentPart is a typed content part in a multi-modal message.
 type ChatContentPart struct {
-	Type     string        `json:"type"` // "text" | "image_url"
+	Type     string        `json:"type"` // "text" | "image_url" | "file"
 	Text     string        `json:"text,omitempty"`
 	ImageURL *ChatImageURL `json:"image_url,omitempty"`
+	File     *ChatFile     `json:"file,omitempty"`
 	FileID   string        `json:"file_id,omitempty"`
 	FileData string        `json:"file_data,omitempty"`
 	Filename string        `json:"filename,omitempty"`
@@ -893,6 +924,7 @@ func (p *ChatContentPart) UnmarshalJSON(data []byte) error {
 		if p.Filename == "" {
 			p.Filename = fileObject.Filename
 		}
+		p.File = &ChatFile{FileID: fileObject.FileID, FileData: fileObject.FileData, Filename: fileObject.Filename}
 	}
 	return nil
 }
@@ -901,6 +933,13 @@ func (p *ChatContentPart) UnmarshalJSON(data []byte) error {
 type ChatImageURL struct {
 	URL    string `json:"url"`
 	Detail string `json:"detail,omitempty"` // "auto" | "low" | "high"
+}
+
+// ChatFile contains the payload of a "file" content part (e.g. PDF input).
+type ChatFile struct {
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"` // data URI
+	FileID   string `json:"file_id,omitempty"`
 }
 
 // ChatTool describes a tool available to the model.
@@ -936,7 +975,9 @@ type ChatToolCall struct {
 
 // ChatFunctionCall contains the function name and arguments.
 type ChatFunctionCall struct {
-	Name      string `json:"name"`
+	// Empty name is omitted so streamed arguments-only deltas never overwrite
+	// the tool name a client accumulated from the first delta.
+	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments"`
 }
 

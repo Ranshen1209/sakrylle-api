@@ -53,7 +53,7 @@
       <template v-if="isToken">
         <PlazaPriceRow
           :label="t('plaza.pricing.input')"
-          :value="longContextValue(displayedTimePrice('input_price'), 'input')"
+          :value="longContextValue(displayedTimePrice('input_price'), 'input_price')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -62,7 +62,7 @@
         <PlazaPriceRow
           v-if="model.pricing.image_input_ratio != null && displayedTimePrice('input_price') != null"
           :label="t('plaza.pricing.imageInput')"
-          :value="longContextValue(imageInputPrice, 'input')"
+          :value="longContextValue(imageInputPrice, 'input_price')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -70,7 +70,7 @@
         />
         <PlazaPriceRow
           :label="t('plaza.pricing.output')"
-          :value="longContextValue(displayedTimePrice('output_price'), 'output')"
+          :value="longContextValue(displayedTimePrice('output_price'), 'output_price')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -79,7 +79,7 @@
         <PlazaPriceRow
           v-if="displayedTimePrice('cache_read_price') != null"
           :label="t('plaza.pricing.cacheRead')"
-          :value="longContextValue(displayedTimePrice('cache_read_price'), 'input')"
+          :value="longContextValue(displayedTimePrice('cache_read_price'), 'cache_read_price')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -88,7 +88,7 @@
         <PlazaPriceRow
           v-if="displayedTimePrice('cache_write_price') != null"
           :label="t('plaza.pricing.cacheWrite')"
-          :value="longContextValue(displayedTimePrice('cache_write_price'), 'input')"
+          :value="longContextValue(displayedTimePrice('cache_write_price'), 'cache_write_price')"
           :rate="effectiveRate"
           :scale="perMillionScale"
           :unit="t('plaza.pricing.unitPerMillion')"
@@ -123,10 +123,10 @@
     <!-- Footer: billing badge + this card's group -->
     <footer class="flex flex-wrap items-center gap-1.5">
       <span
-        v-if="longContext && longContextPricing"
+        v-if="longContext && longContextInterval"
         class="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
       >
-        {{ t('plaza.longContextBadge', { threshold: formatThreshold(longContextPricing.long_context_threshold) }) }}
+        {{ t('plaza.longContextBadge', { threshold: formatThreshold(longContextInterval.min_tokens) }) }}
       </span>
       <span
         class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium"
@@ -158,7 +158,8 @@ import {
   displayedTimeVersion,
   type ModelPlazaTimePriceField,
 } from '@/utils/modelPlaza'
-import type { ModelPlazaPricingMode, PlazaOfficialPricing } from '@/api/modelPlaza'
+import type { ModelPlazaPricingMode } from '@/api/modelPlaza'
+import type { UserPricingInterval } from '@/api/channels'
 import type { PlazaModel } from '@/utils/modelPlaza'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBorderClass, platformTextClass } from '@/utils/platformColors'
@@ -174,7 +175,6 @@ const props = withDefaults(
     model: PlazaModel
     /** Show original strikethrough price beside the discounted price. */
     showOriginal?: boolean
-    longContextPricing?: PlazaOfficialPricing
     longContext?: boolean
     timePricingMode?: ModelPlazaPricingMode
   }>(),
@@ -215,12 +215,25 @@ const isToken = computed(() => billingMode.value === BILLING_MODE_TOKEN)
 const isPerRequest = computed(() => billingMode.value === BILLING_MODE_PER_REQUEST)
 const isImage = computed(() => billingMode.value === BILLING_MODE_IMAGE)
 
-function longContextValue(value: number | null, side: 'input' | 'output'): number | null {
-  if (value == null || !props.longContext || props.longContextPricing == null) return value
-  const multiplier = side === 'input'
-    ? props.longContextPricing.long_context_input_multiplier
-    : props.longContextPricing.long_context_output_multiplier
-  return value * (multiplier ?? 1)
+type IntervalPriceField = 'input_price' | 'output_price' | 'cache_write_price' | 'cache_read_price'
+
+const longContextInterval = computed<UserPricingInterval | null>(() => {
+  const intervals = [...(props.model.pricing?.intervals ?? [])]
+    .sort((a, b) => a.min_tokens - b.min_tokens)
+  if (intervals.length < 2) return null
+  return intervals[intervals.length - 1] ?? null
+})
+
+function longContextValue(value: number | null, field: IntervalPriceField): number | null {
+  const pricing = props.model.pricing
+  const intervalValue = longContextInterval.value?.[field]
+  if (value == null || !props.longContext || pricing == null || intervalValue == null) return value
+
+  // Time previews expose absolute prices. Preserve their multiplier when
+  // switching the card to the corresponding long-context tier.
+  const baseValue = pricing[field]
+  if (baseValue != null && baseValue !== 0) return intervalValue * (value / baseValue)
+  return intervalValue
 }
 
 function displayedTimePrice(field: ModelPlazaTimePriceField): number | null {

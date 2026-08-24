@@ -114,12 +114,12 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	}
 
 	// pricing interval 白名单：不应暴露 id / sort_order。
-	pricing := toUserPricingWithRatio(&service.ChannelModelPricing{
+	pricing := toUserPricingForModel(&service.ChannelModelPricing{
 		BillingMode: service.BillingModeToken,
 		Intervals: []service.PricingInterval{
 			{ID: 7, MinTokens: 0, MaxTokens: nil, SortOrder: 3},
 		},
-	}, nil)
+	}, "", nil)
 	require.NotNil(t, pricing)
 	require.Len(t, pricing.Intervals, 1)
 	rawIv, err := json.Marshal(pricing.Intervals[0])
@@ -161,7 +161,7 @@ func TestToUserPricing_ImageInputRatioPropagated(t *testing.T) {
 	// toUserPricing が image_input_ratio を DTO に引き継ぐことを確認。
 	ratio := 1.6
 	p := &service.ChannelModelPricing{BillingMode: service.BillingModeImage}
-	dto := toUserPricingWithRatio(p, &ratio)
+	dto := toUserPricingForModel(p, "", &ratio)
 	require.NotNil(t, dto)
 	require.NotNil(t, dto.ImageInputRatio)
 	require.InDelta(t, 1.6, *dto.ImageInputRatio, 1e-9)
@@ -170,7 +170,7 @@ func TestToUserPricing_ImageInputRatioPropagated(t *testing.T) {
 func TestToUserPricing_ImageInputRatioNilWhenNotSet(t *testing.T) {
 	// channel に image_input_ratio なし → DTO.ImageInputRatio = nil。
 	p := &service.ChannelModelPricing{BillingMode: service.BillingModeToken}
-	dto := toUserPricingWithRatio(p, nil)
+	dto := toUserPricingForModel(p, "", nil)
 	require.NotNil(t, dto)
 	require.Nil(t, dto.ImageInputRatio)
 }
@@ -178,7 +178,7 @@ func TestToUserPricing_ImageInputRatioNilWhenNotSet(t *testing.T) {
 func TestToUserPricing_ResolvesCurrentTimeVersionAndExposesSchedule(t *testing.T) {
 	staticInput := 4.0
 	versionInput := 6.0
-	dto := toUserPricingWithRatio(&service.ChannelModelPricing{
+	dto := toUserPricingForModel(&service.ChannelModelPricing{
 		BillingMode: service.BillingModeToken,
 		InputPrice:  &staticInput,
 		TimeVersions: []service.PricingTimeVersion{{
@@ -191,7 +191,7 @@ func TestToUserPricing_ResolvesCurrentTimeVersionAndExposesSchedule(t *testing.T
 				ID: 12, Label: "peak", Weekdays: 127, StartMinute: 540, EndMinute: 720, Multiplier: 1,
 			}},
 		}},
-	}, nil)
+	}, "", nil)
 
 	require.NotNil(t, dto)
 	require.NotNil(t, dto.InputPrice)

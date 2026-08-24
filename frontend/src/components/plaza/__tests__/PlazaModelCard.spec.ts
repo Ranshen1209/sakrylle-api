@@ -31,7 +31,26 @@ const model: PlazaModel = {
     image_output_price: null,
     image_input_ratio: null,
     per_request_price: null,
-    intervals: [],
+    intervals: [
+      {
+        min_tokens: 0,
+        max_tokens: 272000,
+        input_price: 2.5e-6,
+        output_price: 15e-6,
+        cache_write_price: 3.125e-6,
+        cache_read_price: 0.25e-6,
+        per_request_price: null,
+      },
+      {
+        min_tokens: 272000,
+        max_tokens: null,
+        input_price: 5e-6,
+        output_price: 22.5e-6,
+        cache_write_price: 6.25e-6,
+        cache_read_price: 0.5e-6,
+        per_request_price: null,
+      },
+    ],
   },
   group: {
     id: 14,
@@ -52,15 +71,6 @@ function mountCard(longContext: boolean, timePricingMode: 'current' | 'peak' | '
       showOriginal: false,
       longContext,
       timePricingMode,
-      longContextPricing: {
-        input_price: 2.5e-6,
-        output_price: 15e-6,
-        cache_write_price: 3.125e-6,
-        cache_read_price: 0.25e-6,
-        long_context_threshold: 272000,
-        long_context_input_multiplier: 2,
-        long_context_output_multiplier: 1.5,
-      },
     },
     global: {
       stubs: {
