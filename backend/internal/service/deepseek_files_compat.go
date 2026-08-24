@@ -32,12 +32,16 @@ func validateDeepSeekFileID(raw string) (string, error) {
 		if unicode.IsControl(r) || unicode.IsSpace(r) || r == '/' || r == '\\' {
 			return "", fmt.Errorf("file id contains an invalid character")
 		}
-		if !(r == '-' || r == '_' || r == '.' || r == ':' ||
-			(r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+		if !deepSeekFileIDRuneAllowed(r) {
 			return "", fmt.Errorf("file id contains an invalid character")
 		}
 	}
 	return id, nil
+}
+
+func deepSeekFileIDRuneAllowed(r rune) bool {
+	return r == '-' || r == '_' || r == '.' || r == ':' ||
+		(r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
 // ValidateDeepSeekFileID exposes the same path-safety validation used by the

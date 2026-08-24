@@ -168,7 +168,7 @@ func TestForwardDeepSeekFiles_AnthropicIngressToFixedOpenAIAddsCanonicalPurpose(
 
 	resp, err := svc.ForwardDeepSeekFiles(context.Background(), c, account, http.MethodPost, "", body)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
 	require.Equal(t, "https://openai-files.example/v1/files", upstream.lastReq.URL.String())
 	require.Empty(t, upstream.lastReq.Header.Get("anthropic-version"))
 	require.Empty(t, upstream.lastReq.Header.Get("anthropic-beta"))
@@ -205,7 +205,7 @@ func TestForwardDeepSeekFiles_OpenAIIngressToFixedAnthropicStripsOpenAIOnlyField
 
 	resp, err := svc.ForwardDeepSeekFiles(context.Background(), c, account, http.MethodPost, "", body)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	t.Cleanup(func() { require.NoError(t, resp.Body.Close()) })
 	require.Equal(t, "https://anthropic-files.example/v1/files", upstream.lastReq.URL.String())
 	require.Contains(t, upstream.lastReq.Header.Get("anthropic-beta"), deepSeekFilesAPIBetaToken)
 	fields, fileBytes, fileContentType := readDeepSeekFilesTestUpload(t, upstream.lastReq.Header.Get("Content-Type"), upstream.lastBody)

@@ -34,6 +34,8 @@ v0.1.178 adds upstream recurring daily `time_pricing` JSON beside Sakrylle's ver
 
 v0.1.179 changes long-context billing activation from requiring both the group and account switches to allowing either switch. Before production deployment, explicitly review the existing group settings and preserve the intended Sakrylle billing policy. The release also adds channel fast/flex and context-range multipliers; keep `channel_model_pricing` as the upstream baseline and continue applying the Sakrylle margin through `groups.rate_multiplier`.
 
+v0.1.180 was merged from the exact annotated release tag rather than the later `upstream/main` head. Keep upstream's multi-interval model-plaza pricing, plugin manager, and model-list response limit together with Sakrylle's versioned time pricing, `￥` display, image-input ratios, and model-specific pricing resolution. The user model-plaza cards must select absolute prices from `pricing.intervals`; the removed `long_context_*_multiplier` fields are not a compatibility source. Go moved to 1.27.0, so update every Docker builder and run golangci-lint v2.13 or later. Regenerate Wire and confirm plugin manager, CN balance checking, and OIDC key rotation all remain cleanup consumers. The 2026-08-24 production audit found long-context pricing enabled on every group; account-level OpenAI overrides remained 5 enabled and 1142 disabled, with Anthropic overrides unset, so no production setting migration was required.
+
 ## Wire / OIDC Scheduler Footgun
 
 `wire_gen.go` is committed. CI and Docker builds do not regenerate it.

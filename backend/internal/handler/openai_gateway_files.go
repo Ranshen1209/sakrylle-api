@@ -358,7 +358,7 @@ func (h *OpenAIGatewayHandler) Files(c *gin.Context) {
 		responseBody, readErr := readDeepSeekFilesResponseBody(resp)
 		if readErr != nil {
 			reqLog.Warn("deepseek_files.response_read_failed", zap.Int64("account_id", account.ID), zap.Error(readErr))
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, "", false, nil)
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account, "", false, nil)
 			filesError(http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
 			return
 		}
@@ -367,7 +367,7 @@ func (h *OpenAIGatewayHandler) Files(c *gin.Context) {
 		scheduleSuccess := h.gatewayService.HandleDeepSeekFilesUpstreamResult(
 			c.Request.Context(), account, resp.StatusCode, resp.Header, responseBody,
 		)
-		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, "", scheduleSuccess, nil)
+		h.gatewayService.ReportOpenAIAccountScheduleResult(account, "", scheduleSuccess, nil)
 		normalizeDeepSeekFilesRedirectResponse(resp)
 		upstreamNativeAnthropic := service.DeepSeekFilesUseNativeAnthropicUpstream(c, account)
 		if method == http.MethodGet && fileID != "" && resp.StatusCode == http.StatusNotFound {
@@ -404,7 +404,7 @@ func (h *OpenAIGatewayHandler) Files(c *gin.Context) {
 				)
 				if parseErr != nil {
 					reqLog.Error("deepseek_files.upload_response_invalid", zap.Error(parseErr), zap.Int64("account_id", account.ID))
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, "", false, nil)
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account, "", false, nil)
 					if uploadedFileID, ok := service.DeepSeekFileIDFromUploadResponse(responseBody); ok {
 						if compensateErr := h.gatewayService.CompensateDeepSeekFileUpload(
 							c.Request.Context(), c, account, uploadedFileID,
@@ -448,7 +448,7 @@ func (h *OpenAIGatewayHandler) Files(c *gin.Context) {
 				record, parseErr := service.ParseDeepSeekFileRecord(responseBody, upstreamNativeAnthropic, fallbackMime, account.ID)
 				if parseErr != nil || record.ID != fileID {
 					reqLog.Error("deepseek_files.retrieve_response_invalid", zap.Error(parseErr), zap.Int64("account_id", account.ID))
-					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, "", false, nil)
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account, "", false, nil)
 					filesError(http.StatusBadGateway, "upstream_error", "Invalid upstream file response")
 					return
 				}
@@ -504,7 +504,7 @@ func readDeepSeekFilesResponseBody(resp *http.Response) ([]byte, error) {
 	if resp == nil || resp.Body == nil {
 		return nil, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, deepSeekFilesMaxResponseBytes+1))
 	if err != nil {
 		return nil, err

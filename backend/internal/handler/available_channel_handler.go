@@ -320,14 +320,25 @@ func toUserSupportedModels(
 	return out
 }
 
-// toUserPricingWithRatio 将 service 层定价转换为用户 DTO，并将渠道级 imageInputRatio
-// 戳入 DTO 的 ImageInputRatio 字段。入参 p 为 nil 时返回 nil。
-func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
-	return toUserPricingForModel(p, "", nil)
-}
-
-func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *float64) *userSupportedModelPricing {
-	return toUserPricingForModel(p, "", imageInputRatio)
+// toUserPricingIntervals 将定价区间转换为用户 DTO 白名单形态；nil 入参返回 nil（JSON omitempty 可省略）。
+func toUserPricingIntervals(src []service.PricingInterval) []userPricingIntervalDTO {
+	if src == nil {
+		return nil
+	}
+	intervals := make([]userPricingIntervalDTO, 0, len(src))
+	for _, iv := range src {
+		intervals = append(intervals, userPricingIntervalDTO{
+			MinTokens:       iv.MinTokens,
+			MaxTokens:       iv.MaxTokens,
+			TierLabel:       iv.TierLabel,
+			InputPrice:      iv.InputPrice,
+			OutputPrice:     iv.OutputPrice,
+			CacheWritePrice: iv.CacheWritePrice,
+			CacheReadPrice:  iv.CacheReadPrice,
+			PerRequestPrice: iv.PerRequestPrice,
+		})
+	}
+	return intervals
 }
 
 func toUserPricingForModel(p *service.ChannelModelPricing, model string, imageInputRatio *float64) *userSupportedModelPricing {
@@ -339,18 +350,10 @@ func toUserPricingForModelAt(p *service.ChannelModelPricing, model string, image
 		return nil
 	}
 	p, resolution := service.ResolveChannelPricingForDisplay(p, model, pricingAt)
-	intervals := make([]userPricingIntervalDTO, 0, len(p.Intervals))
-	for _, iv := range p.Intervals {
-		intervals = append(intervals, userPricingIntervalDTO{
-			MinTokens:       iv.MinTokens,
-			MaxTokens:       iv.MaxTokens,
-			TierLabel:       iv.TierLabel,
-			InputPrice:      iv.InputPrice,
-			OutputPrice:     iv.OutputPrice,
-			CacheWritePrice: iv.CacheWritePrice,
-			CacheReadPrice:  iv.CacheReadPrice,
-			PerRequestPrice: iv.PerRequestPrice,
-		})
+	intervals := toUserPricingIntervals(p.Intervals)
+	if intervals == nil {
+		// 用户侧定价的 intervals 固定输出数组（空配置为 []），保持既有契约。
+		intervals = []userPricingIntervalDTO{}
 	}
 	billingMode := string(p.BillingMode)
 	if billingMode == "" {
