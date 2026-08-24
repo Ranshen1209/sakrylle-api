@@ -15,10 +15,20 @@ type gatewayTokenRequestBillingGroupCtxKey struct{}
 // and freezes the downstream pricing instant for its whole lifetime. Media and
 // metadata-only handlers deliberately do not call this helper.
 func WithGatewayTokenRequestPricing(ctx context.Context) (context.Context, time.Time) {
+	return WithGatewayTokenRequestPricingAt(ctx, timezone.Now())
+}
+
+// WithGatewayTokenRequestPricingAt installs the token-billing context using
+// the handler's ingress timestamp. Passing the timestamp explicitly prevents
+// body parsing or concurrency waits from moving a request across a pricing
+// boundary before the context is assembled.
+func WithGatewayTokenRequestPricingAt(ctx context.Context, pricingAt time.Time) (context.Context, time.Time) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	pricingAt := timezone.Now()
+	if pricingAt.IsZero() {
+		pricingAt = timezone.Now()
+	}
 	ctx = context.WithValue(ctx, gatewayTokenRequestPricingAtCtxKey{}, pricingAt)
 	// 调度过程中可能因 fallback/composite 路由覆盖 ctxkey.Group；计费 D 仍必须
 	// 使用认证时刻的父分组，和最终 RecordUsage 的计费归属保持一致。

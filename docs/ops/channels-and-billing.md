@@ -16,14 +16,14 @@ Then restart `sub2api`.
 | --- | --- | --- | --- |
 | 7 Claude | `channel_mapped` | 2 Kiro (0.4x), 7 Code (0.6x), 8 Special (0.25x) | Empty `model_mapping`. |
 | 12 Claude Max | `channel_mapped` | 16 Claude-Max (2.0x, `claude_code_only`), 17 Claude-Max-C (2.2x) | `claude-fable-5` only; accounts 120/121 `GreenMountain-Claude-Max[-C]`; empty `model_mapping`; fable-5 is adaptive-thinking only. |
-| 8 Deepseek | `channel_mapped` | 6 Deepseek (0.7x), 9 Official (1.0x) | Both groups need `platform='anthropic'`. |
+| 8 Deepseek | `channel_mapped` | 6 Deepseek (0.7x), 9 Official (1.0x) | Both groups use `platform='deepseek'`; account protocol may be OpenAI, Responses, or native Anthropic. |
 | 9 OpenAI GPT | `channel_mapped` | 3 Pro (0.4x), 4 Plus (0.25x), 10 Plus-Special (0.2x) | `codex-auto-review -> gpt-5.4` alias. |
 | 10 GPT-Image-2-4K | `requested` | 11 GPT-Image-2-4K (1.0x) | `gpt-image-2-4k -> gpt-image-2-vip`, `￥0.18/call`. |
 | 11 GPT-Image-2 | `channel_mapped` | 5 GPT-Image (1.0x) | `$0.10/call`, needs `allow_image_generation=true`. |
 
 ## Pricing Semantics
 
-`channel_model_pricing` rows are per-token USD at official upstream rates. Final bill:
+`channel_model_pricing` rows keep the repository's per-token numeric unit at the official upstream rate. The Sakrylle UI displays that unit with `￥`; do not convert stored values when applying the DeepSeek card. Final bill:
 
 ```text
 tokens * price * groups.rate_multiplier
@@ -42,26 +42,28 @@ Migration `222_channel_time_pricing.sql` adds scheduled versions to a token pric
 - `channel_model_pricing_versions` stores an effective range, IANA timezone, version base prices, and the multiplier used outside configured windows.
 - `channel_pricing_time_windows` stores weekday masks and local minute ranges. Windows are left-closed and right-open: `09:00-12:00` includes 09:00 and excludes 12:00.
 - Existing `channel_model_pricing` prices remain active whenever no version is effective, including before the first version and in any configured gap. This makes future price announcements safe to configure before their effective date.
-- The request start time selects the version and window. Long-running or asynchronously settled requests do not change price after crossing a boundary.
+- The handler captures the request start time at ingress; that timestamp selects the version and window. Account selection, retries, long streams, and asynchronous settlement do not change price after crossing a boundary.
 - The resolved provider price is still multiplied by `groups.rate_multiplier`; the schedule does not replace the Sakrylle margin layer.
 
 Do not model an upstream peak/off-peak policy with the group-level `peak_rate_*` fields. Those fields are a separate Sakrylle surcharge and would multiply the scheduled channel price again if enabled.
 
 The admin UI is under Channel Management -> Channel Pricing -> Peak / Off-Peak Versions. Account-stats pricing rules and group model overrides intentionally do not expose this editor because their persistence tables do not own channel price-card versions.
 
-For the DeepSeek schedule announced for 2026-08-17 Beijing time, configure each affected DeepSeek channel price row as follows:
+From 2026-08-17 Beijing time, the backend automatically applies the official DeepSeek schedule to recognized V4 token cards when no explicit `TimeVersions` or legacy `TimePricing` exists. This applies both to channel price rows and to the built-in official fallback. The schedule needs no database migration, but it does not rewrite an existing `channel_model_pricing` row: the stored row remains the peak baseline and must be audited against the official card before rollout. Otherwise the automatic `0.5` multiplier will correctly halve a stale baseline. Explicit administrator schedules remain authoritative. The built-in rule is:
 
 | Field | Value |
 | --- | --- |
 | Effective from | `2026-08-17 00:00` |
 | Timezone | `Asia/Shanghai` |
 | Off-peak multiplier | `0.5` |
-| Peak window 1 | Every day, `09:00-12:00`, `1.0x` |
-| Peak window 2 | Every day, `14:00-18:00`, `1.0x` |
-| `deepseek-v4-flash` version prices | cache read `￥0.10`, input/cache miss `￥3.00`, output `￥9.00` per MTok |
-| `deepseek-v4-pro` version prices | cache read `￥0.30`, input/cache miss `￥9.00`, output `￥27.00` per MTok |
+| Peak window 1 | Monday-Friday (`weekdays=31`), `09:00-12:00`, `1.0x` |
+| Peak window 2 | Monday-Friday (`weekdays=31`), `14:00-18:00`, `1.0x` |
+| `deepseek-v4-flash`, `deepseek-v4-flash-0731`, `deepseek-v4-flash-vision-exp` peak prices | cache read `￥0.10`, input/cache miss `￥3.00`, output `￥9.00` per MTok |
+| `deepseek-v4-pro`, `deepseek-v4-pro-0813` peak prices | cache read `￥0.30`, input/cache miss `￥9.00`, output `￥27.00` per MTok |
 
-The user Available Channels popover and Model Plaza receive both the current resolved price and the schedule. Frontends must display the backend resolution instead of independently deciding whether the current instant is peak.
+The built-in V4 capability catalog follows the same announcement: 1M context, 384K maximum output, Anthropic/Responses/Chat endpoints, and assistant prefill for Flash, Pro, and Vision.
+
+The Channel Pricing editor uses the same two Monday-Friday windows as the DeepSeek default when an administrator adds an explicit version. The user Available Channels popover and Model Plaza receive both the current resolved price and the schedule. Frontends must display the backend resolution instead of independently deciding whether the current instant is peak.
 
 Account-level `model_mapping` lives in `accounts.credentials.model_mapping` (jsonb), not `accounts.extra`. Empty or absent mapping passes all models.
 
@@ -102,9 +104,15 @@ The image billing path bills the first candidate only. With `channel_mapped`, th
    docker exec sub2api-redis redis-cli PUBLISH auth:cache:invalidate '<full-key-string>'
    ```
 
-3. `/v1/models` routes by `group.platform`; Deepseek groups must use `platform='anthropic'`. If set to `openai`, pricing lookup misses and the models list is empty while calls can still succeed.
+3. `/v1/models` routes by `group.platform`; Deepseek groups must use `platform='deepseek'`. The account protocol selects the upstream surface (`/v1`, `/responses`, or `/anthropic`), while the group platform selects DeepSeek pricing and scheduling.
 
-Deepseek pricing rows may use scheduled upstream rates. Add a future version when a promotion starts or ends instead of editing the active baseline at the boundary.
+Deepseek V4 pricing rows inherit the official schedule automatically when they do not have an explicit schedule. Before deploying this change, inspect channel 8's persisted V4 rows and update input/cache-read/output to the peak values in the table above through Channel Pricing. The application deliberately does not overwrite administrator-owned pricing data. Add a future version when a promotion starts or ends, or when DeepSeek announces a replacement policy, instead of editing the active baseline at the boundary.
+
+`deepseek-v4-flash-vision-exp` converts image dimensions to prompt tokens upstream, so those tokens are billed with the model's normal input/cache card. Chat Completions, Responses, and native Anthropic requests accept their documented URL, data URL/base64, inline file-data, and uploaded `file_id` forms; the gateway converts image blocks, structured tool outputs, and developer/user roles while enforcing each target protocol's allowed roles. Settlement uses the upstream completion usage, including image prompt tokens and cache hit/miss buckets.
+
+Preflight token-count endpoints are not settlement records. For CN/custom relays, `/responses/input_tokens` and an OpenAI-dispatched `/messages/count_tokens` can fall back to the local text estimator. An external image URL or historical `file_id` does not expose its dimensions to that estimator, and DeepSeek does not publish the exact image-token formula as a local SDK API. The eventual billed request remains exact because it uses upstream usage.
+
+The DeepSeek Files API is exposed at `/v1/files` and `/files`. It is optional for URL/data-URL images, but required for uploaded `file_id` references and is the practical path for reuse or payloads beyond the inline image limit. Its inventory is scoped by group and user, and local list/retrieve/delete plus model references fail closed for unknown or cross-tenant IDs instead of exposing a shared upstream API key's aggregate files. Records without `expires_after` remain persistent; expiring uploads are removed after their deadline, and successful DELETE or upstream 404 also clears the binding. The caller's headers select the response family. Fixed accounts keep their configured upstream protocol and base URL, while adaptive accounts follow the incoming OpenAI or Anthropic family; the gateway converts file uploads and objects between families as needed and adds `anthropic-beta: files-api-2025-04-14` on native requests. OAuth-issued clients need `messages:create` or `responses:create` for these file routes. The deployment-level `gateway.deepseek_files` policy defaults each group/user tenant to 1,000 files and 2 GiB, and each shared upstream account to 10,000 files and 25 GiB; tenant ceilings must stay strictly below the corresponding account ceilings. These are local admission limits for tenant isolation and shared-account capacity protection, not discovered provider quotas, and changing them requires a deployment configuration rollout rather than a frontend setting.
 
 ## GPT-Plus-Special
 

@@ -110,6 +110,79 @@ func TestResponsesToolOutputMedia_ExtractsSupportedShapes(t *testing.T) {
 	}
 }
 
+func TestResponsesToolOutputMedia_PreservesFileSourcesForFunctionAndCustomOutputs(t *testing.T) {
+	tests := []struct {
+		name       string
+		call       string
+		outputType string
+		output     string
+		wantType   string
+		wantID     string
+		wantData   string
+		wantName   string
+	}{
+		{
+			name:       "function output file id",
+			call:       `{"type":"function_call","call_id":"call_file_id","name":"read_image","arguments":"{}"}`,
+			outputType: "function_call_output",
+			output:     `[{"type":"input_image","file_id":"file-api-a"}]`,
+			wantType:   "file",
+			wantID:     "file-api-a",
+		},
+		{
+			name:       "function output file data",
+			call:       `{"type":"function_call","call_id":"call_file_data","name":"read_image","arguments":"{}"}`,
+			outputType: "function_call_output",
+			output:     `[{"type":"input_image","file_data":"data:image/png;base64,AQID","filename":"capture.png"}]`,
+			wantType:   "file",
+			wantData:   "data:image/png;base64,AQID",
+			wantName:   "capture.png",
+		},
+		{
+			name:       "custom output file id",
+			call:       `{"type":"custom_tool_call","call_id":"call_custom_id","name":"read_image","input":"{}"}`,
+			outputType: "custom_tool_call_output",
+			output:     `{"content":[{"type":"input_image","file_id":"file-api-b"}]}`,
+			wantType:   "file",
+			wantID:     "file-api-b",
+		},
+		{
+			name:       "custom output file data",
+			call:       `{"type":"custom_tool_call","call_id":"call_custom_data","name":"read_image","input":"{}"}`,
+			outputType: "custom_tool_call_output",
+			output:     `{"content":[{"type":"input_image","file_data":"data:image/webp;base64,BAUG","filename":"capture.webp"}]}`,
+			wantType:   "file",
+			wantData:   "data:image/webp;base64,BAUG",
+			wantName:   "capture.webp",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build the item with the call id extracted from the call object. Keeping
+			// the fixture JSON-shaped catches regressions in both item decoding and
+			// recursive output rewriting.
+			var callItem struct {
+				CallID string `json:"call_id"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(tt.call), &callItem))
+			input := fmt.Sprintf(`[%s,{"type":%q,"call_id":%q,"output":%s}]`, tt.call, tt.outputType, callItem.CallID, tt.output)
+			messages := convertToolOutputMedia(t, input)
+
+			require.Len(t, messages, 3)
+			parts := chatContentParts(t, messages[2])
+			require.Len(t, parts, 2)
+			require.Equal(t, "text", parts[0].Type)
+			media := parts[1]
+			require.Equal(t, tt.wantType, media.Type)
+			require.Nil(t, media.ImageURL)
+			require.Equal(t, tt.wantID, media.FileID)
+			require.Equal(t, tt.wantData, media.FileData)
+			require.Equal(t, tt.wantName, media.Filename)
+		})
+	}
+}
+
 func TestResponsesToolOutputMedia_ParallelBatchUsesCallOrder(t *testing.T) {
 	messages := convertToolOutputMedia(t, `[
 		{"type":"function_call","call_id":"call_A","name":"view_image","arguments":"{}"},

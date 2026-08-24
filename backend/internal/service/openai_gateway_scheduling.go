@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
@@ -26,6 +28,318 @@ const (
 	openCodeNativeSessionHeader   = "X-OpenCode-Session"
 	codeBuddyConversationHeader   = "X-Conversation-ID"
 )
+
+const (
+	deepSeekFileAffinityPrefix       = "deepseek-file:v2:"
+	deepSeekFileUploadAffinityPrefix = "deepseek-file-upload:v1:"
+)
+
+// DeepSeek Files can be permanent when expires_after is omitted. Keep the
+// owner binding persistent so a dormant file never gets routed to a different
+// upstream API key after the ordinary 30-day maximum expiry window. Explicit
+// DELETE requests remove these keys.
+const deepSeekFileAffinityTTL time.Duration = 0
+
+func isDeepSeekFileSessionHash(sessionHash string) bool {
+	return strings.HasPrefix(strings.TrimSpace(sessionHash), deepSeekFileAffinityPrefix)
+}
+
+func isDeepSeekFileUploadSessionHash(sessionHash string) bool {
+	return strings.HasPrefix(strings.TrimSpace(sessionHash), deepSeekFileUploadAffinityPrefix)
+}
+
+func isDeepSeekPinnedSessionHash(sessionHash string) bool {
+	return isDeepSeekFileSessionHash(sessionHash) || isDeepSeekFileUploadSessionHash(sessionHash)
+}
+
+func deepSeekFileAffinityCacheUnavailableError() error {
+	return fmt.Errorf("%w: DeepSeek file affinity cache is unavailable", ErrNoAvailableAccounts)
+}
+
+func (s *OpenAIGatewayService) requireDeepSeekFileAffinityCache(sessionHash string) error {
+	if !isDeepSeekPinnedSessionHash(sessionHash) {
+		return nil
+	}
+	if s == nil || s.cache == nil {
+		return deepSeekFileAffinityCacheUnavailableError()
+	}
+	return nil
+}
+
+// clearStickySessionForScheduling preserves a DeepSeek file binding. A file
+// ID is owned by one upstream API key; deleting the binding on a transient
+// health/concurrency failure would let the next request land on a different
+// account and turn an otherwise recoverable condition into a cross-key 404.
+func (s *OpenAIGatewayService) clearStickySessionForScheduling(ctx context.Context, groupID *int64, sessionHash string) {
+	if isDeepSeekPinnedSessionHash(sessionHash) {
+		return
+	}
+	_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+}
+
+// DeepSeekFileSessionHash returns the tenant-scoped sticky key for one or more
+// file IDs. The user ID is part of the cache namespace so knowing another
+// tenant's opaque file ID cannot resolve its upstream account.
+func (s *OpenAIGatewayService) DeepSeekFileSessionHash(userID int64, fileIDs ...string) string {
+	ids := normalizeDeepSeekFileIDs(fileIDs...)
+	if len(ids) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%suser:%d:files:%s", deepSeekFileAffinityPrefix, userID, strings.Join(ids, ","))
+}
+
+// DeepSeekFileUploadSessionHash returns the stable tenant shard used for all
+// uploads from one group/user pair. The group remains part of the cache key,
+// while the user ID prevents two users in that group from sharing an upstream
+// Files namespace.
+func (s *OpenAIGatewayService) DeepSeekFileUploadSessionHash(userID int64) string {
+	if userID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%suser:%d", deepSeekFileUploadAffinityPrefix, userID)
+}
+
+// BindDeepSeekFileAccount records the upstream account that owns a file ID.
+// The binding is persistent because DeepSeek permits files without an
+// expires_after value (permanent files).
+func (s *OpenAIGatewayService) BindDeepSeekFileAccount(ctx context.Context, groupID *int64, userID int64, fileID string, accountID int64) error {
+	if s == nil || userID <= 0 || strings.TrimSpace(fileID) == "" || accountID <= 0 {
+		return fmt.Errorf("invalid DeepSeek file binding")
+	}
+	sessionHash := s.DeepSeekFileSessionHash(userID, fileID)
+	if err := s.requireDeepSeekFileAffinityCache(sessionHash); err != nil {
+		return err
+	}
+	validatedID, err := validateDeepSeekFileID(fileID)
+	if err != nil {
+		return err
+	}
+	return s.setStickySessionAccountID(ctx, groupID, s.DeepSeekFileSessionHash(userID, validatedID), accountID, deepSeekFileAffinityTTL)
+}
+
+// DeleteDeepSeekFileAccount removes the cached owner for a deleted file. A
+// successful upstream DELETE is the only safe point to release the binding;
+// transient upstream failures must keep the owner pinned.
+func (s *OpenAIGatewayService) DeleteDeepSeekFileAccount(ctx context.Context, groupID *int64, userID int64, fileID string) error {
+	if s == nil || userID <= 0 || strings.TrimSpace(fileID) == "" {
+		return nil
+	}
+	validatedID, err := validateDeepSeekFileID(fileID)
+	if err != nil {
+		return err
+	}
+	sessionHash := s.DeepSeekFileSessionHash(userID, validatedID)
+	if err := s.requireDeepSeekFileAffinityCache(sessionHash); err != nil {
+		return err
+	}
+	return s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+}
+
+func deepSeekFileSessionSeedFromBody(body []byte) string {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return ""
+	}
+	ids := make([]string, 0, 2)
+	root := gjson.ParseBytes(body)
+	// DeepSeek's Responses API has a different role allow-list from Chat and
+	// Anthropic. The top-level `input` field is a stable discriminator; a
+	// malformed request containing both fields is treated as Chat/Anthropic so
+	// unsupported system/assistant media cannot pin a file owner.
+	responsesMode := root.Get("input").Exists() && !root.Get("messages").Exists()
+	deepSeekCollectFileIDs(root, responsesMode, "", &ids)
+	ids = normalizeDeepSeekFileIDs(ids...)
+	if len(ids) == 0 {
+		return ""
+	}
+	return strings.Join(ids, ",")
+}
+
+// deepSeekCollectFileIDs walks only request content containers and recognized
+// image/file blocks. A recursive walk over every object would incorrectly pin
+// a request to a file_id found in metadata, tool schemas, or tool arguments.
+// `role` is inherited through content; Responses function-call output gets its
+// own synthetic role because its structured image output is valid even without
+// a message role field.
+func deepSeekCollectFileIDs(value gjson.Result, responsesMode bool, role string, ids *[]string) {
+	if value.Type == gjson.String {
+		// A string-valued content/output field is text, even when its text
+		// happens to look like JSON containing a file_id. Only structured arrays
+		// and objects are interpreted as media by the upstream API.
+		return
+	}
+	if value.IsArray() {
+		value.ForEach(func(_, child gjson.Result) bool {
+			deepSeekCollectFileIDs(child, responsesMode, role, ids)
+			return true
+		})
+		return
+	}
+	if !value.IsObject() {
+		return
+	}
+
+	currentRole := strings.ToLower(strings.TrimSpace(value.Get("role").String()))
+	if currentRole == "" {
+		currentRole = role
+	}
+	deepSeekCollectMediaFileIDs(value, responsesMode, currentRole, ids)
+
+	value.ForEach(func(key, child gjson.Result) bool {
+		field := strings.ToLower(strings.TrimSpace(key.String()))
+		switch field {
+		case "messages", "input", "content", "items", "parts":
+			deepSeekCollectFileIDs(child, responsesMode, currentRole, ids)
+		case "output":
+			// Responses function_call_output/custom_tool_call_output items
+			// carry image parts in output rather than content.
+			nextRole := currentRole
+			typ := strings.ToLower(strings.TrimSpace(value.Get("type").String()))
+			if typ == "function_call_output" || typ == "custom_tool_call_output" {
+				nextRole = "function_output"
+			}
+			deepSeekCollectFileIDs(child, responsesMode, nextRole, ids)
+		}
+		return true
+	})
+}
+
+func deepSeekCollectMediaFileIDs(value gjson.Result, responsesMode bool, role string, ids *[]string) {
+	if !deepSeekImageRoleAllowsFileID(responsesMode, role) {
+		return
+	}
+	typ := strings.ToLower(strings.TrimSpace(value.Get("type").String()))
+	switch typ {
+	case "image":
+		// Anthropic's file form is image.source.type=file. Do not accept a
+		// stray source.file_id on a base64/url block as an ownership signal.
+		source := value.Get("source")
+		if source.IsObject() && strings.EqualFold(strings.TrimSpace(source.Get("type").String()), "file") {
+			deepSeekAppendFileID(source.Get("file_id"), ids)
+		}
+	case "input_image", "file", "image_url":
+		deepSeekAppendFileID(value.Get("file_id"), ids)
+		deepSeekAppendFileID(value.Get("file.file_id"), ids)
+		// Be liberal with Chat-compatible image_url objects while still
+		// requiring the enclosing block to be a recognized media type.
+		deepSeekAppendFileID(value.Get("image_url.file_id"), ids)
+	}
+}
+
+func deepSeekAppendFileID(value gjson.Result, ids *[]string) {
+	if value.Type == gjson.String && strings.TrimSpace(value.String()) != "" {
+		*ids = append(*ids, value.String())
+	}
+}
+
+func deepSeekImageRoleAllowsFileID(responsesMode bool, role string) bool {
+	role = strings.ToLower(strings.TrimSpace(role))
+	if responsesMode {
+		return role == "user" || role == "developer" || role == "function_output"
+	}
+	// Chat itself only accepts images in user messages, but a Chat-shaped
+	// developer message is retained when the selected account uses Responses or
+	// native Anthropic upstream. Collect its file ID before account selection so
+	// that cross-protocol conversion cannot send the reference to another API key.
+	return role == "user" || role == "developer"
+}
+
+func normalizeDeepSeekFileIDs(fileIDs ...string) []string {
+	seen := make(map[string]struct{}, len(fileIDs))
+	ids := make([]string, 0, len(fileIDs))
+	for _, raw := range fileIDs {
+		id, err := validateDeepSeekFileID(raw)
+		if err != nil {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func parseDeepSeekFileSessionHash(sessionHash string) (userID int64, fileIDs []string, err error) {
+	trimmed := strings.TrimSpace(sessionHash)
+	if !strings.HasPrefix(trimmed, deepSeekFileAffinityPrefix) {
+		return 0, nil, fmt.Errorf("invalid DeepSeek file affinity key")
+	}
+	parts := strings.SplitN(strings.TrimPrefix(trimmed, deepSeekFileAffinityPrefix), ":", 4)
+	if len(parts) != 4 || parts[0] != "user" || parts[2] != "files" {
+		return 0, nil, fmt.Errorf("invalid DeepSeek file affinity key")
+	}
+	userID, err = strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || userID <= 0 {
+		return 0, nil, fmt.Errorf("invalid DeepSeek file owner")
+	}
+	fileIDs = normalizeDeepSeekFileIDs(strings.Split(parts[3], ",")...)
+	if len(fileIDs) == 0 {
+		return 0, nil, fmt.Errorf("invalid DeepSeek file affinity key")
+	}
+	return userID, fileIDs, nil
+}
+
+// resolveDeepSeekFileAffinityAccountID resolves both the combined multi-file
+// key and each individual file binding. A request containing files owned by
+// different upstream API keys cannot be safely routed; returning an error is
+// preferable to silently selecting one owner and producing a misleading 404.
+func (s *OpenAIGatewayService) resolveDeepSeekFileAffinityAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {
+	if !isDeepSeekFileSessionHash(sessionHash) {
+		return 0, nil
+	}
+	userID, ids, parseErr := parseDeepSeekFileSessionHash(sessionHash)
+	if parseErr != nil {
+		return 0, fmt.Errorf("%w: %v", ErrNoAvailableAccounts, parseErr)
+	}
+	if err := s.requireDeepSeekFileAffinityCache(sessionHash); err != nil {
+		return 0, err
+	}
+	// The tenant inventory is authoritative for both ownership and the
+	// upstream account. This check happens before any account is selected, so a
+	// guessed ID from another user cannot be probed against DeepSeek.
+	var ownerID int64
+	for _, id := range ids {
+		record, err := s.GetDeepSeekFileRecord(ctx, groupID, userID, id)
+		if err != nil {
+			return 0, fmt.Errorf("%w: DeepSeek file %s is not owned by this user: %v", ErrNoAvailableAccounts, id, err)
+		}
+		if ownerID == 0 {
+			ownerID = record.AccountID
+		} else if ownerID != record.AccountID {
+			return 0, fmt.Errorf("%w: DeepSeek file IDs resolve to accounts %d and %d", ErrNoAvailableAccounts, ownerID, record.AccountID)
+		}
+	}
+
+	// Sticky bindings remain a consistency guard and scheduler fast path. A
+	// missing binding can be reconstructed from the durable tenant record; a
+	// conflicting binding must fail closed.
+	hashes := make([]string, 0, len(ids)+1)
+	hashes = append(hashes, sessionHash)
+	for _, id := range ids {
+		hash := s.DeepSeekFileSessionHash(userID, id)
+		if hash != "" && hash != sessionHash {
+			hashes = append(hashes, hash)
+		}
+	}
+	for _, hash := range hashes {
+		accountID, err := s.getStickySessionAccountID(ctx, groupID, hash)
+		if err != nil {
+			if errors.Is(err, ErrStickySessionNotFound) {
+				continue
+			}
+			return 0, fmt.Errorf("%w: read DeepSeek file affinity: %v", ErrNoAvailableAccounts, err)
+		}
+		if accountID <= 0 {
+			continue
+		}
+		if ownerID != accountID {
+			return 0, fmt.Errorf("%w: DeepSeek file IDs resolve to accounts %d and %d", ErrNoAvailableAccounts, ownerID, accountID)
+		}
+	}
+	return ownerID, nil
+}
 
 var explicitOpenAIHeaderSessionNames = []string{
 	"session_id",
@@ -150,6 +464,16 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 		return ""
 	}
 
+	// A DeepSeek file ID is stronger than a client-provided conversation
+	// session: the ID is scoped to the uploading API key, not merely to a
+	// conversation. Prefer this namespace whenever a request references one.
+	if isDeepSeekGatewayRequest(c) {
+		fileSeed := deepSeekFileSessionSeedFromBody(body)
+		if fileSeed != "" {
+			userID, _ := c.Request.Context().Value(ctxkey.UserID).(int64)
+			return s.DeepSeekFileSessionHash(userID, strings.Split(fileSeed, ",")...)
+		}
+	}
 	sessionID := explicitOpenAIRequestSessionID(c, body)
 	if sessionID == "" && len(body) > 0 {
 		sessionID = deriveOpenAIContentSessionSeed(body)
@@ -165,6 +489,23 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
 	return currentHash
+}
+
+func isDeepSeekGatewayRequest(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	if c.Request != nil {
+		if platform, ok := ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
+			return platform == PlatformDeepseek
+		}
+	}
+	if raw, ok := c.Get("api_key"); ok {
+		if apiKey, ok := raw.(*APIKey); ok && apiKey != nil && apiKey.Group != nil {
+			return apiKey.Group.Platform == PlatformDeepseek
+		}
+	}
+	return false
 }
 
 // grokStickyAffinitySeed scopes sticky routing by model without changing the
@@ -218,6 +559,12 @@ func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool) stri
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 {
+		return nil
+	}
+	// The upload shard is claimed together with quota reservation in one Redis
+	// transaction. A scheduler-side write here would race concurrent first
+	// uploads and could split one tenant across upstream Files namespaces.
+	if isDeepSeekFileUploadSessionHash(sessionHash) {
 		return nil
 	}
 	ttl := openaiStickySessionTTL
@@ -733,6 +1080,9 @@ func resolveOpenAIAccountUpstreamModelForRequest(account *Account, requestedMode
 }
 
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) (*Account, error) {
+	if err := s.requireDeepSeekFileAffinityCache(sessionHash); err != nil {
+		return nil, err
+	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -745,6 +1095,9 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	// Try sticky session hit
 	if account := s.tryStickySessionHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability); account != nil {
 		return account, nil
+	}
+	if isDeepSeekPinnedSessionHash(sessionHash) && stickyAccountID > 0 {
+		return nil, fmt.Errorf("%w: DeepSeek file owner account %d is unavailable", ErrNoAvailableAccounts, stickyAccountID)
 	}
 
 	// 2. 获取可调度的 OpenAI 账号
@@ -809,7 +1162,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	// 检查账号是否需要清理粘性会话
 	// Check if sticky session should be cleared
 	if shouldClearStickySession(account, requestedModel) {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 		return nil
 	}
 
@@ -819,21 +1172,21 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		return nil
 	}
 	if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 		return nil
 	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 		return nil
 	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
 	if account == nil || !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 		return nil
 	}
 	if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
 		s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+		s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 		return nil
 	}
 
@@ -965,6 +1318,9 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 }
 
 func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool) (*AccountSelectionResult, error) {
+	if err := s.requireDeepSeekFileAffinityCache(sessionHash); err != nil {
+		return nil, err
+	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -978,8 +1334,16 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
-		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil {
+		if isDeepSeekFileSessionHash(sessionHash) {
+			var err error
+			stickyAccountID, err = s.resolveDeepSeekFileAffinityAccountID(ctx, groupID, sessionHash)
+			if err != nil {
+				return nil, err
+			}
+		} else if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil {
 			stickyAccountID = accountID
+		} else if isDeepSeekFileUploadSessionHash(sessionHash) && !errors.Is(err, ErrStickySessionNotFound) {
+			return nil, err
 		}
 	}
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
@@ -1034,20 +1398,20 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if err == nil {
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
-					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 				}
 				if !clearSticky && isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) {
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
 					if account == nil {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+						s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 					} else if !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+						s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 					} else if s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+						s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel, requireCompact) {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+						s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+						s.clearStickySessionForScheduling(ctx, groupID, sessionHash)
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result != nil && result.Acquired {
@@ -1072,6 +1436,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				}
 			}
 		}
+	}
+
+	if isDeepSeekPinnedSessionHash(sessionHash) && stickyAccountID > 0 {
+		return nil, fmt.Errorf("%w: DeepSeek file owner account %d is unavailable", ErrNoAvailableAccounts, stickyAccountID)
 	}
 
 	// ============ Layer 2: Load-aware selection ============

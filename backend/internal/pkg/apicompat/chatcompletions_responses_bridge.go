@@ -306,7 +306,8 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			return nil, nil, fmt.Errorf("parse responses input item: %w", err)
 		}
 
-		role := chatCompletionsBridgeRole(rawString(item["role"]))
+		rawRole := rawString(item["role"])
+		role := chatCompletionsBridgeRole(rawRole)
 		itemType := rawString(item["type"])
 		switch itemType {
 		case "reasoning":
@@ -444,6 +445,29 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 				content, _ = json.Marshal(text)
 			}
 		}
+		// Responses permits developer-message images; DeepSeek Chat permits
+		// images only in user messages. Split this one compatibility case so
+		// developer text remains system context and its media is still visible.
+		if strings.EqualFold(strings.TrimSpace(rawRole), "developer") {
+			imageContent, hasImages, err := responsesImagesToChatContent(content)
+			if err != nil {
+				return nil, nil, err
+			}
+			if hasImages {
+				textContent, err := responsesContentToChatContent(content, "system")
+				if err != nil {
+					return nil, nil, err
+				}
+				var text string
+				if json.Unmarshal(textContent, &text) != nil || strings.TrimSpace(text) != "" {
+					messages = append(messages, ChatMessage{Role: "system", Content: textContent})
+				}
+				messages = append(messages, ChatMessage{Role: "user", Content: imageContent})
+				pendingReasoning = ""
+				lastTurnReasoning = ""
+				continue
+			}
+		}
 		chatContent, err := responsesContentToChatContent(content, role)
 		if err != nil {
 			return nil, nil, err
@@ -543,11 +567,11 @@ func rewriteToolOutputMediaValue(value any) (any, []ChatContentPart, bool) {
 		}
 		return typed, media, changed
 	case map[string]any:
-		if imageURL, ok := recognizedToolOutputImageURL(typed); ok {
+		if imagePart, ok := recognizedToolOutputImagePart(typed); ok {
 			return map[string]any{
 				"type": "input_text",
 				"text": toolOutputMediaMarker,
-			}, []ChatContentPart{toolOutputImagePart(imageURL)}, true
+			}, []ChatContentPart{imagePart}, true
 		}
 
 		content, ok := typed["content"]
@@ -565,21 +589,20 @@ func rewriteToolOutputMediaValue(value any) (any, []ChatContentPart, bool) {
 	}
 }
 
-func recognizedToolOutputImageURL(value map[string]any) (string, bool) {
+func recognizedToolOutputImagePart(value map[string]any) (ChatContentPart, bool) {
 	partType, _ := value["type"].(string)
-	if partType != "input_image" && partType != "image_url" {
-		return "", false
+	if partType != "input_image" && partType != "image_url" && partType != "file" {
+		return ChatContentPart{}, false
 	}
-
-	switch imageURL := value["image_url"].(type) {
-	case string:
-		return imageURL, strings.TrimSpace(imageURL) != ""
-	case map[string]any:
-		url, _ := imageURL["url"].(string)
-		return url, strings.TrimSpace(url) != ""
-	default:
-		return "", false
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return ChatContentPart{}, false
 	}
+	var responsePart ResponsesContentPart
+	if err := json.Unmarshal(raw, &responsePart); err != nil {
+		return ChatContentPart{}, false
+	}
+	return chatContentPartFromResponsesContentPart(responsePart)
 }
 
 func isToolOutputImageDataURL(value string) bool {
@@ -830,19 +853,17 @@ func responsesContentPartsToChatContent(rawParts []json.RawMessage, role string)
 			}
 			textParts = append(textParts, text)
 			chatParts = append(chatParts, ChatContentPart{Type: "text", Text: text})
-		case "input_image", "image_url":
-			imageURL := rawString(part["image_url"])
-			if imageURL == "" {
-				imageURL = rawNestedString(part["image_url"], "url")
+		case "input_image", "image_url", "file":
+			var responsePart ResponsesContentPart
+			if err := json.Unmarshal(rawPart, &responsePart); err != nil {
+				continue
 			}
-			if imageURL == "" {
+			chatPart, ok := chatContentPartFromResponsesContentPart(responsePart)
+			if !ok {
 				continue
 			}
 			hasNonText = true
-			chatParts = append(chatParts, ChatContentPart{
-				Type:     "image_url",
-				ImageURL: &ChatImageURL{URL: imageURL},
-			})
+			chatParts = append(chatParts, chatPart)
 		}
 	}
 
@@ -861,17 +882,60 @@ func responsesContentPartsToChatContent(rawParts []json.RawMessage, role string)
 	return json.Marshal(chatParts)
 }
 
+func responsesImagesToChatContent(raw json.RawMessage) (json.RawMessage, bool, error) {
+	raw = bytesTrimSpace(raw)
+	var rawParts []json.RawMessage
+	if err := json.Unmarshal(raw, &rawParts); err != nil {
+		var single json.RawMessage
+		if len(raw) == 0 || raw[0] != '{' {
+			return nil, false, nil
+		}
+		single = append(single, raw...)
+		rawParts = []json.RawMessage{single}
+	}
+
+	chatParts := make([]ChatContentPart, 0, len(rawParts))
+	for _, rawPart := range rawParts {
+		var part map[string]json.RawMessage
+		if err := json.Unmarshal(rawPart, &part); err != nil {
+			continue
+		}
+		partType := rawString(part["type"])
+		if partType != "input_image" && partType != "image_url" && partType != "file" {
+			continue
+		}
+		var responsePart ResponsesContentPart
+		if err := json.Unmarshal(rawPart, &responsePart); err != nil {
+			return nil, false, err
+		}
+		chatPart, ok := chatContentPartFromResponsesContentPart(responsePart)
+		if ok {
+			chatParts = append(chatParts, chatPart)
+		}
+	}
+	if len(chatParts) == 0 {
+		return nil, false, nil
+	}
+	content, err := json.Marshal(chatParts)
+	return content, err == nil, err
+}
+
 func chatContentFromSingleResponsesPart(partType string, part map[string]json.RawMessage) (json.RawMessage, error) {
 	switch partType {
-	case "input_image", "image_url":
-		imageURL := rawString(part["image_url"])
-		if imageURL == "" {
-			imageURL = rawNestedString(part["image_url"], "url")
+	case "input_image", "image_url", "file":
+		raw, err := json.Marshal(part)
+		if err != nil {
+			return nil, err
 		}
-		return json.Marshal([]ChatContentPart{{
-			Type:     "image_url",
-			ImageURL: &ChatImageURL{URL: imageURL},
-		}})
+		var responsePart ResponsesContentPart
+		if err := json.Unmarshal(raw, &responsePart); err != nil {
+			return nil, err
+		}
+		chatPart, ok := chatContentPartFromResponsesContentPart(responsePart)
+		if !ok {
+			return json.Marshal("")
+		}
+		return json.Marshal([]ChatContentPart{chatPart})
 	default:
 		return json.Marshal(rawString(part["text"]))
 	}

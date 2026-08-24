@@ -497,6 +497,38 @@ func TestExtractOpenAIUsage_CapturesImageInputTokens(t *testing.T) {
 	require.Zero(t, tu.ImageInputTokens)
 }
 
+func TestExtractOpenAIUsage_DeepSeekPromptCacheAliases(t *testing.T) {
+	// DeepSeek Chat Completions reports cache hit/miss at the top level. Image
+	// tokens, when returned by a vision model, are already included in
+	// prompt_tokens and must remain an upstream-reported quantity.
+	body := []byte(`{"usage":{"prompt_tokens":530,"completion_tokens":17,"prompt_cache_hit_tokens":200,"prompt_cache_miss_tokens":330,"prompt_tokens_details":{"image_tokens":128}}}`)
+	usage, ok := extractOpenAIUsageFromJSONBytes(body)
+	require.True(t, ok)
+	require.Equal(t, 530, usage.InputTokens)
+	require.Equal(t, 200, usage.CacheReadInputTokens)
+	require.Equal(t, 128, usage.ImageInputTokens)
+	require.Equal(t, 17, usage.OutputTokens)
+
+	// A relay may omit prompt_tokens while preserving the required hit/miss
+	// split; derive the total so billing still has a complete input bucket.
+	derived, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"prompt_cache_hit_tokens":7,"prompt_cache_miss_tokens":5,"completion_tokens":2}}`))
+	require.True(t, ok)
+	require.Equal(t, 12, derived.InputTokens)
+	require.Equal(t, 7, derived.CacheReadInputTokens)
+
+	// An explicit DeepSeek zero must win over a generic compatibility alias.
+	zeroHit, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"prompt_tokens":3,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":3,"cached_tokens":99}}`))
+	require.True(t, ok)
+	require.Zero(t, zeroHit.CacheReadInputTokens)
+
+	// A miss-only alias is authoritative too; do not charge a stale nested
+	// cache-hit bucket copied by an OpenAI-compatible relay.
+	missOnly, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"prompt_tokens":100,"prompt_cache_miss_tokens":100,"input_tokens_details":{"cached_tokens":99},"cached_tokens":88}}`))
+	require.True(t, ok)
+	require.Equal(t, 100, missOnly.InputTokens)
+	require.Zero(t, missOnly.CacheReadInputTokens)
+}
+
 func TestExtractOpenAIUsage_ReadsClineDataEnvelope(t *testing.T) {
 	body := []byte(`{"data":{"choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":8,"completion_tokens":27,"total_tokens":35,"prompt_tokens_details":{"cached_tokens":4}}},"success":true}`)
 

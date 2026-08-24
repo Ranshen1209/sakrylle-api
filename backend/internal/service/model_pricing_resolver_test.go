@@ -271,10 +271,13 @@ func TestResolve_WithChannelTimePricingAndGroupMultiplier(t *testing.T) {
 	location, err := time.LoadLocation("Asia/Shanghai")
 	require.NoError(t, err)
 	r := newResolverWithChannel(t, []ChannelModelPricing{{
-		Platform:    "anthropic",
-		Models:      []string{"claude-sonnet-4"},
-		BillingMode: BillingModeToken,
-		InputPrice:  testPtrFloat64(2e-6),
+		Platform:         "anthropic",
+		Models:           []string{"claude-sonnet-4"},
+		BillingMode:      BillingModeToken,
+		InputPrice:       testPtrFloat64(2e-6),
+		CacheReadPrice:   testPtrFloat64(0.4e-6),
+		ImageInputPrice:  testPtrFloat64(4e-6),
+		ImageOutputPrice: testPtrFloat64(6e-6),
 		TimeVersions: []PricingTimeVersion{{
 			EffectiveFrom:     time.Date(2026, 8, 17, 0, 0, 0, 0, location),
 			Timezone:          "Asia/Shanghai",
@@ -285,6 +288,13 @@ func TestResolve_WithChannelTimePricingAndGroupMultiplier(t *testing.T) {
 			}},
 		}},
 	}})
+	base := r.billingService.fallbackPrices["claude-sonnet-4"]
+	base.InputPricePerTokenPriority = 6e-6
+	base.OutputPricePerTokenPriority = 30e-6
+	base.CacheCreationPricePerTokenPriority = 7.5e-6
+	base.CacheReadPricePerTokenPriority = 0.6e-6
+	base.CacheCreation5mPrice = 3.75e-6
+	base.CacheCreation1hPrice = 7.5e-6
 
 	resolved := r.Resolve(context.Background(), PricingInput{
 		Model:     "claude-sonnet-4",
@@ -293,7 +303,22 @@ func TestResolve_WithChannelTimePricingAndGroupMultiplier(t *testing.T) {
 	})
 	require.NotNil(t, resolved.TimeResolution)
 	require.Equal(t, "off_peak", resolved.TimeResolution.PeriodLabel)
-	require.InDelta(t, 1.5e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 1.5e-6, resolved.BasePricing.InputPricePerToken, 1e-12,
+		"a version-explicit input price is already multiplied by ResolveAt and must not be multiplied twice")
+	require.InDelta(t, 3e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 7.5e-6, resolved.BasePricing.OutputPricePerToken, 1e-12,
+		"an output price inherited from the base card must receive the active version multiplier")
+	require.InDelta(t, 15e-6, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 1.875e-6, resolved.BasePricing.CacheCreationPricePerToken, 1e-12,
+		"an inherited cache-write price must receive the active version multiplier")
+	require.InDelta(t, 3.75e-6, resolved.BasePricing.CacheCreationPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 1.875e-6, resolved.BasePricing.CacheCreation5mPrice, 1e-12)
+	require.InDelta(t, 3.75e-6, resolved.BasePricing.CacheCreation1hPrice, 1e-12)
+	require.InDelta(t, 0.2e-6, resolved.BasePricing.CacheReadPricePerToken, 1e-12,
+		"a channel-explicit cache-read price was already multiplied by ResolveAt")
+	require.InDelta(t, 0.4e-6, resolved.BasePricing.CacheReadPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 2e-6, resolved.BasePricing.ImageInputPricePerToken, 1e-12)
+	require.InDelta(t, 3e-6, resolved.BasePricing.ImageOutputPricePerToken, 1e-12)
 
 	cost, err := r.billingService.CalculateCostUnified(CostInput{
 		Model:          "claude-sonnet-4",
@@ -305,6 +330,215 @@ func TestResolve_WithChannelTimePricingAndGroupMultiplier(t *testing.T) {
 	require.NoError(t, err)
 	require.InDelta(t, 1.5, cost.TotalCost, 1e-9)
 	require.InDelta(t, 1.8, cost.ActualCost, 1e-9)
+
+	cost, err = r.billingService.CalculateCostUnified(CostInput{
+		Model: "claude-sonnet-4",
+		Tokens: UsageTokens{
+			OutputTokens:        1_000_000,
+			CacheCreationTokens: 1_000_000,
+			CacheReadTokens:     1_000_000,
+		},
+		RateMultiplier: 1,
+		Resolver:       r,
+		Resolved:       resolved,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 7.5, cost.OutputCost, 1e-9)
+	require.InDelta(t, 1.875, cost.CacheCreationCost, 1e-9)
+	require.InDelta(t, 0.2, cost.CacheReadCost, 1e-9)
+	require.InDelta(t, 9.575, cost.TotalCost, 1e-9,
+		"the cost path must not add another TimeVersion multiplier after resolution")
+}
+
+func TestResolve_DeepSeekOfficialChannelTimePricing(t *testing.T) {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"deepseek-v4-flash"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(10),
+	}})
+	r.billingService.fallbackPrices["deepseek-v4-flash"] = &ModelPricing{
+		OutputPricePerToken:    20,
+		CacheReadPricePerToken: 2,
+	}
+
+	tests := []struct {
+		name           string
+		at             time.Time
+		wantMultiplier float64
+		wantInput      float64
+		wantResolution bool
+	}{
+		{name: "before official effective date", at: time.Date(2026, 8, 16, 23, 59, 0, 0, location), wantInput: 10},
+		{name: "effective date starts off peak", at: time.Date(2026, 8, 17, 0, 0, 0, 0, location), wantMultiplier: 0.5, wantInput: 5, wantResolution: true},
+		{name: "morning peak starts", at: time.Date(2026, 8, 17, 9, 0, 0, 0, location), wantMultiplier: 1, wantInput: 10, wantResolution: true},
+		{name: "morning peak right boundary", at: time.Date(2026, 8, 17, 12, 0, 0, 0, location), wantMultiplier: 0.5, wantInput: 5, wantResolution: true},
+		{name: "afternoon peak starts", at: time.Date(2026, 8, 17, 14, 0, 0, 0, location), wantMultiplier: 1, wantInput: 10, wantResolution: true},
+		{name: "afternoon peak right boundary", at: time.Date(2026, 8, 17, 18, 0, 0, 0, location), wantMultiplier: 0.5, wantInput: 5, wantResolution: true},
+		{name: "friday peak", at: time.Date(2026, 8, 21, 17, 59, 0, 0, location), wantMultiplier: 1, wantInput: 10, wantResolution: true},
+		{name: "weekend is off peak", at: time.Date(2026, 8, 22, 10, 0, 0, 0, location), wantMultiplier: 0.5, wantInput: 5, wantResolution: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved := r.Resolve(context.Background(), PricingInput{
+				Model:     "deepseek-v4-flash",
+				GroupID:   groupIDPtr(),
+				PricingAt: tt.at,
+			})
+			require.Equal(t, PricingSourceChannel, resolved.Source)
+			require.InDelta(t, tt.wantInput, resolved.BasePricing.InputPricePerToken, 1e-12)
+			if !tt.wantResolution {
+				require.Nil(t, resolved.TimeResolution)
+				require.InDelta(t, 20, resolved.BasePricing.OutputPricePerToken, 1e-12)
+				return
+			}
+			require.NotNil(t, resolved.TimeResolution)
+			require.Equal(t, "Asia/Shanghai", resolved.TimeResolution.Timezone)
+			require.InDelta(t, tt.wantMultiplier, resolved.TimeResolution.Multiplier, 1e-12)
+			require.InDelta(t, 20*tt.wantMultiplier, resolved.BasePricing.OutputPricePerToken, 1e-12,
+				"the default schedule must also scale fallback fields not set on the channel card")
+			require.InDelta(t, 2*tt.wantMultiplier, resolved.BasePricing.CacheReadPricePerToken, 1e-12)
+		})
+	}
+	require.InDelta(t, 20, r.billingService.fallbackPrices["deepseek-v4-flash"].OutputPricePerToken, 1e-12,
+		"time pricing must not mutate the shared official fallback card")
+}
+
+func TestResolve_DeepSeekExplicitTimeVersionOverridesOfficialSchedule(t *testing.T) {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"deepseek-v4-pro"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(10),
+		TimeVersions: []PricingTimeVersion{{
+			ID:                77,
+			EffectiveFrom:     time.Date(2026, 8, 17, 0, 0, 0, 0, location),
+			Timezone:          "Asia/Shanghai",
+			DefaultMultiplier: 0.25,
+			OutputPrice:       testPtrFloat64(30),
+			Windows: []PricingTimeWindow{{
+				Label: "custom_peak", Weekdays: 31, StartMinute: 9 * 60, EndMinute: 12 * 60, Multiplier: 0.8,
+			}},
+		}},
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:     "deepseek-v4-pro",
+		GroupID:   groupIDPtr(),
+		PricingAt: time.Date(2026, 8, 17, 10, 0, 0, 0, location),
+	})
+	require.NotNil(t, resolved.TimeResolution)
+	require.Equal(t, int64(77), resolved.TimeResolution.VersionID)
+	require.Equal(t, "custom_peak", resolved.TimeResolution.PeriodLabel)
+	require.InDelta(t, 0.8, resolved.TimeResolution.Multiplier, 1e-12)
+	require.InDelta(t, 8, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 24, resolved.BasePricing.OutputPricePerToken, 1e-12,
+		"the version-explicit output price must be multiplied exactly once")
+}
+
+func TestResolve_ExplicitTimeVersionScalesIntervalPricesAndInheritedBuckets(t *testing.T) {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(2e-6),
+		Intervals: []PricingInterval{{
+			MinTokens:      0,
+			MaxTokens:      testPtrInt(128000),
+			InputPrice:     testPtrFloat64(4e-6),
+			CacheReadPrice: testPtrFloat64(2e-6),
+		}},
+		TimeVersions: []PricingTimeVersion{{
+			ID:                88,
+			EffectiveFrom:     time.Date(2026, 8, 17, 0, 0, 0, 0, location),
+			Timezone:          "Asia/Shanghai",
+			DefaultMultiplier: 0.5,
+		}},
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:     "claude-sonnet-4",
+		GroupID:   groupIDPtr(),
+		PricingAt: time.Date(2026, 8, 17, 8, 0, 0, 0, location),
+	})
+	require.NotNil(t, resolved.TimeResolution)
+	require.InDelta(t, 0.5, resolved.TimeResolution.Multiplier, 1e-12)
+	require.Len(t, resolved.Intervals, 1)
+	require.InDelta(t, 2e-6, *resolved.Intervals[0].InputPrice, 1e-12,
+		"ResolveAt does not scale interval fields, so the resolver must do it after merging")
+	require.InDelta(t, 1e-6, *resolved.Intervals[0].CacheReadPrice, 1e-12)
+
+	intervalPricing := r.GetIntervalPricing(resolved, 1000)
+	require.InDelta(t, 2e-6, intervalPricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 7.5e-6, intervalPricing.OutputPricePerToken, 1e-12,
+		"an interval without output price must inherit the already time-scaled base output")
+	require.InDelta(t, 1.875e-6, intervalPricing.CacheCreationPricePerToken, 1e-12,
+		"an interval without cache-write price must inherit the time-scaled base cache-write price")
+	require.InDelta(t, 1e-6, intervalPricing.CacheReadPricePerToken, 1e-12)
+
+	basePricing := r.GetIntervalPricing(resolved, 200000)
+	require.InDelta(t, 1e-6, basePricing.InputPricePerToken, 1e-12,
+		"the channel flat input price must not be multiplied twice")
+	require.InDelta(t, 7.5e-6, basePricing.OutputPricePerToken, 1e-12)
+}
+
+func TestResolve_DeepSeekOfficialFallbackTimePricingUsesRequestStart(t *testing.T) {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	bs := newTestBillingServiceForResolver()
+	bs.fallbackPrices["deepseek-v4-flash"] = &ModelPricing{InputPricePerToken: 3, OutputPricePerToken: 9}
+	bs.fallbackPrices["deepseek-v4-flash-vision-exp"] = bs.fallbackPrices["deepseek-v4-flash"]
+	bs.fallbackPrices["deepseek-v4-pro"] = &ModelPricing{InputPricePerToken: 9, OutputPricePerToken: 27}
+	r := NewModelPricingResolver(nil, bs)
+	offPeak := time.Date(2026, 8, 17, 13, 0, 0, 0, location)
+
+	tests := []struct {
+		model     string
+		wantInput float64
+	}{
+		{model: "deepseek-v4-flash", wantInput: 1.5},
+		{model: "deepseek-v4-flash-0731", wantInput: 1.5},
+		{model: "deepseek-v4-flash-vision-exp", wantInput: 1.5},
+		{model: "deepseek-v4-pro", wantInput: 4.5},
+		{model: "deepseek-v4-pro-0813", wantInput: 4.5},
+		{model: "deepseek-chat", wantInput: 1.5},
+		{model: "deepseek-reasoner", wantInput: 1.5},
+		{model: "provider/deepseek-v4-flash:free", wantInput: 1.5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			resolved := r.Resolve(context.Background(), PricingInput{Model: tt.model, PricingAt: offPeak})
+			require.NotNil(t, resolved.TimeResolution)
+			require.InDelta(t, 0.5, resolved.TimeResolution.Multiplier, 1e-12)
+			require.InDelta(t, tt.wantInput, resolved.BasePricing.InputPricePerToken, 1e-12)
+		})
+	}
+
+	peakRequestStart := time.Date(2026, 8, 17, 10, 0, 0, 0, location)
+	ctx := withPricingAt(context.Background(), peakRequestStart)
+	resolved := r.Resolve(ctx, PricingInput{Model: "deepseek-v4-flash"})
+	require.Equal(t, peakRequestStart, resolved.TimeResolution.PricingAt)
+	require.InDelta(t, 1, resolved.TimeResolution.Multiplier, 1e-12)
+	require.InDelta(t, 3, resolved.BasePricing.InputPricePerToken, 1e-12)
+
+	resolved = r.Resolve(ctx, PricingInput{Model: "deepseek-v4-flash", PricingAt: offPeak})
+	require.Equal(t, offPeak, resolved.TimeResolution.PricingAt, "an explicit request start must win over context fallback")
+	require.InDelta(t, 1.5, resolved.BasePricing.InputPricePerToken, 1e-12)
+
+	unknownResolver := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform: "anthropic", Models: []string{"deepseek-v4"}, BillingMode: BillingModeToken,
+		InputPrice: testPtrFloat64(7),
+	}})
+	unknown := unknownResolver.Resolve(context.Background(), PricingInput{Model: "deepseek-v4", GroupID: groupIDPtr(), PricingAt: offPeak})
+	require.Nil(t, unknown.TimeResolution)
+	require.InDelta(t, 7, unknown.BasePricing.InputPricePerToken, 1e-12,
+		"unlisted DeepSeek models must not inherit the V4 schedule")
 }
 
 func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {

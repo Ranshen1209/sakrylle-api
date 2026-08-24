@@ -1292,7 +1292,9 @@ func openAIJSONValueMayContainImageInput(value gjson.Result) bool {
 		return found
 	}
 	if value.IsObject() {
-		if strings.TrimSpace(value.Get("type").String()) == "input_image" || value.Get("image_url").Exists() {
+		typ := strings.TrimSpace(value.Get("type").String())
+		if typ == "input_image" || typ == "file" || value.Get("image_url").Exists() ||
+			value.Get("file_id").Exists() || value.Get("file_data").Exists() {
 			return true
 		}
 		return openAIJSONValueMayContainImageInput(value.Get("content"))
@@ -1312,7 +1314,7 @@ func openAIRequestBodyMayContainEmptyBase64InputImage(body []byte) bool {
 }
 
 func openAIRequestBodyMayContainInputImageToken(body []byte) bool {
-	if bytes.Contains(body, []byte("input_image")) {
+	if bytes.Contains(body, []byte("input_image")) || bytes.Contains(body, []byte("file_id")) || bytes.Contains(body, []byte("file_data")) {
 		return true
 	}
 	// JSON 字符串任意字符都可能被 unicode escape，遇到 \u 时交给 gjson 解码后的结构扫描兜底。
@@ -1335,7 +1337,9 @@ func openAIJSONValueMayContainEmptyBase64InputImage(value gjson.Result) bool {
 		return found
 	}
 	if value.IsObject() {
-		if strings.TrimSpace(value.Get("type").String()) == "input_image" && isEmptyBase64DataURI(value.Get("image_url").String()) {
+		typ := strings.TrimSpace(value.Get("type").String())
+		if (typ == "input_image" && isEmptyBase64DataURI(value.Get("image_url").String())) ||
+			(typ == "file" && isEmptyBase64DataURI(value.Get("file_data").String())) {
 			return true
 		}
 		return openAIJSONValueMayContainEmptyBase64InputImage(value.Get("content"))
@@ -1437,11 +1441,16 @@ func shouldDropEmptyBase64InputImagePart(part any) bool {
 		return false
 	}
 	typeValue, _ := partMap["type"].(string)
-	if strings.TrimSpace(typeValue) != "input_image" {
+	switch strings.TrimSpace(typeValue) {
+	case "input_image":
+		imageURL, _ := partMap["image_url"].(string)
+		return isEmptyBase64DataURI(imageURL)
+	case "file":
+		fileData, _ := partMap["file_data"].(string)
+		return isEmptyBase64DataURI(fileData)
+	default:
 		return false
 	}
-	imageURL, _ := partMap["image_url"].(string)
-	return isEmptyBase64DataURI(imageURL)
 }
 
 func isEmptyBase64DataURI(raw string) bool {

@@ -124,6 +124,89 @@ func TestGetModelPricing_CaseInsensitive(t *testing.T) {
 	require.Equal(t, p1.InputPricePerToken, p2.InputPricePerToken)
 }
 
+func TestGetModelPricing_DeepSeekOfficialCardOverridesStaleDynamicCatalog(t *testing.T) {
+	pricingService := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"deepseek-chat": {
+			InputCostPerToken:       1.4e-7,
+			OutputCostPerToken:      4.2e-7,
+			CacheReadInputTokenCost: 2.8e-9,
+		},
+		"deepseek-v4-flash": {
+			InputCostPerToken:       1.4e-7,
+			OutputCostPerToken:      2.8e-7,
+			CacheReadInputTokenCost: 2.8e-9,
+		},
+		"deepseek-v4-pro": {
+			InputCostPerToken:       4.35e-7,
+			OutputCostPerToken:      8.7e-7,
+			CacheReadInputTokenCost: 3.625e-9,
+		},
+		"deepseek-v4-flash-0731": {
+			InputCostPerToken:       1.4e-7,
+			OutputCostPerToken:      2.8e-7,
+			CacheReadInputTokenCost: 2.8e-9,
+		},
+		"deepseek-v4-pro-0813": {
+			InputCostPerToken:       4.35e-7,
+			OutputCostPerToken:      8.7e-7,
+			CacheReadInputTokenCost: 3.625e-9,
+		},
+		"deepseek-v5-preview": {
+			InputCostPerToken:  1.23e-06,
+			OutputCostPerToken: 4.56e-06,
+		},
+		"deepseek-v4-provision": {
+			InputCostPerToken:  7.89e-06,
+			OutputCostPerToken: 8.91e-06,
+		},
+		"deepseek-v4-flash-unknown": {
+			InputCostPerToken:  9.87e-06,
+			OutputCostPerToken: 6.54e-06,
+		},
+	}}
+	svc := NewBillingService(&config.Config{}, pricingService)
+
+	for _, model := range []string{
+		"deepseek-chat",
+		"deepseek-v4-flash",
+		"deepseek-v4-flash-vision-exp",
+		"deepseek-v4-pro",
+		"deepseek-v4-flash-0731",
+		"deepseek-v4-pro-0813",
+		"provider/deepseek-v4-flash",
+		"deepseek-v4-flash:free",
+		"models/deepseek-chat-20260801",
+	} {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err, model)
+		if deepSeekOfficialPricingKey(model) == "deepseek-v4-pro" {
+			require.InDelta(t, deepSeekV4ProInputPricePerToken, pricing.InputPricePerToken, 1e-15, model)
+			require.InDelta(t, deepSeekV4ProOutputPricePerToken, pricing.OutputPricePerToken, 1e-15, model)
+			require.InDelta(t, deepSeekV4ProCacheReadPerToken, pricing.CacheReadPricePerToken, 1e-15, model)
+			continue
+		}
+		require.InDelta(t, deepSeekV4FlashInputPricePerToken, pricing.InputPricePerToken, 1e-15, model)
+		require.InDelta(t, deepSeekV4FlashOutputPricePerToken, pricing.OutputPricePerToken, 1e-15, model)
+		require.InDelta(t, deepSeekV4FlashCacheReadPerToken, pricing.CacheReadPricePerToken, 1e-15, model)
+	}
+
+	// The official override is intentionally allow-listed; a future/unknown
+	// DeepSeek id must continue to use its explicit dynamic catalog entry.
+	unknown, err := svc.GetModelPricing("deepseek-v5-preview")
+	require.NoError(t, err)
+	require.InDelta(t, 1.23e-06, unknown.InputPricePerToken, 1e-15)
+
+	for model, want := range map[string]float64{
+		"deepseek-v4-provision":     7.89e-06,
+		"deepseek-v4-flash-unknown": 9.87e-06,
+	} {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err)
+		require.InDelta(t, want, pricing.InputPricePerToken, 1e-15, model)
+		require.Empty(t, deepSeekOfficialPricingKey(model), model)
+	}
+}
+
 // issue #3394: fallback warn 应按模型名去重,每个模型每进程最多打一条,
 // 避免热路径每请求刷屏 ops_system_logs。
 func TestGetModelPricing_FallbackWarnLoggedOncePerModel(t *testing.T) {
@@ -539,31 +622,54 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 		{
 			name:              "deepseek v4 pro",
 			model:             "deepseek-v4-pro",
-			expectedInput:     4.35e-7,
-			expectedOutput:    floatPtr(8.7e-7),
-			expectedCacheRead: floatPtr(3.625e-9),
+			expectedInput:     deepSeekV4ProInputPricePerToken,
+			expectedOutput:    floatPtr(deepSeekV4ProOutputPricePerToken),
+			expectedCacheRead: floatPtr(deepSeekV4ProCacheReadPerToken),
 		},
 		{
 			name:              "deepseek v4 flash",
 			model:             "deepseek-v4-flash",
-			expectedInput:     1.4e-7,
-			expectedOutput:    floatPtr(2.8e-7),
-			expectedCacheRead: floatPtr(2.8e-9),
+			expectedInput:     deepSeekV4FlashInputPricePerToken,
+			expectedOutput:    floatPtr(deepSeekV4FlashOutputPricePerToken),
+			expectedCacheRead: floatPtr(deepSeekV4FlashCacheReadPerToken),
+		},
+		{
+			name:              "deepseek v4 flash 0731 official version",
+			model:             "deepseek-v4-flash-0731",
+			expectedInput:     deepSeekV4FlashInputPricePerToken,
+			expectedOutput:    floatPtr(deepSeekV4FlashOutputPricePerToken),
+			expectedCacheRead: floatPtr(deepSeekV4FlashCacheReadPerToken),
+		},
+		{
+			name:              "deepseek v4 pro 0813 official version",
+			model:             "deepseek-v4-pro-0813",
+			expectedInput:     deepSeekV4ProInputPricePerToken,
+			expectedOutput:    floatPtr(deepSeekV4ProOutputPricePerToken),
+			expectedCacheRead: floatPtr(deepSeekV4ProCacheReadPerToken),
+		},
+		{
+			name:              "deepseek v4 flash vision exp shares flash pricing",
+			model:             "deepseek-v4-flash-vision-exp",
+			expectedInput:     deepSeekV4FlashInputPricePerToken,
+			expectedOutput:    floatPtr(deepSeekV4FlashOutputPricePerToken),
+			expectedCacheRead: floatPtr(deepSeekV4FlashCacheReadPerToken),
 		},
 		{
 			name:              "deepseek chat alias → flash",
 			model:             "deepseek-chat",
-			expectedInput:     1.4e-7,
-			expectedOutput:    floatPtr(2.8e-7),
-			expectedCacheRead: floatPtr(2.8e-9),
+			expectedInput:     deepSeekV4FlashInputPricePerToken,
+			expectedOutput:    floatPtr(deepSeekV4FlashOutputPricePerToken),
+			expectedCacheRead: floatPtr(deepSeekV4FlashCacheReadPerToken),
 		},
 		{
 			name:              "deepseek reasoner alias → flash",
 			model:             "deepseek-reasoner",
-			expectedInput:     1.4e-7,
-			expectedOutput:    floatPtr(2.8e-7),
-			expectedCacheRead: floatPtr(2.8e-9),
+			expectedInput:     deepSeekV4FlashInputPricePerToken,
+			expectedOutput:    floatPtr(deepSeekV4FlashOutputPricePerToken),
+			expectedCacheRead: floatPtr(deepSeekV4FlashCacheReadPerToken),
 		},
+		{name: "deepseek v4 pro prefix collision has no fallback", model: "deepseek-v4-provision", expectNilPricing: true},
+		{name: "deepseek v4 flash unknown suffix has no fallback", model: "deepseek-v4-flash-unknown", expectNilPricing: true},
 
 		// ---- 智谱 GLM（z.ai USD 口径）----
 		{
@@ -870,6 +976,28 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDeepSeekPromptCacheSplitBillsMissAndHitOnce(t *testing.T) {
+	usage, ok := extractOpenAIUsageFromJSONBytes([]byte(`{"usage":{"prompt_tokens":530,"completion_tokens":17,"prompt_cache_hit_tokens":200,"prompt_cache_miss_tokens":330}}`))
+	require.True(t, ok)
+
+	// DeepSeek's prompt_tokens is the total. RecordUsage subtracts the cache-hit
+	// bucket before passing ordinary input tokens to the pricing calculator; the
+	// miss field must not be added a second time.
+	actualInput := usage.InputTokens - usage.CacheReadInputTokens
+	require.Equal(t, 330, actualInput)
+
+	svc := newTestBillingService()
+	cost, err := svc.CalculateCost("deepseek-v4-flash", UsageTokens{
+		InputTokens:     actualInput,
+		OutputTokens:    usage.OutputTokens,
+		CacheReadTokens: usage.CacheReadInputTokens,
+	}, 1.0)
+	require.NoError(t, err)
+	require.InDelta(t, 330*deepSeekV4FlashInputPricePerToken, cost.InputCost, 1e-12)
+	require.InDelta(t, 200*deepSeekV4FlashCacheReadPerToken, cost.CacheReadCost, 1e-12)
+	require.InDelta(t, 330*deepSeekV4FlashInputPricePerToken+200*deepSeekV4FlashCacheReadPerToken+17*deepSeekV4FlashOutputPricePerToken, cost.TotalCost, 1e-12)
 }
 
 // doubao-embedding-vision 是首个图文不同价的 embedding：文本 ¥0.7/MTok、图片 ¥1.8/MTok。
@@ -1795,6 +1923,30 @@ func TestGetModelPricingWithChannel_NilImageOutputPriceZerosAndMarksExplicit(t *
 
 	require.Equal(t, 0.0, pricing.ImageOutputPricePerToken)
 	require.True(t, pricing.ImageOutputPriceExplicit)
+}
+
+func TestGetModelPricingWithChannel_DeepSeekVisionUsesPromptInputPriceForImages(t *testing.T) {
+	svc := newTestBillingService()
+
+	// A legacy channel row may still carry a separate image price. DeepSeek V4
+	// Vision converts image dimensions into ordinary prompt tokens, so that
+	// stale field must not change the bill.
+	pricing, err := svc.GetModelPricingWithChannel("deepseek-v4-flash-vision-exp", &ChannelModelPricing{
+		InputPrice:      testPtrFloat64(deepSeekV4FlashInputPricePerToken),
+		OutputPrice:     testPtrFloat64(deepSeekV4FlashOutputPricePerToken),
+		ImageInputPrice: testPtrFloat64(99e-6),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, pricing)
+	require.InDelta(t, deepSeekV4FlashInputPricePerToken, pricing.InputPricePerToken, 1e-15)
+	require.Zero(t, pricing.ImageInputPricePerToken)
+
+	breakdown := svc.computeTokenBreakdown(pricing, UsageTokens{
+		InputTokens:      100,
+		ImageInputTokens: 40,
+	}, 1, "", false)
+	require.InDelta(t, 60*deepSeekV4FlashInputPricePerToken, breakdown.InputCost, 1e-15)
+	require.InDelta(t, 40*deepSeekV4FlashInputPricePerToken, breakdown.ImageInputCost, 1e-15)
 }
 
 func TestComputeTokenBreakdown_ExplicitZeroImagePrice_NoFallback(t *testing.T) {

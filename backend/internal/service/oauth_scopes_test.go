@@ -132,6 +132,14 @@ func TestOAuthScopePolicyForRequest(t *testing.T) {
 		{"POST", "/v1/codex/responses/abc", true, ScopeResponsesCreate},
 		{"POST", "/v1/messages", true, ScopeMessagesCreate},
 		{"POST", "/v1/messages/count_tokens", true, ScopeMessagesCreate},
+		{"POST", "/v1/files", true, ScopeMessagesCreate},
+		{"POST", "/v1/files", true, ScopeResponsesCreate},
+		{"GET", "/v1/files", true, ScopeMessagesCreate},
+		{"GET", "/v1/files/file-api-123", true, ScopeResponsesCreate},
+		{"DELETE", "/v1/files/file-api-123", true, ScopeMessagesCreate},
+		{"POST", "/files", true, ScopeResponsesCreate},
+		{"GET", "/files/file-api-123", true, ScopeMessagesCreate},
+		{"DELETE", "/files/file-api-123/", true, ScopeResponsesCreate},
 		{"POST", "/v1/images/generations", true, ScopeImagesCreate},
 		{"POST", "/v1/images/edits", true, ScopeImagesCreate},
 		{"POST", "/images/generations", true, ScopeImagesCreate},
@@ -143,6 +151,8 @@ func TestOAuthScopePolicyForRequest(t *testing.T) {
 		{"POST", "/v1beta/messages", false, ""},
 		{"GET", "/healthz", false, ""},
 		{"POST", "/v1/models", false, ""},
+		{"POST", "/v1/files/file-api-123", false, ""},
+		{"GET", "/v1/files/file-api-123/extra/path", false, ""},
 		{"GET", "/v1/models?fields=id", true, ScopeModelsRead},
 	}
 	for _, tt := range tests {

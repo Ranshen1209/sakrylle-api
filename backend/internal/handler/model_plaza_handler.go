@@ -166,7 +166,7 @@ func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64) mo
 		models = append(models, modelPlazaModel{
 			Name:            m.Name,
 			Platform:        m.Platform,
-			Pricing:         toUserPricing(m.Pricing),
+			Pricing:         toUserPricingForModel(m.Pricing, m.Name, nil),
 			OfficialPricing: toModelPlazaOfficialPricing(m.OfficialPricing),
 		})
 	}

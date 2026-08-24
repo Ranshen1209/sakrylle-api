@@ -697,6 +697,8 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 			usage.CacheCreationInputTokens = int(total)
 		}
 	}
+	applyDeepSeekClaudeUsageAliases(parsed.Get("message.usage"), usage)
+	applyDeepSeekClaudeUsageAliases(parsed.Get("usage"), usage)
 }
 
 func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
@@ -730,6 +732,7 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 			usage.CacheReadInputTokens = int(cached)
 		}
 	}
+	applyDeepSeekClaudeUsageAliases(usageNode, usage)
 	return usage
 }
 

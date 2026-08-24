@@ -50,6 +50,8 @@ Production has `sakrylle-studio`:
 - redirect URIs: `http://127.0.0.1/callback`, `http://localhost/callback`
 - scopes: `openid`, `profile`, `email`, `models:read`, `responses:create`, `messages:create`, `usage:read`, `offline_access`
 
+DeepSeek Files API routes (`/v1/files` and `/files`) accept either `messages:create` or `responses:create`; no separate Files scope is required. Existing Studio tokens therefore retain access to file-backed vision requests after reauthentication.
+
 Studio uses `http://127.0.0.1:<port>/callback`. Random loopback ports are allowed, but the path must be exactly `/callback`; `/oauth/callback` is rejected.
 
 DB-only client changes need `docker compose restart sub2api`.

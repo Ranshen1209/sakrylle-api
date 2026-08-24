@@ -208,26 +208,25 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 	}
 
 	var out []ResponsesInputItem
-	var toolResultImageParts []ResponsesContentPart
 
 	// Extract tool_result blocks → function_call_output items.
-	// Images inside tool_results are extracted separately because the
-	// Responses API function_call_output.output only accepts strings.
+	// DeepSeek Responses accepts structured output arrays, including input_image
+	// parts. Keep each image on its originating call_id so parallel tool results
+	// remain unambiguous.
 	for _, b := range blocks {
 		if b.Type != "tool_result" {
 			continue
 		}
-		outputText, imageParts := convertToolResultOutput(b)
+		outputText, outputRaw := convertToolResultOutputForResponses(b)
 		out = append(out, ResponsesInputItem{
-			Type:   "function_call_output",
-			CallID: toResponsesCallID(b.ToolUseID),
-			Output: outputText,
+			Type:      "function_call_output",
+			CallID:    toResponsesCallID(b.ToolUseID),
+			Output:    outputText,
+			outputRaw: outputRaw,
 		})
-		toolResultImageParts = append(toolResultImageParts, imageParts...)
 	}
 
 	// Remaining text + image blocks → user message with content parts.
-	// Also include images extracted from tool_results so the model can see them.
 	var parts []ResponsesContentPart
 	for _, b := range blocks {
 		switch b.Type {
@@ -236,13 +235,11 @@ func anthropicUserToResponses(raw json.RawMessage) ([]ResponsesInputItem, error)
 				parts = append(parts, ResponsesContentPart{Type: "input_text", Text: b.Text})
 			}
 		case "image":
-			if uri := anthropicImageToDataURI(b.Source); uri != "" {
-				parts = append(parts, ResponsesContentPart{Type: "input_image", ImageURL: uri})
+			if part, ok := responsesContentPartFromAnthropicImageSource(b.Source); ok {
+				parts = append(parts, part)
 			}
 		}
 	}
-	parts = append(parts, toolResultImageParts...)
-
 	if len(parts) > 0 {
 		content, err := json.Marshal(parts)
 		if err != nil {
@@ -355,6 +352,9 @@ func anthropicImageToDataURI(src *AnthropicImageSource) string {
 	if src == nil || src.Data == "" {
 		return ""
 	}
+	if strings.HasPrefix(src.Data, "data:") {
+		return src.Data
+	}
 	mediaType := src.MediaType
 	if mediaType == "" {
 		mediaType = "image/png"
@@ -362,11 +362,11 @@ func anthropicImageToDataURI(src *AnthropicImageSource) string {
 	return "data:" + mediaType + ";base64," + src.Data
 }
 
-// convertToolResultOutput extracts text and image content from a tool_result
-// block. Returns the text as a string for the function_call_output Output
-// field, plus any image parts that must be sent in a separate user message
-// (the Responses API output field only accepts strings).
-func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesContentPart) {
+// convertToolResultOutput converts Anthropic tool_result content to the
+// Responses output union. Text-only results retain the compact string form;
+// results containing images use a structured content-part array so the media
+// stays associated with the corresponding call_id.
+func convertToolResultOutputForResponses(b AnthropicContentBlock) (string, json.RawMessage) {
 	if len(b.Content) == 0 {
 		return "(empty)", nil
 	}
@@ -386,23 +386,64 @@ func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesConten
 		return "(empty)", nil
 	}
 
-	// Separate text (for function_call_output) from images (for user message).
+	// Preserve block order whenever an image requires structured output.
 	var textParts []string
-	var imageParts []ResponsesContentPart
+	var outputParts []ResponsesContentPart
+	hasImage := false
 	for _, ib := range inner {
 		switch ib.Type {
 		case "text":
 			if ib.Text != "" {
 				textParts = append(textParts, ib.Text)
+				outputParts = append(outputParts, ResponsesContentPart{Type: "input_text", Text: ib.Text})
 			}
 		case "image":
-			if uri := anthropicImageToDataURI(ib.Source); uri != "" {
-				imageParts = append(imageParts, ResponsesContentPart{Type: "input_image", ImageURL: uri})
+			if part, ok := responsesContentPartFromAnthropicImageSource(ib.Source); ok {
+				hasImage = true
+				outputParts = append(outputParts, part)
 			}
+		}
+	}
+	if hasImage {
+		output, err := json.Marshal(outputParts)
+		if err == nil {
+			return "", output
 		}
 	}
 
 	text := strings.Join(textParts, "\n\n")
+	if text == "" {
+		text = "(empty)"
+	}
+	return text, nil
+}
+
+// convertToolResultOutput retains the text-plus-image split used by the Chat
+// bridge. Responses uses convertToolResultOutputForResponses instead so images
+// can stay attached to their tool call.
+func convertToolResultOutput(b AnthropicContentBlock) (string, []ResponsesContentPart) {
+	text, outputRaw := convertToolResultOutputForResponses(b)
+	if len(outputRaw) == 0 {
+		return text, nil
+	}
+
+	var outputParts []ResponsesContentPart
+	if err := json.Unmarshal(outputRaw, &outputParts); err != nil {
+		return "(empty)", nil
+	}
+	var textParts []string
+	var imageParts []ResponsesContentPart
+	for _, part := range outputParts {
+		switch part.Type {
+		case "input_text":
+			if part.Text != "" {
+				textParts = append(textParts, part.Text)
+			}
+		case "input_image":
+			imageParts = append(imageParts, part)
+		}
+	}
+	text = strings.Join(textParts, "\n\n")
 	if text == "" {
 		text = "(empty)"
 	}

@@ -248,6 +248,41 @@ func TestDefaultPricingIncludesOfficialGPT56Rates(t *testing.T) {
 	}
 }
 
+func TestDefaultPricingIncludesCurrentDeepSeekV4Capabilities(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	var entries map[string]struct {
+		MaxInputTokens           int      `json:"max_input_tokens"`
+		MaxOutputTokens          int      `json:"max_output_tokens"`
+		MaxTokens                int      `json:"max_tokens"`
+		SupportedEndpoints       []string `json:"supported_endpoints"`
+		SupportsAssistantPrefill bool     `json:"supports_assistant_prefill"`
+		SupportsVision           bool     `json:"supports_vision"`
+	}
+	require.NoError(t, json.Unmarshal(data, &entries))
+
+	models := []string{
+		"deepseek-v4-flash",
+		"deepseek-v4-flash-0731",
+		"deepseek-v4-flash-vision-exp",
+		"deepseek-v4-pro",
+		"deepseek-v4-pro-0813",
+	}
+	for _, model := range models {
+		t.Run(model, func(t *testing.T) {
+			entry, ok := entries[model]
+			require.True(t, ok)
+			require.Equal(t, 1_000_000, entry.MaxInputTokens)
+			require.Equal(t, 384_000, entry.MaxOutputTokens)
+			require.Equal(t, 384_000, entry.MaxTokens)
+			require.ElementsMatch(t, []string{"/v1/chat/completions", "/v1/responses", "/v1/messages"}, entry.SupportedEndpoints)
+			require.True(t, entry.SupportsAssistantPrefill)
+			require.Equal(t, model == "deepseek-v4-flash-vision-exp", entry.SupportsVision)
+		})
+	}
+}
+
 func TestGPT56DedicatedFallbacksUseOfficialRates(t *testing.T) {
 	tests := []struct {
 		model                             string

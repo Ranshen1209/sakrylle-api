@@ -97,6 +97,35 @@ func TestHandleNonStreamingResponse_ValidJSONUnchanged(t *testing.T) {
 	require.JSONEq(t, string(body), rec.Body.String())
 }
 
+func TestHandleNonStreamingResponse_DeepSeekPromptCacheAliases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{"id":"msg_deepseek","type":"message","usage":{"prompt_tokens":100,"prompt_cache_hit_tokens":40,"prompt_cache_miss_tokens":60,"output_tokens":7}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+	svc := &GatewayService{cfg: &config.Config{}, rateLimitService: &RateLimitService{}}
+
+	usage, err := svc.handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 4}, "deepseek-v4-flash", "deepseek-v4-flash")
+
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 100, usage.InputTokens, "the parser retains DeepSeek's total for native OpenAI conversion")
+	require.Equal(t, 40, usage.CacheReadInputTokens)
+	require.True(t, usage.inputTokensIncludeCache)
+	require.Equal(t, 7, usage.OutputTokens)
+	require.JSONEq(t, string(body), rec.Body.String(), "usage normalization is billing-only")
+
+	normalizeDeepSeekClaudeUsageForBilling(usage)
+	require.Equal(t, 60, usage.InputTokens)
+	require.Equal(t, 40, usage.CacheReadInputTokens)
+}
+
 func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_NonJSON2xxTriggersFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

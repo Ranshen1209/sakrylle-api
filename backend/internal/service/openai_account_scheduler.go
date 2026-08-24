@@ -461,63 +461,92 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 ) (*AccountSelectionResult, bool, error) {
 	sessionHash := strings.TrimSpace(req.SessionHash)
 	if sessionHash == "" || s == nil || s.service == nil || s.service.cache == nil {
+		if isDeepSeekPinnedSessionHash(sessionHash) {
+			return nil, false, deepSeekFileAffinityCacheUnavailableError()
+		}
 		return nil, false, nil
 	}
 
+	isDeepSeekFile := isDeepSeekFileSessionHash(sessionHash)
+	isDeepSeekUpload := isDeepSeekFileUploadSessionHash(sessionHash)
+	isDeepSeekPinned := isDeepSeekFile || isDeepSeekUpload
 	accountID := req.StickyAccountID
 	if accountID <= 0 {
 		var err error
-		accountID, err = s.service.getStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		if err != nil || accountID <= 0 {
+		if isDeepSeekFile {
+			accountID, err = s.service.resolveDeepSeekFileAffinityAccountID(ctx, req.GroupID, sessionHash)
+		} else {
+			accountID, err = s.service.getStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		}
+		if err != nil {
+			if isDeepSeekUpload && errors.Is(err, ErrStickySessionNotFound) {
+				return nil, false, nil
+			}
+			if !isDeepSeekPinned {
+				// A normal sticky-session cache miss/error is treated as a
+				// scheduler miss for backwards compatibility. DeepSeek file
+				// affinity is the deliberate exception because routing an
+				// unresolved file to another upstream key is unsafe.
+				return nil, false, nil
+			}
+			return nil, false, err
+		}
+		if accountID <= 0 {
 			return nil, false, nil
 		}
+	}
+	rejectUnavailable := func() (*AccountSelectionResult, bool, error) {
+		if isDeepSeekPinned {
+			return nil, false, fmt.Errorf("%w: DeepSeek file owner account %d is unavailable", ErrNoAvailableAccounts, accountID)
+		}
+		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		return nil, false, nil
 	}
 	if accountID <= 0 {
 		return nil, false, nil
 	}
 	if req.ExcludedIDs != nil {
 		if _, excluded := req.ExcludedIDs[accountID]; excluded {
+			if isDeepSeekPinned {
+				return rejectUnavailable()
+			}
 			return nil, false, nil
 		}
 	}
 
 	account, err := s.service.getSchedulableAccount(ctx, accountID)
 	if err != nil || account == nil {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, false, nil
+		return rejectUnavailable()
 	}
 	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, false, nil
+		return rejectUnavailable()
 	}
 	if !s.isAccountRequestCompatible(ctx, account, req) {
+		if isDeepSeekPinned {
+			return rejectUnavailable()
+		}
 		return nil, false, nil
 	}
 	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, false, nil
+		return rejectUnavailable()
 	}
 	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.GroupID, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredCapability)
 	if account == nil || !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, false, nil
+		return rejectUnavailable()
 	}
 	// Free-tier soft gate: sticky session must not pin an over-quota free OAuth account.
 	// Admin QueryQuota / import probes do not use this path.
 	if account != nil && len(s.filterGrokFreeQuotaAccounts(ctx, []Account{*account})) == 0 {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, false, nil
+		return rejectUnavailable()
 	}
 	// Team+model cool: sticky must not pin a sibling under the same team 429 window.
 	now := time.Now()
 	upstreamModel := canonicalOpenAIAccountSchedulingModel(account, req.RequestedModel)
 	if account != nil && isGrokTeamModelRateLimited(account, upstreamModel, now) {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, false, nil
+		return rejectUnavailable()
 	}
 	if account != nil && isGrokModelQuotaBlocked(account.ID, upstreamModel, now) {
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
-		return nil, false, nil
+		return rejectUnavailable()
 	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
 	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape {
@@ -527,6 +556,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			"error_rate", errorRate,
 			"ttft", ttft,
 		)
+		if isDeepSeekPinned {
+			return rejectUnavailable()
+		}
 		return nil, true, nil
 	}
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
@@ -550,6 +582,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 				"error_rate", errorRate,
 				"ttft", ttft,
 			)
+			if isDeepSeekPinned {
+				return rejectUnavailable()
+			}
 			return nil, true, nil
 		}
 		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
@@ -561,6 +596,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
 		}), false, nil
+	}
+	if isDeepSeekPinned {
+		return rejectUnavailable()
 	}
 	return nil, false, nil
 }
@@ -2161,6 +2199,9 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	if requiredImageCapability == "" {
 		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
 	}
+	if err := s.requireDeepSeekFileAffinityCache(sessionHash); err != nil {
+		return nil, OpenAIAccountScheduleDecision{}, err
+	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}
 	scheduler := s.getOpenAIAccountScheduler(ctx)
@@ -2227,11 +2268,26 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
-		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil && accountID > 0 {
-			stickyAccountID = accountID
+		var err error
+		if isDeepSeekFileSessionHash(sessionHash) {
+			stickyAccountID, err = s.resolveDeepSeekFileAffinityAccountID(ctx, groupID, sessionHash)
+		} else {
+			stickyAccountID, err = s.getStickySessionAccountID(ctx, groupID, sessionHash)
+		}
+		if err != nil {
+			if isDeepSeekFileSessionHash(sessionHash) || (isDeepSeekFileUploadSessionHash(sessionHash) && !errors.Is(err, ErrStickySessionNotFound)) {
+				return nil, decision, err
+			}
+			// Preserve the normal scheduler behavior: a regular sticky
+			// cache miss is equivalent to no sticky account.
+			stickyAccountID = 0
 		}
 	}
 	stickyWeighted := s.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx)
+	if isDeepSeekPinnedSessionHash(sessionHash) {
+		// DeepSeek Files bindings are ownership boundaries, not weighted hints.
+		stickyWeighted = false
+	}
 	subscriptionPriority := s.isOpenAIAdvancedSchedulerSubscriptionPriorityEnabled(ctx)
 	stickyPreviousAccountID := int64(0)
 	if stickyWeighted && previousResponseCanMove && strings.TrimSpace(previousResponseID) != "" && platform == PlatformOpenAI {

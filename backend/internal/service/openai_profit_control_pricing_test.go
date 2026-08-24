@@ -33,6 +33,14 @@ func TestProfitControl_RequestPricingContext(t *testing.T) {
 		require.Equal(t, openAIProfitFilterReasonThreshold, reason)
 	})
 
+	t.Run("keeps handler ingress pricing instant", func(t *testing.T) {
+		base := profitControlTestCtx(profitControlTestGroup(groupID, 0.5, 0))
+		ingress := time.Date(2026, 8, 17, 0, 59, 59, 0, time.UTC)
+		ctx, pricingAt := svc.WithOpenAIRequestPricingContextAt(base, &groupID, ingress)
+		require.Equal(t, ingress, pricingAt)
+		require.Equal(t, ingress, OpenAIPricingAtFromContext(ctx))
+	})
+
 	t.Run("suppress marker skips gate everywhere", func(t *testing.T) {
 		base := WithOpenAIProfitControlSuppressed(profitControlTestCtx(profitControlTestGroup(groupID, 0.5, 0)))
 		ctx, pricingAt := svc.WithOpenAIRequestPricingContext(base, &groupID)

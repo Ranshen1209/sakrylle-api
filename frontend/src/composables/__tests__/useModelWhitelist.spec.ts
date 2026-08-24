@@ -7,6 +7,16 @@ vi.mock('@/api/admin/accounts', () => ({
 import { buildModelMappingObject, getModelsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
+  it('DeepSeek 模型列表包含 V4 Vision 模型', () => {
+    const models = getModelsByPlatform('deepseek')
+
+    expect(models).toContain('deepseek-v4-flash')
+    expect(models).toContain('deepseek-v4-flash-0731')
+    expect(models).toContain('deepseek-v4-pro')
+    expect(models).toContain('deepseek-v4-pro-0813')
+    expect(models).toContain('deepseek-v4-flash-vision-exp')
+  })
+
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
     const models = getModelsByPlatform('openai')
 

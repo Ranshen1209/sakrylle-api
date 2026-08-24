@@ -11,6 +11,7 @@
       </div>
       <button
         type="button"
+        data-testid="add-time-version"
         class="inline-flex h-8 items-center gap-1 rounded border border-primary-300 px-2 text-xs text-primary-600 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-900/20"
         @click="addVersion"
       >
@@ -163,7 +164,10 @@ import type { PricingTimeVersionFormEntry, PricingTimeWindowFormEntry } from './
 type TimePriceField = 'input_price' | 'output_price' | 'cache_write_price' | 'cache_read_price' | 'image_input_price' | 'image_output_price'
 
 const { t } = useI18n()
-const props = defineProps<{ versions: PricingTimeVersionFormEntry[] }>()
+const props = defineProps<{
+  versions: PricingTimeVersionFormEntry[]
+  platform?: string
+}>()
 const emit = defineEmits<{ update: [versions: PricingTimeVersionFormEntry[]] }>()
 
 const priceFields: { key: TimePriceField, label: string }[] = [
@@ -211,7 +215,8 @@ function addVersion() {
 }
 
 function newWindow(startMinute = 540, endMinute = 720, sortOrder = 0): PricingTimeWindowFormEntry {
-  return { label: 'peak', weekdays: 127, start_minute: startMinute, end_minute: endMinute, multiplier: 1, sort_order: sortOrder }
+  const weekdaysMask = props.platform?.trim().toLowerCase() === 'deepseek' ? 31 : 127
+  return { label: 'peak', weekdays: weekdaysMask, start_minute: startMinute, end_minute: endMinute, multiplier: 1, sort_order: sortOrder }
 }
 
 function removeVersion(index: number) {

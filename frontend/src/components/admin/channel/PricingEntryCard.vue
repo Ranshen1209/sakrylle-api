@@ -151,6 +151,7 @@
           <TimePricingEditor
             v-if="!hideTimePricing"
             :versions="entry.time_versions || []"
+            :platform="platform"
             @update="emit('update', { ...entry, time_versions: $event })"
           />
 

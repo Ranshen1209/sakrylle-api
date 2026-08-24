@@ -14,10 +14,15 @@ Composite groups can route to these concrete account platforms:
 - OpenAI
 - Antigravity
 - Grok
+- DeepSeek
 
 The selected concrete platform is used for account selection, user platform
 quota checks, post-usage billing, ops error platform attribution, channel
 mapping/pricing lookup, and platform usage reporting.
+
+DeepSeek Files API requests are the one model-less exception: `/files` and
+`/v1/files` (including file-ID operations) resolve directly to DeepSeek so a
+composite key can upload and later reference images without a model field.
 
 ## Route Registry
 

@@ -592,9 +592,15 @@ type ClaudeUsage struct {
 	OutputTokens             int `json:"output_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
-	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	// inputTokensIncludeCache is set only when a DeepSeek prompt_tokens alias
+	// supplied the OpenAI-style total (hit + miss). Anthropic's native
+	// input_tokens already excludes cache buckets, so the billing path uses
+	// this marker to normalize alias totals without changing native usage
+	// conversion semantics.
+	inputTokensIncludeCache bool `json:"-"`
+	CacheCreation5mTokens   int  // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
+	CacheCreation1hTokens   int  // 1小时缓存创建token（来自嵌套 cache_creation 对象）
+	ImageOutputTokens       int  `json:"image_output_tokens,omitempty"`
 }
 
 // ForwardResult 转发结果

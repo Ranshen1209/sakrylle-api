@@ -93,10 +93,19 @@ func (s *OpenAIGatewayService) openAISessionCacheKey(sessionHash string) string 
 	if normalized == "" {
 		return ""
 	}
+	// DeepSeek file IDs are already namespaced and must not inherit the
+	// historical openai: prefix. The namespace is also used by the Files API
+	// upload binding, so reads and writes must address the exact same key.
+	if isDeepSeekPinnedSessionHash(normalized) {
+		return normalized
+	}
 	return "openai:" + normalized
 }
 
 func (s *OpenAIGatewayService) openAILegacySessionCacheKey(ctx context.Context, sessionHash string) string {
+	if isDeepSeekPinnedSessionHash(sessionHash) {
+		return ""
+	}
 	legacyHash := openAILegacySessionHashFromContext(ctx)
 	if legacyHash == "" {
 		return ""
@@ -155,9 +164,20 @@ func (s *OpenAIGatewayService) setStickySessionAccountID(ctx context.Context, gr
 	if s == nil || s.cache == nil || accountID <= 0 {
 		return nil
 	}
+	// Upload affinity must only be established by the same atomic Redis script
+	// that reserves tenant and account capacity.
+	if isDeepSeekFileUploadSessionHash(sessionHash) {
+		return nil
+	}
 	primaryKey := s.openAISessionCacheKey(sessionHash)
 	if primaryKey == "" {
 		return nil
+	}
+	// File ownership must survive the provider's optional permanent lifetime;
+	// callers from the generic scheduler may otherwise pass the ordinary
+	// conversation TTL and silently shorten the binding.
+	if isDeepSeekPinnedSessionHash(sessionHash) {
+		ttl = deepSeekFileAffinityTTL
 	}
 
 	if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), primaryKey, accountID, ttl); err != nil {
@@ -180,6 +200,12 @@ func (s *OpenAIGatewayService) setStickySessionAccountID(ctx context.Context, gr
 
 func (s *OpenAIGatewayService) refreshStickySessionTTL(ctx context.Context, groupID *int64, sessionHash string, ttl time.Duration) error {
 	if s == nil || s.cache == nil {
+		return nil
+	}
+	// DeepSeek file ownership can be permanent. Generic scheduler callers may
+	// pass the normal 10-minute TTL, so never expire a file binding during a
+	// request; explicit DELETE is responsible for cleanup.
+	if isDeepSeekPinnedSessionHash(sessionHash) {
 		return nil
 	}
 	primaryKey := s.openAISessionCacheKey(sessionHash)

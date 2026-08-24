@@ -132,7 +132,20 @@ type openAIProfitControlGate struct {
 // 利润门。ctx 携带 WithOpenAIProfitControlSuppressed 标记（门范围外流量）时
 // 只固定 pricingAt、不装门。handler 各文本入口应在选号循环前调用一次。
 func (s *OpenAIGatewayService) WithOpenAIRequestPricingContext(ctx context.Context, groupID *int64) (context.Context, time.Time) {
-	pricingAt := timezone.Now()
+	return s.WithOpenAIRequestPricingContextAt(ctx, groupID, timezone.Now())
+}
+
+// WithOpenAIRequestPricingContextAt installs the request pricing/profit gate
+// with the handler's ingress timestamp. The gate may be assembled after body
+// validation or a concurrency wait, but its price decision remains tied to the
+// instant the request entered the handler.
+func (s *OpenAIGatewayService) WithOpenAIRequestPricingContextAt(ctx context.Context, groupID *int64, pricingAt time.Time) (context.Context, time.Time) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if pricingAt.IsZero() {
+		pricingAt = timezone.Now()
+	}
 	ctx = context.WithValue(ctx, openAIPricingAtCtxKey{}, pricingAt)
 	return s.withOpenAIProfitControlGate(ctx, groupID), pricingAt
 }

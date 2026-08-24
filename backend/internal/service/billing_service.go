@@ -118,6 +118,17 @@ const (
 	openAIGPT54LongContextInputThreshold   = 272000
 	openAIGPT54LongContextInputMultiplier  = 2.0
 	openAIGPT54LongContextOutputMultiplier = 1.5
+
+	// DeepSeek's current V4 card is expressed in the repository's per-token
+	// numeric unit (the UI renders that unit as ￥/MTok). These are peak-hour
+	// rates; the backend official schedule or an explicit channel time version
+	// applies the off-peak multiplier captured at request ingress.
+	deepSeekV4FlashInputPricePerToken  = 3e-6
+	deepSeekV4FlashOutputPricePerToken = 9e-6
+	deepSeekV4FlashCacheReadPerToken   = 0.1e-6
+	deepSeekV4ProInputPricePerToken    = 9e-6
+	deepSeekV4ProOutputPricePerToken   = 27e-6
+	deepSeekV4ProCacheReadPerToken     = 0.3e-6
 )
 
 func normalizeBillingServiceTier(serviceTier string) string {
@@ -462,26 +473,35 @@ func (s *BillingService) initFallbackPricing() {
 	}
 
 	// ============================================================
-	// 国产 LLM 兜底定价（数据源：各家官方定价页/USD 口径）
+	// 国产 LLM 兜底定价。历史条目沿用仓库的数值口径；DeepSeek 官方卡以
+	// CNY 计价，数值直接存入同一仓库单位，管理端仅显示 ￥，不做汇率换算。
 	// 顺序：DeepSeek → 智谱 GLM → 月之暗面 Kimi → MiniMax
 	// 覆盖逻辑见同文件 getFallbackPricing()
 	// ============================================================
-
 	// ---- DeepSeek V4 系列 ----
 	// Source: https://api-docs.deepseek.com/quick_start/pricing
 	// （deepseek-chat / deepseek-reasoner 为 deepseek-v4-flash 的兼容别名，2026/07/24 弃用）
 	s.fallbackPrices["deepseek-v4-pro"] = &ModelPricing{
-		InputPricePerToken:     4.35e-7,  // $0.435 per MTok (cache miss)
-		OutputPricePerToken:    8.7e-7,   // $0.87 per MTok
-		CacheReadPricePerToken: 3.625e-9, // $0.003625 per MTok (cache hit)
+		InputPricePerToken:     deepSeekV4ProInputPricePerToken,
+		OutputPricePerToken:    deepSeekV4ProOutputPricePerToken,
+		CacheReadPricePerToken: deepSeekV4ProCacheReadPerToken,
 		SupportsCacheBreakdown: false,
 	}
-	s.fallbackPrices["deepseek-v4-flash"] = &ModelPricing{
-		InputPricePerToken:     1.4e-7, // $0.14 per MTok (cache miss)
-		OutputPricePerToken:    2.8e-7, // $0.28 per MTok
-		CacheReadPricePerToken: 2.8e-9, // $0.0028 per MTok (cache hit)
+	deepSeekFlashPricing := &ModelPricing{
+		InputPricePerToken:     deepSeekV4FlashInputPricePerToken,
+		OutputPricePerToken:    deepSeekV4FlashOutputPricePerToken,
+		CacheReadPricePerToken: deepSeekV4FlashCacheReadPerToken,
 		SupportsCacheBreakdown: false,
 	}
+	s.fallbackPrices["deepseek-v4-flash"] = deepSeekFlashPricing
+	// The legacy public IDs are aliases of V4 Flash. Keep explicit entries so
+	// token-pricing admission and the fallback path use the same official card.
+	s.fallbackPrices["deepseek-chat"] = deepSeekFlashPricing
+	s.fallbackPrices["deepseek-reasoner"] = deepSeekFlashPricing
+	// Vision Exp uses the Flash token rates in the fallback path. Its image
+	// dimensions are converted to prompt tokens by DeepSeek and included in
+	// the upstream usage total; no local image-token estimate is needed.
+	s.fallbackPrices["deepseek-v4-flash-vision-exp"] = deepSeekFlashPricing
 
 	// ---- 智谱 GLM（Z.AI）----
 	// Source: https://docs.z.ai/guides/overview/pricing (USD per 1M tokens)
@@ -769,16 +789,10 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["gemini-3.6-flash"]
 	}
 
-	// DeepSeek V4 系列：仅匹配已知 V4 Pro/Flash 与官方兼容别名
-	// （deepseek-chat / deepseek-reasoner → V4 Flash），未知 deepseek-* 型号不回退，避免误计价。
-	if strings.Contains(modelLower, "deepseek-v4-flash") {
-		return s.fallbackPrices["deepseek-v4-flash"]
-	}
-	if strings.Contains(modelLower, "deepseek-v4-pro") {
-		return s.fallbackPrices["deepseek-v4-pro"]
-	}
-	if strings.Contains(modelLower, "deepseek-chat") || strings.Contains(modelLower, "deepseek-reasoner") {
-		return s.fallbackPrices["deepseek-v4-flash"]
+	// DeepSeek V4 系列：仅匹配官方列出的 V4 Pro/Flash 与兼容别名。
+	// 使用有边界的 allowlist，避免 provision/unknown 等未来型号误套当前卡。
+	if key := deepSeekOfficialPricingKey(modelLower); key != "" {
+		return s.fallbackPrices[key]
 	}
 
 	// ---- 国产 LLM 兜底匹配 ----
@@ -989,6 +1003,9 @@ func (s *BillingService) HasIdentifiedTokenPricing(model string) bool {
 	if model == "" {
 		return false
 	}
+	if key := deepSeekOfficialPricingKey(model); key != "" && s.fallbackPrices[key] != nil {
+		return true
+	}
 	if s.pricingService != nil {
 		// 仅有图片价的条目不能用于 token 计费，口径与 GetModelPricing 保持一致。
 		if pricing := s.pricingService.GetIdentifiedModelPricing(model); pricing != nil && !pricing.TokenPricingAbsent {
@@ -1002,7 +1019,19 @@ func (s *BillingService) HasIdentifiedTokenPricing(model string) bool {
 // GetModelPricing 获取模型价格配置
 func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	// 标准化模型名称（转小写）
-	model = strings.ToLower(model)
+	model = strings.ToLower(strings.TrimSpace(model))
+
+	// DeepSeek's V4 card is published in CNY and the repository's Sakrylle
+	// numeric unit is display-only (the UI adds ￥). A stale LiteLLM catalog
+	// must not silently win over the current official card; channel pricing is
+	// applied later by GetModelPricingWithChannel and remains authoritative for
+	// a configured channel/time version.
+	if key := deepSeekOfficialPricingKey(model); key != "" {
+		if fallback := s.fallbackPrices[key]; fallback != nil {
+			cloned := *fallback
+			return s.applyModelSpecificPricingPolicy(model, &cloned), nil
+		}
+	}
 
 	// 1. 优先从动态价格服务获取
 	if s.pricingService != nil {
@@ -1080,7 +1109,56 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	}
 	pricing.ImageOutputPriceExplicit = true
 	applyChannelImageInputPrice(channelPricing, pricing)
-	return pricing, nil
+	// DeepSeek V4 Vision reports image dimensions as prompt tokens.  Keep the
+	// image bucket for accounting visibility, but force it to use the merged
+	// input price even when an old channel row still contains an image price.
+	return s.applyModelSpecificPricingPolicy(model, pricing), nil
+}
+
+// deepSeekOfficialPricingKey returns the canonical V4 card for the small set
+// of public DeepSeek IDs whose pricing is explicitly covered by the current
+// official announcement. Unknown DeepSeek IDs are left to the dynamic catalog
+// (or fail closed) instead of being guessed from a provider substring.
+func deepSeekOfficialPricingKey(model string) string {
+	model = strings.ToLower(strings.TrimSpace(model))
+	model = strings.TrimPrefix(model, "models/")
+	if idx := strings.LastIndexByte(model, '/'); idx >= 0 {
+		model = model[idx+1:]
+	}
+	// OpenRouter-style identifiers may append a routing variant after ':'
+	// (for example deepseek-v4-flash:free). The provider/model portion still
+	// identifies the same official card.
+	if idx := strings.IndexByte(model, ':'); idx >= 0 {
+		model = model[:idx]
+	}
+	switch model {
+	case "deepseek-v4-flash-vision-exp":
+		return "deepseek-v4-flash-vision-exp"
+	case "deepseek-v4-flash", "deepseek-v4-flash-0731":
+		return "deepseek-v4-flash"
+	case "deepseek-v4-pro", "deepseek-v4-pro-0813":
+		return "deepseek-v4-pro"
+	case "deepseek-chat", "deepseek-reasoner":
+		return "deepseek-v4-flash"
+	}
+	if isDeepSeekDatedCompatibilityAlias(model, "deepseek-chat") ||
+		isDeepSeekDatedCompatibilityAlias(model, "deepseek-reasoner") {
+		return "deepseek-v4-flash"
+	}
+	return ""
+}
+
+func isDeepSeekDatedCompatibilityAlias(model, base string) bool {
+	suffix, ok := strings.CutPrefix(model, base+"-")
+	if !ok || len(suffix) != 8 {
+		return false
+	}
+	for _, char := range suffix {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // channelTierOverridePrice applies a Standard-tier override while preserving
@@ -1436,6 +1514,11 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 		return nil
 	}
 	normalized := normalizeKnownOpenAICodexModel(model)
+	if isDeepSeekVisionTokenModel(model) {
+		cloned := *pricing
+		cloned.ImageInputPricePerToken = 0
+		return &cloned
+	}
 	isGPT56 := isOpenAIGPT56Model(normalized)
 	usesGPT5LongContextPricing := usesOpenAIGPT5LongContextPricing(normalized)
 	if !isGPT56 && !usesGPT5LongContextPricing {
@@ -1469,6 +1552,14 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 		}
 	}
 	return &cloned
+}
+
+// isDeepSeekVisionTokenModel identifies the V4 vision experiment whose image
+// dimensions are converted by DeepSeek into ordinary prompt tokens.  Image
+// tokens must therefore be billed from the input/cache-miss card, never from
+// a separate image-input card left by an older multimodal pricing convention.
+func isDeepSeekVisionTokenModel(model string) bool {
+	return deepSeekOfficialPricingKey(model) == "deepseek-v4-flash-vision-exp"
 }
 
 func (s *BillingService) shouldApplySessionLongContextPricing(tokens UsageTokens, pricing *ModelPricing) bool {

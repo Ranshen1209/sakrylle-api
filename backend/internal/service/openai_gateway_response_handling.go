@@ -1181,6 +1181,13 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 	if inputTokens == 0 {
 		inputTokens = value.Get("prompt_tokens").Int()
 	}
+	// DeepSeek Chat Completions always exposes prompt_tokens, but keep the
+	// cache split as a fallback for compatible relays that only forward the
+	// hit/miss fields. The image token count (when provided) remains part of
+	// the upstream-reported prompt total and is not estimated locally.
+	if inputTokens == 0 {
+		inputTokens = deepSeekPromptTokenTotalFromUsage(value)
+	}
 	outputTokens := value.Get("output_tokens").Int()
 	if outputTokens == 0 {
 		outputTokens = value.Get("completion_tokens").Int()
@@ -1209,6 +1216,18 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 }
 
 func openAICacheReadTokensFromUsage(value gjson.Result) int {
+	// DeepSeek's top-level bucket is authoritative whenever it is present,
+	// including an explicit zero. Some relays also copy an older nested
+	// `cached_tokens` field, so check this before the generic OpenAI shape.
+	if deepSeekHit := value.Get("prompt_cache_hit_tokens"); deepSeekHit.Exists() {
+		return max(int(deepSeekHit.Int()), 0)
+	}
+	// A miss-only DeepSeek payload explicitly reports no cache-hit tokens.
+	// Do not fall back to a stale nested cached_tokens field copied by a relay.
+	if deepSeekMiss := value.Get("prompt_cache_miss_tokens"); deepSeekMiss.Exists() {
+		return 0
+	}
+
 	for _, nested := range []gjson.Result{
 		value.Get("input_tokens_details.cached_tokens"),
 		value.Get("prompt_tokens_details.cached_tokens"),
@@ -1217,12 +1236,32 @@ func openAICacheReadTokensFromUsage(value gjson.Result) int {
 			return max(int(nested.Int()), 0)
 		}
 	}
-
 	return firstPositiveGJSONInt(
 		value.Get("cache_read_input_tokens"),
 		value.Get("cache_read_tokens"),
 		value.Get("cached_tokens"),
 	)
+}
+
+func deepSeekPromptTokenTotalFromUsage(value gjson.Result) int64 {
+	hit := value.Get("prompt_cache_hit_tokens")
+	miss := value.Get("prompt_cache_miss_tokens")
+	if !hit.Exists() && !miss.Exists() {
+		return 0
+	}
+	hitTokens := hit.Int()
+	if hitTokens < 0 {
+		hitTokens = 0
+	}
+	missTokens := miss.Int()
+	if missTokens < 0 {
+		missTokens = 0
+	}
+	const maxInt64Value = int64(^uint64(0) >> 1)
+	if hitTokens > maxInt64Value-missTokens {
+		return maxInt64Value
+	}
+	return hitTokens + missTokens
 }
 
 func openAICacheCreationTokensFromUsage(value gjson.Result) int {

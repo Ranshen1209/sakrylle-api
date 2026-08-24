@@ -131,11 +131,25 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			if text != "" {
 				systemParts = append(systemParts, text)
 			}
+			// Responses permits images in developer messages, while Anthropic's
+			// DeepSeek-compatible endpoint accepts them only in user messages.
+			// Keep the developer text as system context and lift only its image
+			// blocks into a user turn so the model still receives the media.
+			if item.Role == "developer" {
+				content, hasImages := responsesDeveloperImagesToAnthropicContent(item.Content)
+				if hasImages {
+					messages = append(messages, AnthropicMessage{Role: "user", Content: content})
+				}
+			}
 
-		case item.Type == "function_call":
-			// function_call → assistant message with tool_use block
+		case item.Type == "function_call" || item.Type == "custom_tool_call":
+			// function/custom_tool_call → assistant message with tool_use block.
+			// Anthropic tool input must be an object, so wrap a custom tool's
+			// free-form string under the schema used by the custom-tool bridge.
 			input := json.RawMessage("{}")
-			if item.Arguments != "" {
+			if item.Type == "custom_tool_call" {
+				input, _ = json.Marshal(map[string]string{"input": item.Input})
+			} else if item.Arguments != "" {
 				input = json.RawMessage(item.Arguments)
 			}
 			block := AnthropicContentBlock{
@@ -150,8 +164,8 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				Content: blockJSON,
 			})
 
-		case item.Type == "function_call_output":
-			// function_call_output → user message with tool_result block
+		case item.Type == "function_call_output" || item.Type == "custom_tool_call_output":
+			// function/custom_tool_call_output → user message with tool_result block
 			contentJSON := responsesFunctionOutputToAnthropicContent(item)
 			block := AnthropicContentBlock{
 				Type:      "tool_result",
@@ -260,8 +274,8 @@ func responsesFunctionOutputToAnthropicContent(item ResponsesInputItem) json.Raw
 				if part.Text != "" {
 					blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: part.Text})
 				}
-			case "input_image":
-				if source := dataURIToAnthropicImageSource(part.ImageURL); source != nil {
+			case "input_image", "image_url", "file":
+				if source := anthropicImageSourceFromResponsesContentPart(part); source != nil {
 					blocks = append(blocks, AnthropicContentBlock{Type: "image", Source: source})
 				}
 			}
@@ -278,6 +292,27 @@ func responsesFunctionOutputToAnthropicContent(item ResponsesInputItem) json.Raw
 
 	content, _ := json.Marshal(item.Output)
 	return content
+}
+
+func responsesDeveloperImagesToAnthropicContent(raw json.RawMessage) (json.RawMessage, bool) {
+	var parts []ResponsesContentPart
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return nil, false
+	}
+	blocks := make([]AnthropicContentBlock, 0, len(parts))
+	for _, part := range parts {
+		if part.Type != "input_image" && part.Type != "image_url" && part.Type != "file" {
+			continue
+		}
+		if source := anthropicImageSourceFromResponsesContentPart(part); source != nil {
+			blocks = append(blocks, AnthropicContentBlock{Type: "image", Source: source})
+		}
+	}
+	if len(blocks) == 0 {
+		return nil, false
+	}
+	content, err := json.Marshal(blocks)
+	return content, err == nil
 }
 
 // normalizeAnthropicToolPairing rebuilds the message sequence so it satisfies
@@ -476,8 +511,8 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 					Text: p.Text,
 				})
 			}
-		case "input_image":
-			src := dataURIToAnthropicImageSource(p.ImageURL)
+		case "input_image", "image_url", "file":
+			src := anthropicImageSourceFromResponsesContentPart(p)
 			if src != nil {
 				blocks = append(blocks, AnthropicContentBlock{
 					Type:   "image",

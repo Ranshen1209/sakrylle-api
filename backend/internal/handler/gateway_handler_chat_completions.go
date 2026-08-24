@@ -93,7 +93,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
-	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
+	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricingAt(c.Request.Context(), requestStart)
 	c.Request = c.Request.WithContext(pricingCtx)
 
 	// 解析渠道级模型映射

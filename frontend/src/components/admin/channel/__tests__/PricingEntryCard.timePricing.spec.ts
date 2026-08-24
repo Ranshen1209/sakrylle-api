@@ -46,6 +46,14 @@ describe('PricingEntryCard time pricing visibility', () => {
     expect(wrapper.findComponent({ name: 'TimePricingSection' }).exists()).toBe(true)
   })
 
+  it('passes the channel platform to the version editor', () => {
+    const wrapper = shallowMount(PricingEntryCard, {
+      props: { entry: createEntry(), platform: 'deepseek' },
+    })
+
+    expect(wrapper.findComponent({ name: 'TimePricingEditor' }).props('platform')).toBe('deepseek')
+  })
+
   it('is hidden for non-token pricing even when explicitly enabled', () => {
     const wrapper = shallowMount(PricingEntryCard, {
       props: { entry: createEntry('per_request'), enableTimePricing: true },

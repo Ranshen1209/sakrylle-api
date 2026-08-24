@@ -193,10 +193,22 @@ func anthropicUserToChatMessages(raw json.RawMessage) ([]ChatMessage, error) {
 			ToolCallID: b.ToolUseID,
 		})
 		for _, ip := range imageParts {
-			toolResultImageParts = append(toolResultImageParts, ChatContentPart{
-				Type:     "image_url",
-				ImageURL: &ChatImageURL{URL: ip.ImageURL},
-			})
+			if ip.FileID != "" || ip.FileData != "" {
+				toolResultImageParts = append(toolResultImageParts, ChatContentPart{
+					Type:     "file",
+					FileID:   ip.FileID,
+					FileData: ip.FileData,
+					Filename: ip.Filename,
+				})
+			} else {
+				toolResultImageParts = append(toolResultImageParts, ChatContentPart{
+					Type: "image_url",
+					ImageURL: &ChatImageURL{
+						URL:    ip.ImageURL,
+						Detail: ip.Detail,
+					},
+				})
+			}
 		}
 	}
 
@@ -216,12 +228,9 @@ func anthropicUserToChatMessages(raw json.RawMessage) ([]ChatMessage, error) {
 				parts = append(parts, ChatContentPart{Type: "text", Text: b.Text})
 			}
 		case "image":
-			if uri := anthropicImageToDataURI(b.Source); uri != "" {
+			if imagePart, ok := chatContentPartFromAnthropicImageSource(b.Source); ok {
 				hasImage = true
-				parts = append(parts, ChatContentPart{
-					Type:     "image_url",
-					ImageURL: &ChatImageURL{URL: uri},
-				})
+				parts = append(parts, imagePart)
 			}
 		}
 	}

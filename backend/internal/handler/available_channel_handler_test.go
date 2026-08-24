@@ -205,6 +205,27 @@ func TestToUserPricing_ResolvesCurrentTimeVersionAndExposesSchedule(t *testing.T
 	require.NotContains(t, string(raw), `"sort_order"`)
 }
 
+func TestToUserPricing_ExposesAutomaticDeepSeekScheduleAndCurrentOffPeakPrice(t *testing.T) {
+	input := 3e-6
+	dto := toUserPricingForModelAt(
+		&service.ChannelModelPricing{BillingMode: service.BillingModeToken, InputPrice: &input},
+		"deepseek-v4-flash-vision-exp",
+		nil,
+		time.Date(2026, 8, 17, 13, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60)),
+	)
+
+	require.NotNil(t, dto)
+	require.NotNil(t, dto.InputPrice)
+	require.InDelta(t, 1.5e-6, *dto.InputPrice, 1e-15)
+	require.NotNil(t, dto.TimeResolution)
+	require.Equal(t, "off_peak", dto.TimeResolution.PeriodLabel)
+	require.InDelta(t, 0.5, dto.TimeResolution.Multiplier, 1e-12)
+	require.Len(t, dto.TimeVersions, 1)
+	require.Equal(t, "Asia/Shanghai", dto.TimeVersions[0].Timezone)
+	require.Len(t, dto.TimeVersions[0].Windows, 2)
+	require.Equal(t, 31, dto.TimeVersions[0].Windows[0].Weekdays)
+}
+
 func TestBuildPlatformSections_ImageInputRatioStampedOnModels(t *testing.T) {
 	// AvailableChannel.ImageInputRatio が全モデルの DTO に転写される。
 	ratio := 1.6

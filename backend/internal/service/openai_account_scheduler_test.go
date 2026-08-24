@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -149,6 +150,43 @@ func (c schedulerTestConcurrencyCache) GetAccountWaitingCount(ctx context.Contex
 type schedulerTestGatewayCache struct {
 	sessionBindings map[string]int64
 	deletedSessions map[string]int
+	deepSeekRecords map[string][]byte
+}
+
+func schedulerDeepSeekRecordKey(groupID, userID int64, fileID string) string {
+	return fmt.Sprintf("%d:%d:%s", groupID, userID, fileID)
+}
+
+func (c *schedulerTestGatewayCache) StoreDeepSeekFileRecord(_ context.Context, groupID, userID int64, fileID string, record []byte, _ int64) error {
+	if c.deepSeekRecords == nil {
+		c.deepSeekRecords = make(map[string][]byte)
+	}
+	c.deepSeekRecords[schedulerDeepSeekRecordKey(groupID, userID, fileID)] = append([]byte(nil), record...)
+	return nil
+}
+
+func (c *schedulerTestGatewayCache) GetDeepSeekFileRecord(_ context.Context, groupID, userID int64, fileID string) ([]byte, error) {
+	record, ok := c.deepSeekRecords[schedulerDeepSeekRecordKey(groupID, userID, fileID)]
+	if !ok {
+		return nil, ErrDeepSeekFileRecordNotFound
+	}
+	return append([]byte(nil), record...), nil
+}
+
+func (c *schedulerTestGatewayCache) ListDeepSeekFileRecords(_ context.Context, groupID, userID int64) ([][]byte, error) {
+	prefix := fmt.Sprintf("%d:%d:", groupID, userID)
+	records := make([][]byte, 0)
+	for key, record := range c.deepSeekRecords {
+		if strings.HasPrefix(key, prefix) {
+			records = append(records, append([]byte(nil), record...))
+		}
+	}
+	return records, nil
+}
+
+func (c *schedulerTestGatewayCache) DeleteDeepSeekFileRecord(_ context.Context, groupID, userID int64, fileID string) error {
+	delete(c.deepSeekRecords, schedulerDeepSeekRecordKey(groupID, userID, fileID))
+	return nil
 }
 
 func (c *schedulerTestGatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {

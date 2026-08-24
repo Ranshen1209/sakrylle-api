@@ -229,6 +229,16 @@ gateway:
   # Pure-text endpoint body limit (embeddings and alpha/search), default 32 MiB.
   # 纯文本端点请求体上限（embeddings、alpha/search），默认 32 MiB。
   text_max_body_size: 33554432
+  # Local DeepSeek Files inventory capacity policy. Tenant limits apply per group/user;
+  # account limits protect the aggregate inventory behind one shared upstream account.
+  # Tenant limits must remain strictly below the corresponding account limits.
+  # DeepSeek Files 本地库存容量策略。租户上限按分组/用户计算，账号上限保护共享上游账号总容量；
+  # 租户上限必须严格低于对应的账号上限。
+  deepseek_files:
+    tenant_max_files: 1000
+    tenant_max_bytes: 2147483648 # 2 GiB
+    account_max_files: 10000
+    account_max_bytes: 26843545600 # 25 GiB
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608

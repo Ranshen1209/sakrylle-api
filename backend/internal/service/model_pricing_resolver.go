@@ -70,6 +70,8 @@ type PricingInput struct {
 	PricingAt time.Time // 零值表示以解析时刻计价
 }
 
+var deepSeekOfficialTimePricingEffectiveFrom = time.Date(2026, 8, 16, 16, 0, 0, 0, time.UTC) // 2026-08-17 00:00 Asia/Shanghai
+
 // Resolve 解析模型定价。
 // 1. 获取基础定价（LiteLLM → Fallback）
 // 2. 如果指定了 GroupID，查找渠道定价并覆盖
@@ -87,22 +89,15 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 		resolved.longContextPricingEnabled = longContextPricingEnabled
 		return resolved
 	}
+	pricingAt := resolvePricingAt(ctx, input.PricingAt)
 
 	var chPricing *ChannelModelPricing
 	var timeResolution *PricingTimeResolution
+	var applyDeepSeekOfficialMultiplier bool
 	if input.GroupID != nil && r.channelService != nil {
 		chPricing = r.channelService.GetChannelModelPricing(ctx, *input.GroupID, input.Model)
 		if chPricing != nil {
-			pricingAt := input.PricingAt
-			if pricingAt.IsZero() {
-				pricingAt = pricingAtFromContext(ctx)
-			}
-			if pricingAt.IsZero() {
-				pricingAt = time.Now()
-			}
-			resolvedCard, resolution := chPricing.ResolveAt(pricingAt)
-			chPricing = &resolvedCard
-			timeResolution = resolution
+			chPricing, timeResolution, applyDeepSeekOfficialMultiplier = resolveChannelPricingAt(chPricing, input.Model, pricingAt)
 
 			mode := chPricing.BillingMode
 			if mode == "" {
@@ -139,11 +134,179 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 		resolved.TimeResolution = timeResolution
 		resolved.channelPricing = chPricing
 		r.applyTokenOverrides(chPricing, resolved)
+		if applyDeepSeekOfficialMultiplier && timeResolution != nil {
+			applyResolvedTokenPricingMultiplier(resolved, timeResolution.Multiplier)
+		} else if timeResolution != nil {
+			applyInheritedTokenPricingMultiplier(resolved, chPricing, timeResolution.Multiplier)
+		}
 	} else if input.GroupID != nil && r.channelService != nil {
-		r.applyChannelOverrides(ctx, *input.GroupID, input.Model, resolved)
+		r.applyChannelOverrides(ctx, *input.GroupID, input.Model, pricingAt, resolved)
+	}
+	if resolved.Source != PricingSourceChannel {
+		applyDeepSeekOfficialFallbackTimePricing(input.Model, pricingAt, resolved)
 	}
 
 	return resolved
+}
+
+func resolvePricingAt(ctx context.Context, explicit time.Time) time.Time {
+	if !explicit.IsZero() {
+		return explicit
+	}
+	if frozen := pricingAtFromContext(ctx); !frozen.IsZero() {
+		return frozen
+	}
+	return time.Now()
+}
+
+// resolveChannelPricingAt preserves configured time versions. When no explicit
+// time schedule exists, current DeepSeek V4 token cards use the official
+// Beijing peak/off-peak schedule without requiring a database migration.
+func resolveChannelPricingAt(pricing *ChannelModelPricing, model string, at time.Time) (*ChannelModelPricing, *PricingTimeResolution, bool) {
+	if pricing == nil {
+		return nil, nil, false
+	}
+	if len(pricing.TimeVersions) > 0 || (pricing.TimePricing != nil && len(pricing.TimePricing.Periods) > 0) ||
+		(pricing.BillingMode != "" && pricing.BillingMode != BillingModeToken) || deepSeekOfficialPricingKey(model) == "" {
+		resolved, resolution := pricing.ResolveAt(at)
+		return &resolved, resolution, false
+	}
+
+	resolved := pricing.Clone()
+	resolution := resolveDeepSeekOfficialTimePricing(at)
+	return &resolved, resolution, resolution != nil
+}
+
+// ResolveChannelPricingForDisplay applies the same explicit-or-official
+// schedule used by request billing and retains the schedule on the returned
+// card. User-facing DTOs use this instead of reimplementing a clock decision
+// in the frontend.
+func ResolveChannelPricingForDisplay(pricing *ChannelModelPricing, model string, at time.Time) (*ChannelModelPricing, *PricingTimeResolution) {
+	if pricing == nil {
+		return nil, nil
+	}
+	display := pricing.Clone()
+	if len(display.TimeVersions) == 0 &&
+		(display.TimePricing == nil || len(display.TimePricing.Periods) == 0) &&
+		(display.BillingMode == "" || display.BillingMode == BillingModeToken) &&
+		deepSeekOfficialPricingKey(model) != "" {
+		display.TimeVersions = []PricingTimeVersion{deepSeekOfficialTimePricingVersion()}
+	}
+	resolved, resolution := display.ResolveAt(at)
+	return &resolved, resolution
+}
+
+func deepSeekOfficialTimePricingVersion() PricingTimeVersion {
+	return PricingTimeVersion{
+		EffectiveFrom:     deepSeekOfficialTimePricingEffectiveFrom,
+		Timezone:          "Asia/Shanghai",
+		DefaultMultiplier: 0.5,
+		Windows: []PricingTimeWindow{
+			{Label: "peak", Weekdays: 31, StartMinute: 9 * 60, EndMinute: 12 * 60, Multiplier: 1},
+			{Label: "peak", Weekdays: 31, StartMinute: 14 * 60, EndMinute: 18 * 60, Multiplier: 1},
+		},
+	}
+}
+
+func resolveDeepSeekOfficialTimePricing(at time.Time) *PricingTimeResolution {
+	pricing := ChannelModelPricing{TimeVersions: []PricingTimeVersion{deepSeekOfficialTimePricingVersion()}}
+	_, resolution := pricing.ResolveAt(at)
+	return resolution
+}
+
+func applyDeepSeekOfficialFallbackTimePricing(model string, at time.Time, resolved *ResolvedPricing) {
+	if resolved == nil || resolved.BasePricing == nil || deepSeekOfficialPricingKey(model) == "" {
+		return
+	}
+	resolution := resolveDeepSeekOfficialTimePricing(at)
+	if resolution == nil {
+		return
+	}
+	resolved.TimeResolution = resolution
+	applyResolvedTokenPricingMultiplier(resolved, resolution.Multiplier)
+}
+
+func applyResolvedTokenPricingMultiplier(resolved *ResolvedPricing, multiplier float64) {
+	if resolved == nil || multiplier == 1 {
+		return
+	}
+	if resolved.BasePricing != nil {
+		pricing := *resolved.BasePricing
+		pricing.InputPricePerToken *= multiplier
+		pricing.InputPricePerTokenPriority *= multiplier
+		pricing.ImageInputPricePerToken *= multiplier
+		pricing.OutputPricePerToken *= multiplier
+		pricing.OutputPricePerTokenPriority *= multiplier
+		pricing.CacheCreationPricePerToken *= multiplier
+		pricing.CacheCreationPricePerTokenPriority *= multiplier
+		pricing.CacheReadPricePerToken *= multiplier
+		pricing.CacheReadPricePerTokenPriority *= multiplier
+		pricing.CacheCreation5mPrice *= multiplier
+		pricing.CacheCreation1hPrice *= multiplier
+		pricing.ImageOutputPricePerToken *= multiplier
+		resolved.BasePricing = &pricing
+	}
+	applyResolvedIntervalPricingMultiplier(resolved, multiplier)
+	if resolved.channelPricing != nil {
+		pricing := resolved.channelPricing.Clone()
+		applyPricingMultiplier(&pricing, multiplier)
+		pricing.Intervals = append([]PricingInterval(nil), resolved.Intervals...)
+		resolved.channelPricing = &pricing
+	}
+}
+
+// applyInheritedTokenPricingMultiplier completes an explicit TimeVersion after
+// the resolved channel card has been merged over the base model card. ResolveAt
+// already multiplied every non-nil channel/version field, so only buckets that
+// still come from the base card are multiplied here. Interval prices are not
+// handled by ChannelModelPricing.ResolveAt and therefore always need scaling.
+func applyInheritedTokenPricingMultiplier(resolved *ResolvedPricing, channelPricing *ChannelModelPricing, multiplier float64) {
+	if resolved == nil || channelPricing == nil || multiplier == 1 {
+		return
+	}
+	if resolved.BasePricing != nil {
+		pricing := *resolved.BasePricing
+		if channelPricing.InputPrice == nil {
+			pricing.InputPricePerToken *= multiplier
+			pricing.InputPricePerTokenPriority *= multiplier
+		}
+		if channelPricing.OutputPrice == nil {
+			pricing.OutputPricePerToken *= multiplier
+			pricing.OutputPricePerTokenPriority *= multiplier
+		}
+		if channelPricing.CacheWritePrice == nil {
+			pricing.CacheCreationPricePerToken *= multiplier
+			pricing.CacheCreationPricePerTokenPriority *= multiplier
+			pricing.CacheCreation5mPrice *= multiplier
+			pricing.CacheCreation1hPrice *= multiplier
+		}
+		if channelPricing.CacheReadPrice == nil {
+			pricing.CacheReadPricePerToken *= multiplier
+			pricing.CacheReadPricePerTokenPriority *= multiplier
+		}
+		resolved.BasePricing = &pricing
+	}
+	applyResolvedIntervalPricingMultiplier(resolved, multiplier)
+}
+
+func applyResolvedIntervalPricingMultiplier(resolved *ResolvedPricing, multiplier float64) {
+	if resolved == nil || len(resolved.Intervals) == 0 || multiplier == 1 {
+		return
+	}
+	intervals := make([]PricingInterval, len(resolved.Intervals))
+	copy(intervals, resolved.Intervals)
+	for i := range intervals {
+		intervals[i].InputPrice = multipliedPrice(intervals[i].InputPrice, multiplier)
+		intervals[i].OutputPrice = multipliedPrice(intervals[i].OutputPrice, multiplier)
+		intervals[i].CacheWritePrice = multipliedPrice(intervals[i].CacheWritePrice, multiplier)
+		intervals[i].CacheReadPrice = multipliedPrice(intervals[i].CacheReadPrice, multiplier)
+	}
+	resolved.Intervals = intervals
+	if resolved.channelPricing != nil {
+		pricing := resolved.channelPricing.Clone()
+		pricing.Intervals = append([]PricingInterval(nil), resolved.Intervals...)
+		resolved.channelPricing = &pricing
+	}
 }
 
 func (r *ModelPricingResolver) resolveConfiguredPricing(config *ChannelModelPricing, model, source string) *ResolvedPricing {
@@ -197,13 +360,17 @@ func (r *ModelPricingResolver) resolveBasePricing(model string) (*ModelPricing, 
 }
 
 // applyChannelOverrides 应用渠道定价覆盖
-func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupID int64, model string, resolved *ResolvedPricing) {
+func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupID int64, model string, pricingAt time.Time, resolved *ResolvedPricing) {
 	chPricing := r.channelService.GetChannelModelPricing(ctx, groupID, model)
 	if chPricing == nil {
 		return
 	}
+	var resolution *PricingTimeResolution
+	var applyDeepSeekMultiplier bool
+	chPricing, resolution, applyDeepSeekMultiplier = resolveChannelPricingAt(chPricing, model, pricingAt)
 
 	resolved.Source = PricingSourceChannel
+	resolved.TimeResolution = resolution
 	resolved.channelPricing = chPricing
 	resolved.Mode = chPricing.BillingMode
 	if resolved.Mode == "" {
@@ -213,6 +380,11 @@ func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupI
 	switch resolved.Mode {
 	case BillingModeToken:
 		r.applyTokenOverrides(chPricing, resolved)
+		if applyDeepSeekMultiplier && resolution != nil {
+			applyResolvedTokenPricingMultiplier(resolved, resolution.Multiplier)
+		} else if resolution != nil {
+			applyInheritedTokenPricingMultiplier(resolved, chPricing, resolution.Multiplier)
+		}
 	case BillingModePerRequest, BillingModeImage, BillingModeVideo:
 		r.applyRequestTierOverrides(chPricing, resolved)
 	}

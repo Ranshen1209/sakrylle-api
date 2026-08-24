@@ -314,7 +314,7 @@ func toUserSupportedModels(
 		out = append(out, userSupportedModel{
 			Name:     m.Name,
 			Platform: m.Platform,
-			Pricing:  toUserPricingWithRatio(m.Pricing, imageInputRatio),
+			Pricing:  toUserPricingForModel(m.Pricing, m.Name, imageInputRatio),
 		})
 	}
 	return out
@@ -323,16 +323,22 @@ func toUserSupportedModels(
 // toUserPricingWithRatio 将 service 层定价转换为用户 DTO，并将渠道级 imageInputRatio
 // 戳入 DTO 的 ImageInputRatio 字段。入参 p 为 nil 时返回 nil。
 func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
-	return toUserPricingWithRatio(p, nil)
+	return toUserPricingForModel(p, "", nil)
 }
 
 func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *float64) *userSupportedModelPricing {
+	return toUserPricingForModel(p, "", imageInputRatio)
+}
+
+func toUserPricingForModel(p *service.ChannelModelPricing, model string, imageInputRatio *float64) *userSupportedModelPricing {
+	return toUserPricingForModelAt(p, model, imageInputRatio, timezone.Now())
+}
+
+func toUserPricingForModelAt(p *service.ChannelModelPricing, model string, imageInputRatio *float64, pricingAt time.Time) *userSupportedModelPricing {
 	if p == nil {
 		return nil
 	}
-	source := p
-	resolved, resolution := p.ResolveAt(timezone.Now())
-	p = &resolved
+	p, resolution := service.ResolveChannelPricingForDisplay(p, model, pricingAt)
 	intervals := make([]userPricingIntervalDTO, 0, len(p.Intervals))
 	for _, iv := range p.Intervals {
 		intervals = append(intervals, userPricingIntervalDTO{
@@ -350,8 +356,8 @@ func toUserPricingWithRatio(p *service.ChannelModelPricing, imageInputRatio *flo
 	if billingMode == "" {
 		billingMode = string(service.BillingModeToken)
 	}
-	timeVersions := make([]userPricingTimeVersion, 0, len(source.TimeVersions))
-	for _, version := range source.TimeVersions {
+	timeVersions := make([]userPricingTimeVersion, 0, len(p.TimeVersions))
+	for _, version := range p.TimeVersions {
 		windows := make([]userPricingTimeWindow, 0, len(version.Windows))
 		for _, window := range version.Windows {
 			windows = append(windows, userPricingTimeWindow{

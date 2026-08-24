@@ -57,7 +57,6 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 		}
 		body = rewritten
 	}
-
 	// 与 Anthropic 平台 passthrough 相同的 pre-filter：剥离空文本块与上游
 	// 无法接受的 web-search 历史块（GLM/Kimi/DeepSeek 对 server_tool_use 400）。
 	body = StripEmptyTextBlocks(body)
@@ -144,7 +143,6 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
@@ -180,6 +178,14 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
 	account.ApplyHeaderOverrides(req.Header)
+	if account != nil && account.Platform == PlatformDeepseek &&
+		(account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol()) &&
+		deepSeekAnthropicRequestUsesFilesAPI(body) {
+		// DeepSeek's native Anthropic image file source is a beta capability.
+		// Apply this after account overrides so an override cannot accidentally
+		// remove the required token and turn a valid file reference into a 400.
+		ensureAnthropicBetaToken(req.Header, deepSeekFilesAPIBetaToken)
+	}
 
 	return req, body, nil
 }
@@ -521,8 +527,17 @@ func claudeUsageToOpenAIUsage(u *ClaudeUsage) OpenAIUsage {
 	if u == nil {
 		return OpenAIUsage{}
 	}
+	inputTokens := u.InputTokens
+	if !u.inputTokensIncludeCache {
+		// Anthropic input_tokens excludes cache read and creation buckets, while
+		// OpenAI-compatible usage requires input_tokens to be the inclusive
+		// total. DeepSeek prompt aliases already carry that total and set the
+		// marker, so they must not be added twice.
+		inputTokens = deepSeekAliasTokenSum(inputTokens, u.CacheReadInputTokens)
+		inputTokens = deepSeekAliasTokenSum(inputTokens, u.CacheCreationInputTokens)
+	}
 	return OpenAIUsage{
-		InputTokens:              u.InputTokens,
+		InputTokens:              inputTokens,
 		OutputTokens:             u.OutputTokens,
 		CacheCreationInputTokens: u.CacheCreationInputTokens,
 		CacheReadInputTokens:     u.CacheReadInputTokens,

@@ -95,6 +95,19 @@ func RegisterGatewayRoutes(
 			})
 		}
 	}
+	filesHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) != service.PlatformDeepseek {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Files API is not supported for this platform",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.Files(c)
+	}
 	videoGenerationHandler := func(c *gin.Context) {
 		if getGroupPlatform(c) == service.PlatformGrok {
 			h.OpenAIGateway.GrokVideoGeneration(c)
@@ -316,6 +329,10 @@ func RegisterGatewayRoutes(
 		})
 		gateway.POST("/images/generations", imagesHandler)
 		gateway.POST("/images/edits", imagesHandler)
+		gateway.POST("/files", filesHandler)
+		gateway.GET("/files", filesHandler)
+		gateway.GET("/files/:file_id", filesHandler)
+		gateway.DELETE("/files/:file_id", filesHandler)
 		gateway.POST("/images/generations/async", h.AsyncImage.Submit)
 		gateway.POST("/images/edits/async", h.AsyncImage.Submit)
 		gateway.GET("/images/tasks/:task_id", h.AsyncImage.Get)
@@ -478,6 +495,10 @@ func RegisterGatewayRoutes(
 	})
 	r.POST("/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, imagesHandler)
 	r.POST("/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, imagesHandler)
+	r.POST("/files", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, filesHandler)
+	r.GET("/files", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, filesHandler)
+	r.GET("/files/:file_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, filesHandler)
+	r.DELETE("/files/:file_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, filesHandler)
 	r.POST("/images/generations/async", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, h.AsyncImage.Submit)
 	r.POST("/images/edits/async", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, h.AsyncImage.Submit)
 	r.GET("/images/tasks/:task_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, requireOAuthScope, h.AsyncImage.Get)
@@ -607,7 +628,19 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 			c.Next()
 			return
 		}
-		if c.Request == nil || c.Request.Method == http.MethodGet {
+		if c.Request == nil {
+			c.Next()
+			return
+		}
+		// Files requests have no model field to resolve. They are a DeepSeek
+		// capability, so select that concrete platform before the handler and
+		// leave multipart bytes untouched.
+		if isDeepSeekFilesRoute(c.Request.URL.Path) {
+			c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), service.PlatformDeepseek))
+			c.Next()
+			return
+		}
+		if c.Request.Method == http.MethodGet {
 			c.Next()
 			return
 		}
@@ -648,6 +681,12 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 		resetRequestBody(c, body)
 		c.Next()
 	}
+}
+
+func isDeepSeekFilesRoute(path string) bool {
+	path = strings.TrimRight(strings.TrimSpace(path), "/")
+	return path == "/files" || path == "/v1/files" ||
+		strings.HasPrefix(path, "/files/") || strings.HasPrefix(path, "/v1/files/")
 }
 
 func compositeRequestModelFromBody(contentType string, body []byte) string {

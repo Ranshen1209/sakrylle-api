@@ -117,6 +117,8 @@ func chatMessageToResponsesItems(m ChatMessage) ([]ResponsesInputItem, error) {
 	switch m.Role {
 	case "system":
 		return chatSystemToResponses(m)
+	case "developer":
+		return chatDeveloperToResponses(m)
 	case "user":
 		return chatUserToResponses(m)
 	case "assistant":
@@ -128,6 +130,21 @@ func chatMessageToResponsesItems(m ChatMessage) ([]ResponsesInputItem, error) {
 	default:
 		return chatUserToResponses(m)
 	}
+}
+
+// chatDeveloperToResponses preserves OpenAI's developer role. Unlike a system
+// item, Responses allows developer content to contain image/file parts, so it
+// must not go through chatSystemToResponses' role-specific media filter.
+func chatDeveloperToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+	parsed, err := parseChatMessageContent(m.Content)
+	if err != nil {
+		return nil, fmt.Errorf("parse developer content: %w", err)
+	}
+	content, err := marshalChatInputContent(parsed)
+	if err != nil {
+		return nil, err
+	}
+	return []ResponsesInputItem{{Role: "developer", Content: content}}, nil
 }
 
 // chatSystemToResponses converts a system message.
@@ -371,12 +388,9 @@ func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesCont
 					Text: p.Text,
 				})
 			}
-		case "image_url":
-			if p.ImageURL != nil && p.ImageURL.URL != "" && !isEmptyBase64DataURI(p.ImageURL.URL) {
-				responseParts = append(responseParts, ResponsesContentPart{
-					Type:     "input_image",
-					ImageURL: p.ImageURL.URL,
-				})
+		case "image_url", "file", "input_image":
+			if responsePart, ok := responsesContentPartFromChatContentPart(p); ok {
+				responseParts = append(responseParts, responsePart)
 			}
 		}
 	}

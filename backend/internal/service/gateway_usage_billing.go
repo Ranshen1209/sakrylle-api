@@ -777,6 +777,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	subscription := input.Subscription
 	ApplyForwardImageBillingResolution(result)
 
+	// DeepSeek's Anthropic-compatible relay may report prompt_tokens as an
+	// OpenAI-style total while the generic Anthropic billing path expects
+	// input_tokens to exclude cache buckets. Normalize that alias exactly once
+	// before force-cache handling, cost calculation, stats, and usage logging.
+	normalizeDeepSeekClaudeUsageForAccount(account, &result.Usage)
+
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
 	if input.ForceCacheBilling && result.Usage.InputTokens > 0 {

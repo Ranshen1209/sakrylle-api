@@ -931,6 +931,16 @@ type ImageConcurrencyConfig struct {
 	MaxWaitingRequests int `mapstructure:"max_waiting_requests"`
 }
 
+// GatewayDeepSeekFilesConfig bounds the local DeepSeek Files inventory.
+// Tenant limits apply to one group/user tenant; account limits protect the
+// aggregate inventory stored behind one shared upstream account.
+type GatewayDeepSeekFilesConfig struct {
+	TenantMaxFiles  int   `mapstructure:"tenant_max_files"`
+	TenantMaxBytes  int64 `mapstructure:"tenant_max_bytes"`
+	AccountMaxFiles int   `mapstructure:"account_max_files"`
+	AccountMaxBytes int64 `mapstructure:"account_max_bytes"`
+}
+
 const (
 	ImageConcurrencyOverflowModeReject = "reject"
 	ImageConcurrencyOverflowModeWait   = "wait"
@@ -1003,6 +1013,8 @@ type GatewayConfig struct {
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// DeepSeekFiles: DeepSeek Files 本地租户和共享上游账号容量策略。
+	DeepSeekFiles GatewayDeepSeekFilesConfig `mapstructure:"deepseek_files"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -2444,6 +2456,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.cn_providers.balance_check_enabled", true)
 	viper.SetDefault("gateway.cn_providers.balance_threshold", 0.5)
 	viper.SetDefault("gateway.cn_providers.balance_check_interval_minutes", 10)
+	viper.SetDefault("gateway.deepseek_files.tenant_max_files", 1000)
+	viper.SetDefault("gateway.deepseek_files.tenant_max_bytes", int64(2*1024*1024*1024))
+	viper.SetDefault("gateway.deepseek_files.account_max_files", 10000)
+	viper.SetDefault("gateway.deepseek_files.account_max_bytes", int64(25*1024*1024*1024))
 	viper.SetDefault("gateway.image_concurrency.enabled", false)
 	viper.SetDefault("gateway.image_concurrency.max_concurrent_requests", 0)
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
@@ -3256,6 +3272,24 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ProxyProbeResponseReadMaxBytes <= 0 {
 		return fmt.Errorf("gateway.proxy_probe_response_read_max_bytes must be positive")
+	}
+	if c.Gateway.DeepSeekFiles.TenantMaxFiles <= 0 {
+		return fmt.Errorf("gateway.deepseek_files.tenant_max_files must be positive")
+	}
+	if c.Gateway.DeepSeekFiles.TenantMaxBytes <= 0 {
+		return fmt.Errorf("gateway.deepseek_files.tenant_max_bytes must be positive")
+	}
+	if c.Gateway.DeepSeekFiles.AccountMaxFiles <= 0 {
+		return fmt.Errorf("gateway.deepseek_files.account_max_files must be positive")
+	}
+	if c.Gateway.DeepSeekFiles.AccountMaxBytes <= 0 {
+		return fmt.Errorf("gateway.deepseek_files.account_max_bytes must be positive")
+	}
+	if c.Gateway.DeepSeekFiles.TenantMaxFiles >= c.Gateway.DeepSeekFiles.AccountMaxFiles {
+		return fmt.Errorf("gateway.deepseek_files.tenant_max_files must be less than account_max_files")
+	}
+	if c.Gateway.DeepSeekFiles.TenantMaxBytes >= c.Gateway.DeepSeekFiles.AccountMaxBytes {
+		return fmt.Errorf("gateway.deepseek_files.tenant_max_bytes must be less than account_max_bytes")
 	}
 	if c.Gateway.ResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.response_header_timeout must be non-negative")

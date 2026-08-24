@@ -96,8 +96,8 @@ function makeTimeVersion(over: Partial<PricingTimeVersionFormEntry> = {}): Prici
     image_output_price: null,
     sort_order: 0,
     windows: [
-      { label: 'peak', weekdays: 127, start_minute: 540, end_minute: 720, multiplier: 1, sort_order: 0 },
-      { label: 'peak', weekdays: 127, start_minute: 840, end_minute: 1080, multiplier: 1, sort_order: 1 },
+      { label: 'peak', weekdays: 31, start_minute: 540, end_minute: 720, multiplier: 1, sort_order: 0 },
+      { label: 'peak', weekdays: 31, start_minute: 840, end_minute: 1080, multiplier: 1, sort_order: 1 },
     ],
     ...over,
   }
@@ -186,7 +186,7 @@ describe('time pricing', () => {
   it('rejects overlapping windows on shared weekdays', () => {
     const version = makeTimeVersion({
       windows: [
-        { label: 'peak', weekdays: 127, start_minute: 540, end_minute: 720, multiplier: 1, sort_order: 0 },
+        { label: 'peak', weekdays: 31, start_minute: 540, end_minute: 720, multiplier: 1, sort_order: 0 },
         { label: 'peak', weekdays: 1, start_minute: 600, end_minute: 780, multiplier: 1, sort_order: 1 },
       ],
     })

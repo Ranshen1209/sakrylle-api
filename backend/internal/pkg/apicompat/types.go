@@ -105,9 +105,18 @@ func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
 
 // AnthropicImageSource describes the source data for an image content block.
 type AnthropicImageSource struct {
-	Type      string `json:"type"` // "base64"
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
+	Type      string `json:"type"` // "base64" | "url" | "file"
+	MediaType string `json:"media_type,omitempty"`
+	Data      string `json:"data,omitempty"`
+	URL       string `json:"url,omitempty"`
+	FileID    string `json:"file_id,omitempty"`
+
+	// FileData/Filename are accepted for compatibility with DeepSeek's
+	// OpenAI-style file content block. Native Anthropic requests normally use
+	// Type=file + FileID; conversion helpers normalize file_data to base64 when
+	// the target protocol has no file_data representation.
+	FileData string `json:"file_data,omitempty"`
+	Filename string `json:"filename,omitempty"`
 }
 
 // AnthropicTool describes a tool available to the model.
@@ -256,15 +265,35 @@ type ResponsesInputItem struct {
 	// type=reasoning (multi-turn replay of encrypted reasoning)
 	EncryptedContent string `json:"encrypted_content,omitempty"`
 
-	// type=function_call
+	// type=function_call | custom_tool_call
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+	Input     string `json:"input,omitempty"`
 	ID        string `json:"id,omitempty"`
 
-	// type=function_call_output
+	// type=function_call_output | custom_tool_call_output
 	Output    string `json:"output,omitempty"`
 	outputRaw json.RawMessage
+}
+
+func (i ResponsesInputItem) MarshalJSON() ([]byte, error) {
+	type alias ResponsesInputItem
+	output := bytes.TrimSpace(i.outputRaw)
+	if len(output) == 0 || bytes.Equal(output, []byte("null")) {
+		return json.Marshal(alias(i))
+	}
+
+	// Structured function/custom-tool output is a first-class Responses wire
+	// shape. Keep the public string field for existing callers, while allowing
+	// protocol bridges to emit an array without double-encoding it as JSON text.
+	return json.Marshal(struct {
+		alias
+		Output json.RawMessage `json:"output"`
+	}{
+		alias:  alias(i),
+		Output: output,
+	})
 }
 
 func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
@@ -298,6 +327,60 @@ type ResponsesContentPart struct {
 	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+	Detail   string `json:"detail,omitempty"`
+	FileID   string `json:"file_id,omitempty"`
+	// FileData/Filename are bridge-only fields. DeepSeek's Responses API
+	// accepts file_id or image_url; Chat's file_data is normalized to the
+	// image_url data URI before this type is marshaled upstream.
+	FileData string `json:"-"`
+	Filename string `json:"-"`
+}
+
+// UnmarshalJSON accepts both the Responses wire form (image_url as a string)
+// and the OpenAI Chat-compatible form (image_url as {url, detail}). DeepSeek
+// accepts both forms at different compatibility endpoints, so normalizing them
+// here prevents a bridge from rejecting or silently dropping an image part.
+func (p *ResponsesContentPart) UnmarshalJSON(data []byte) error {
+	type alias ResponsesContentPart
+	var wire struct {
+		Type     string          `json:"type"`
+		Text     string          `json:"text,omitempty"`
+		ImageURL json.RawMessage `json:"image_url"`
+		Detail   string          `json:"detail,omitempty"`
+		FileID   string          `json:"file_id,omitempty"`
+		FileData string          `json:"file_data,omitempty"`
+		Filename string          `json:"filename,omitempty"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*p = ResponsesContentPart{
+		Type:     wire.Type,
+		Text:     wire.Text,
+		Detail:   wire.Detail,
+		FileID:   wire.FileID,
+		FileData: wire.FileData,
+		Filename: wire.Filename,
+	}
+	imageURL := bytes.TrimSpace(wire.ImageURL)
+	if len(imageURL) == 0 || bytes.Equal(imageURL, []byte("null")) {
+		return nil
+	}
+	if err := json.Unmarshal(imageURL, &p.ImageURL); err == nil {
+		return nil
+	}
+	var imageObject struct {
+		URL    string `json:"url"`
+		Detail string `json:"detail,omitempty"`
+	}
+	if err := json.Unmarshal(imageURL, &imageObject); err != nil {
+		return err
+	}
+	p.ImageURL = imageObject.URL
+	if p.Detail == "" {
+		p.Detail = imageObject.Detail
+	}
+	return nil
 }
 
 // ResponsesTool describes a tool in the Responses API.
@@ -482,6 +565,12 @@ type ResponsesUsage struct {
 	OutputTokens             int `json:"output_tokens"`
 	TotalTokens              int `json:"total_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	// DeepSeek's compatible Responses stream may expose the prompt cache split
+	// at the top level rather than under input_tokens_details.
+	PromptCacheHitTokens   int  `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens  int  `json:"prompt_cache_miss_tokens,omitempty"`
+	promptCacheHitPresent  bool `json:"-"`
+	promptCacheMissPresent bool `json:"-"`
 
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
@@ -515,11 +604,26 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*u = ResponsesUsage(aux.responsesUsageAlias)
+	var aliasPresence struct {
+		PromptCacheHitTokens  *int `json:"prompt_cache_hit_tokens"`
+		PromptCacheMissTokens *int `json:"prompt_cache_miss_tokens"`
+	}
+	if err := json.Unmarshal(data, &aliasPresence); err != nil {
+		return err
+	}
+	u.promptCacheHitPresent = aliasPresence.PromptCacheHitTokens != nil
+	u.promptCacheMissPresent = aliasPresence.PromptCacheMissTokens != nil
 	if u.InputTokens == 0 && aux.PromptTokens != 0 {
 		u.InputTokens = aux.PromptTokens
 	}
+	if u.InputTokens == 0 && (u.PromptCacheHitTokens != 0 || u.PromptCacheMissTokens != 0) {
+		u.InputTokens = nonNegativePromptCacheSum(u.PromptCacheHitTokens, u.PromptCacheMissTokens)
+	}
 	if u.OutputTokens == 0 && aux.CompletionTokens != 0 {
 		u.OutputTokens = aux.CompletionTokens
+	}
+	if u.InputTokensDetails == nil && (u.PromptCacheHitTokens != 0 || u.PromptCacheMissTokens != 0) {
+		u.InputTokensDetails = &ResponsesInputTokensDetails{CachedTokens: max(u.PromptCacheHitTokens, 0)}
 	}
 	if u.CacheCreationInputTokens == 0 {
 		switch {
@@ -555,6 +659,57 @@ func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
 		u.TotalTokens = u.InputTokens + u.OutputTokens
 	}
 	return nil
+}
+
+// HasPromptCacheHitTokens reports whether the DeepSeek top-level cache-hit
+// alias was present on the wire. Presence is tracked separately from the int
+// value so an explicit zero can override a stale nested cached_tokens value.
+func (u *ResponsesUsage) HasPromptCacheHitTokens() bool {
+	return u != nil && (u.promptCacheHitPresent || u.PromptCacheHitTokens != 0)
+}
+
+// HasPromptCacheMissTokens reports whether the DeepSeek top-level cache-miss
+// alias was present on the wire. Presence matters even when the value is zero:
+// a miss-only payload must not fall back to a stale nested cached_tokens value.
+func (u *ResponsesUsage) HasPromptCacheMissTokens() bool {
+	return u != nil && (u.promptCacheMissPresent || u.PromptCacheMissTokens != 0)
+}
+
+// CacheReadInputTokens returns the authoritative cache-hit bucket for a
+// Responses usage payload. DeepSeek's top-level hit/miss aliases win whenever
+// present; a miss-only payload explicitly has no cache-hit bucket. Otherwise
+// the canonical nested Responses detail is used.
+func (u *ResponsesUsage) CacheReadInputTokens() int {
+	if u == nil {
+		return 0
+	}
+	if u.HasPromptCacheHitTokens() {
+		if u.PromptCacheHitTokens < 0 {
+			return 0
+		}
+		return u.PromptCacheHitTokens
+	}
+	if u.HasPromptCacheMissTokens() {
+		return 0
+	}
+	if u.InputTokensDetails != nil && u.InputTokensDetails.CachedTokens > 0 {
+		return u.InputTokensDetails.CachedTokens
+	}
+	return 0
+}
+
+func nonNegativePromptCacheSum(hit, miss int) int {
+	if hit < 0 {
+		hit = 0
+	}
+	if miss < 0 {
+		miss = 0
+	}
+	maxInt := int(^uint(0) >> 1)
+	if hit > maxInt-miss {
+		return maxInt
+	}
+	return hit + miss
 }
 
 // ResponsesInputTokensDetails breaks down input token usage.
@@ -673,6 +828,73 @@ type ChatContentPart struct {
 	Type     string        `json:"type"` // "text" | "image_url"
 	Text     string        `json:"text,omitempty"`
 	ImageURL *ChatImageURL `json:"image_url,omitempty"`
+	FileID   string        `json:"file_id,omitempty"`
+	FileData string        `json:"file_data,omitempty"`
+	Filename string        `json:"filename,omitempty"`
+}
+
+// UnmarshalJSON accepts the regular Chat image_url object and the occasional
+// string/nested-file forms emitted by OpenAI-compatible clients.
+func (p *ChatContentPart) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Type     string          `json:"type"`
+		Text     string          `json:"text,omitempty"`
+		ImageURL json.RawMessage `json:"image_url"`
+		File     json.RawMessage `json:"file"`
+		FileID   string          `json:"file_id,omitempty"`
+		FileData string          `json:"file_data,omitempty"`
+		Filename string          `json:"filename,omitempty"`
+		Detail   string          `json:"detail,omitempty"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*p = ChatContentPart{
+		Type:     wire.Type,
+		Text:     wire.Text,
+		FileID:   wire.FileID,
+		FileData: wire.FileData,
+		Filename: wire.Filename,
+	}
+
+	imageURL := bytes.TrimSpace(wire.ImageURL)
+	if len(imageURL) > 0 && !bytes.Equal(imageURL, []byte("null")) {
+		var urlString string
+		if err := json.Unmarshal(imageURL, &urlString); err == nil {
+			p.ImageURL = &ChatImageURL{URL: urlString, Detail: wire.Detail}
+		} else {
+			var imageObject ChatImageURL
+			if err := json.Unmarshal(imageURL, &imageObject); err != nil {
+				return err
+			}
+			if imageObject.Detail == "" {
+				imageObject.Detail = wire.Detail
+			}
+			p.ImageURL = &imageObject
+		}
+	}
+
+	file := bytes.TrimSpace(wire.File)
+	if len(file) > 0 && !bytes.Equal(file, []byte("null")) {
+		var fileObject struct {
+			FileID   string `json:"file_id,omitempty"`
+			FileData string `json:"file_data,omitempty"`
+			Filename string `json:"filename,omitempty"`
+		}
+		if err := json.Unmarshal(file, &fileObject); err != nil {
+			return err
+		}
+		if p.FileID == "" {
+			p.FileID = fileObject.FileID
+		}
+		if p.FileData == "" {
+			p.FileData = fileObject.FileData
+		}
+		if p.Filename == "" {
+			p.Filename = fileObject.Filename
+		}
+	}
+	return nil
 }
 
 // ChatImageURL contains the URL for an image content part.

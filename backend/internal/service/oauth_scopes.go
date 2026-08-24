@@ -320,6 +320,16 @@ var oauthScopePolicies = []scopePolicyEntry{
 
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/messages/?$`), required: []string{ScopeMessagesCreate}},
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/messages/count_tokens/?$`), required: []string{ScopeMessagesCreate}},
+	// DeepSeek's Files API is an attachment transport for both the Messages
+	// and Responses surfaces. Requiring either existing write scope keeps the
+	// OAuth matrix explicit without introducing a third, provider-specific
+	// permission that clients would need to request solely for file uploads.
+	{method: "POST", pattern: regexp.MustCompile(`^/v1/files/?$`), required: []string{ScopeMessagesCreate, ScopeResponsesCreate}},
+	{method: "GET", pattern: regexp.MustCompile(`^/v1/files(/[^/]+)?/?$`), required: []string{ScopeMessagesCreate, ScopeResponsesCreate}},
+	{method: "DELETE", pattern: regexp.MustCompile(`^/v1/files/[^/]+/?$`), required: []string{ScopeMessagesCreate, ScopeResponsesCreate}},
+	{method: "POST", pattern: regexp.MustCompile(`^/files/?$`), required: []string{ScopeMessagesCreate, ScopeResponsesCreate}},
+	{method: "GET", pattern: regexp.MustCompile(`^/files(/[^/]+)?/?$`), required: []string{ScopeMessagesCreate, ScopeResponsesCreate}},
+	{method: "DELETE", pattern: regexp.MustCompile(`^/files/[^/]+/?$`), required: []string{ScopeMessagesCreate, ScopeResponsesCreate}},
 
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/images/generations/?$`), required: []string{ScopeImagesCreate}},
 	{method: "POST", pattern: regexp.MustCompile(`^/v1/images/edits/?$`), required: []string{ScopeImagesCreate}},

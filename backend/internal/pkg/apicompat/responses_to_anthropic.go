@@ -100,10 +100,7 @@ func anthropicUsageFromResponsesUsage(usage *ResponsesUsage) AnthropicUsage {
 		return AnthropicUsage{}
 	}
 
-	cachedTokens := 0
-	if usage.InputTokensDetails != nil {
-		cachedTokens = usage.InputTokensDetails.CachedTokens
-	}
+	cachedTokens := usage.CacheReadInputTokens()
 
 	inputTokens := usage.InputTokens - cachedTokens - usage.CacheCreationInputTokens
 	if inputTokens < 0 {

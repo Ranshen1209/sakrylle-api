@@ -72,5 +72,6 @@ The following fork configuration intentionally remains operational rather than b
 - OAuth/OIDC client registrations, issuer identity, client secrets, and signing-key rotation. These define the security boundary and are managed by migrations, reconciliation tooling, and deployment settings.
 - Agiso delivery credentials (`app_secret`, `access_token`, seller identity, and API endpoint). These are service secrets loaded from deployment configuration.
 - Imported agent identity private keys and task/runtime IDs. Their dedicated import flow owns their lifecycle; the generic account editor must not expose private key material.
+- DeepSeek Files inventory quotas (`gateway.deepseek_files.*`). These deployment and security capacity limits protect tenant isolation and shared upstream accounts, so they require a configuration rollout rather than a runtime frontend editor.
 
 If a new Sakrylle field is safe for an administrator to change at runtime, absence from the relevant create and edit forms is a regression. Document operational-only exceptions here with the reason.

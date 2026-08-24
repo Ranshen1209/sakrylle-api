@@ -1419,18 +1419,14 @@ func TestAnthropicToResponses_ToolResultWithImage(t *testing.T) {
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	// user + function_call + function_call_output + user(image) = 4
-	require.Len(t, items, 4)
+	// user + function_call + function_call_output = 3
+	require.Len(t, items, 3)
 
-	// function_call_output should have text-only output (no image).
+	// The image remains in the originating function_call_output.
 	assert.Equal(t, "function_call_output", items[2].Type)
 	assert.Equal(t, "toolu_1", items[2].CallID)
-	assert.Equal(t, "(empty)", items[2].Output)
-
-	// Image should be in a separate user message.
-	assert.Equal(t, "user", items[3].Role)
 	var parts []ResponsesContentPart
-	require.NoError(t, json.Unmarshal(items[3].Content, &parts))
+	require.NoError(t, json.Unmarshal(items[2].outputRaw, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "input_image", parts[0].Type)
 	assert.Equal(t, "data:image/png;base64,iVBOR", parts[0].ImageURL)
@@ -1457,20 +1453,18 @@ func TestAnthropicToResponses_ToolResultMixed(t *testing.T) {
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	// user + function_call + function_call_output + user(image) = 4
-	require.Len(t, items, 4)
+	// user + function_call + function_call_output = 3
+	require.Len(t, items, 3)
 
-	// function_call_output should have text-only output.
+	// Text and image preserve their order within the tool result.
 	assert.Equal(t, "function_call_output", items[2].Type)
-	assert.Equal(t, "File metadata: 800x600 PNG", items[2].Output)
-
-	// Image should be in a separate user message.
-	assert.Equal(t, "user", items[3].Role)
 	var parts []ResponsesContentPart
-	require.NoError(t, json.Unmarshal(items[3].Content, &parts))
-	require.Len(t, parts, 1)
-	assert.Equal(t, "input_image", parts[0].Type)
-	assert.Equal(t, "data:image/png;base64,AAAA", parts[0].ImageURL)
+	require.NoError(t, json.Unmarshal(items[2].outputRaw, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "File metadata: 800x600 PNG", parts[0].Text)
+	assert.Equal(t, "input_image", parts[1].Type)
+	assert.Equal(t, "data:image/png;base64,AAAA", parts[1].ImageURL)
 }
 
 func TestAnthropicToResponses_TextOnlyToolResultBackwardCompat(t *testing.T) {

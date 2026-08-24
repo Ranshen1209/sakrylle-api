@@ -26,8 +26,9 @@ func TestChannelModelPricingResolveAtPeakAndOffPeak(t *testing.T) {
 			OutputPrice:       &versionOutput,
 			CacheReadPrice:    &cacheRead,
 			Windows: []PricingTimeWindow{
-				{Label: "peak", Weekdays: 127, StartMinute: 9 * 60, EndMinute: 12 * 60, Multiplier: 1},
-				{Label: "peak", Weekdays: 127, StartMinute: 14 * 60, EndMinute: 18 * 60, Multiplier: 1},
+				// DeepSeek's Beijing schedule uses bits 0-4 (Monday-Friday).
+				{Label: "peak", Weekdays: 31, StartMinute: 9 * 60, EndMinute: 12 * 60, Multiplier: 1},
+				{Label: "peak", Weekdays: 31, StartMinute: 14 * 60, EndMinute: 18 * 60, Multiplier: 1},
 			},
 		}},
 	}
@@ -38,22 +39,23 @@ func TestChannelModelPricingResolveAtPeakAndOffPeak(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		hour       int
-		minute     int
+		at         time.Time
 		label      string
 		multiplier float64
 		input      float64
 	}{
-		{name: "midnight off peak", hour: 0, label: "off_peak", multiplier: 0.5, input: 1.5},
-		{name: "just before morning peak", hour: 8, minute: 59, label: "off_peak", multiplier: 0.5, input: 1.5},
-		{name: "morning peak starts", hour: 9, label: "peak", multiplier: 1, input: 3},
-		{name: "morning peak ends", hour: 12, label: "off_peak", multiplier: 0.5, input: 1.5},
-		{name: "afternoon peak starts", hour: 14, label: "peak", multiplier: 1, input: 3},
-		{name: "afternoon peak ends", hour: 18, label: "off_peak", multiplier: 0.5, input: 1.5},
+		{name: "midnight off peak", at: time.Date(2026, 8, 17, 0, 0, 0, 0, location), label: "off_peak", multiplier: 0.5, input: 1.5},
+		{name: "just before morning peak", at: time.Date(2026, 8, 17, 8, 59, 0, 0, location), label: "off_peak", multiplier: 0.5, input: 1.5},
+		{name: "morning peak starts", at: time.Date(2026, 8, 17, 9, 0, 0, 0, location), label: "peak", multiplier: 1, input: 3},
+		{name: "morning peak ends", at: time.Date(2026, 8, 17, 12, 0, 0, 0, location), label: "off_peak", multiplier: 0.5, input: 1.5},
+		{name: "afternoon peak starts", at: time.Date(2026, 8, 17, 14, 0, 0, 0, location), label: "peak", multiplier: 1, input: 3},
+		{name: "afternoon peak ends", at: time.Date(2026, 8, 17, 18, 0, 0, 0, location), label: "off_peak", multiplier: 0.5, input: 1.5},
+		{name: "friday afternoon peak", at: time.Date(2026, 8, 21, 17, 59, 0, 0, location), label: "peak", multiplier: 1, input: 3},
+		{name: "saturday is always off peak", at: time.Date(2026, 8, 22, 10, 0, 0, 0, location), label: "off_peak", multiplier: 0.5, input: 1.5},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resolved, resolution := pricing.ResolveAt(time.Date(2026, 8, 17, tt.hour, tt.minute, 0, 0, location))
+			resolved, resolution := pricing.ResolveAt(tt.at)
 			require.NotNil(t, resolution)
 			require.Equal(t, int64(42), resolution.VersionID)
 			require.Equal(t, tt.label, resolution.PeriodLabel)

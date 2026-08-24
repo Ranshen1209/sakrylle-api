@@ -73,6 +73,70 @@ func TestResponsesUsageNestedCacheWritePresenceOverridesTopLevelAlias(t *testing
 	}
 }
 
+func TestResponsesUsageTopLevelPromptCacheHitOverridesNestedCachedTokens(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want int
+	}{
+		{
+			name: "explicit zero",
+			body: `{"input_tokens":100,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":100,"input_tokens_details":{"cached_tokens":99,"audio_tokens":1}}`,
+			want: 0,
+		},
+		{
+			name: "top-level nonzero",
+			body: `{"input_tokens":100,"prompt_cache_hit_tokens":7,"prompt_cache_miss_tokens":93,"input_tokens_details":{"cached_tokens":99}}`,
+			want: 7,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var usage ResponsesUsage
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &usage))
+			require.True(t, usage.HasPromptCacheHitTokens())
+			require.Equal(t, tt.want, usage.CacheReadInputTokens())
+
+			chat := chatUsageFromResponsesUsage(&usage)
+			require.NotNil(t, chat.PromptTokensDetails)
+			require.Equal(t, tt.want, chat.PromptTokensDetails.CachedTokens)
+			if tt.name == "explicit zero" {
+				require.Equal(t, 1, chat.PromptTokensDetails.AudioTokens)
+			}
+
+			anthropic := anthropicUsageFromResponsesUsage(&usage)
+			require.Equal(t, tt.want, anthropic.CacheReadInputTokens)
+			require.Equal(t, 100-tt.want, anthropic.InputTokens)
+		})
+	}
+}
+
+func TestResponsesUsagePromptCacheMissOnlySuppressesNestedCachedTokens(t *testing.T) {
+	var usage ResponsesUsage
+	body := []byte(`{"input_tokens":100,"prompt_cache_miss_tokens":100,"input_tokens_details":{"cached_tokens":99,"audio_tokens":1}}`)
+	require.NoError(t, json.Unmarshal(body, &usage))
+	require.False(t, usage.HasPromptCacheHitTokens())
+	require.True(t, usage.HasPromptCacheMissTokens())
+	require.Zero(t, usage.CacheReadInputTokens())
+
+	chat := chatUsageFromResponsesUsage(&usage)
+	require.NotNil(t, chat.PromptTokensDetails)
+	require.Zero(t, chat.PromptTokensDetails.CachedTokens)
+	require.Equal(t, 1, chat.PromptTokensDetails.AudioTokens)
+
+	anthropic := anthropicUsageFromResponsesUsage(&usage)
+	require.Equal(t, 100, anthropic.InputTokens)
+	require.Zero(t, anthropic.CacheReadInputTokens)
+}
+
+func TestResponsesUsagePromptCacheAliasesClampNegativeMiss(t *testing.T) {
+	var usage ResponsesUsage
+	require.NoError(t, json.Unmarshal([]byte(`{"prompt_cache_hit_tokens":7,"prompt_cache_miss_tokens":-100}`), &usage))
+	require.Equal(t, 7, usage.InputTokens)
+	require.Equal(t, 7, usage.CacheReadInputTokens())
+}
+
 func TestChatCompletionsToResponses_SystemMessage(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",

@@ -347,7 +347,19 @@ func chatUsageFromResponsesUsage(u *ResponsesUsage) *ChatUsage {
 		CompletionTokens: u.OutputTokens,
 		TotalTokens:      u.InputTokens + u.OutputTokens,
 	}
-	usage.PromptTokensDetails = promptDetailsFromResponses(u.InputTokensDetails)
+	details := u.InputTokensDetails
+	if u.HasPromptCacheHitTokens() || u.HasPromptCacheMissTokens() {
+		// Preserve any unrelated nested detail fields, but let DeepSeek's
+		// top-level hit/miss aliases (including explicit zero) own the cache
+		// bucket. A miss-only payload therefore clears stale nested cache data.
+		copyDetails := ResponsesInputTokensDetails{}
+		if details != nil {
+			copyDetails = *details
+		}
+		copyDetails.CachedTokens = u.CacheReadInputTokens()
+		details = &copyDetails
+	}
+	usage.PromptTokensDetails = promptDetailsFromResponses(details)
 	if u.CacheCreationInputTokens > 0 {
 		if usage.PromptTokensDetails == nil {
 			usage.PromptTokensDetails = &ChatTokenDetails{}

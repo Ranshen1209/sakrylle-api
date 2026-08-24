@@ -1156,6 +1156,10 @@ func (s *GatewayService) parseSSEUsage(data string, usage *ClaudeUsage) {
 	if patch := s.extractSSEUsagePatch(event); patch != nil {
 		mergeSSEUsagePatch(usage, patch)
 	}
+	parsed := gjson.Parse(data)
+	applyDeepSeekClaudeUsageAliases(parsed.Get("message.usage"), usage)
+	applyDeepSeekClaudeUsageAliases(parsed.Get("usage"), usage)
+	applyDeepSeekClaudeUsageAliases(parsed.Get("response.usage"), usage)
 }
 
 type sseUsagePatch struct {
@@ -1418,6 +1422,11 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 			}
 		}
 	}
+	// DeepSeek's Anthropic-compatible response may expose only the
+	// OpenAI-style prompt cache aliases. Keep the parsed total for the shared
+	// usage object; recordUsageCore will normalize it to the disjoint
+	// Anthropic billing buckets before charging.
+	applyDeepSeekClaudeUsageAliases(gjson.GetBytes(body, "usage"), &response.Usage)
 
 	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类。
 	// 账号级设置优先；全局 1h 请求注入开启时，默认把 usage 计费归回 5m。
