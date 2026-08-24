@@ -1200,7 +1200,7 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			wantRequestModel: "grok-imagine-image-quality",
 			wantUpstream:     "vendor-image-model",
 			wantBody:         `{"model":"vendor-image-model","prompt":"draw","resolution":"1k","aspect_ratio":"1:1"}`,
-			responseBody:     `{"data":[{"url":"https://images.test/mapped.png"}]}`,
+			responseBody:     `{"data":[{"b64_json":"iVBORw0KGgo="}]}`,
 		},
 		{
 			name:             "whitespace mapping target safely preserves normalized model",
@@ -1423,7 +1423,7 @@ func TestForwardGrokMediaImagesEditMultipartPreservesExplicitGeometry(t *testing
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"data":[{"url":"https://images.test/edited.png"}]}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"iVBORw0KGgo="}]}`)),
 	}}
 	svc := &OpenAIGatewayService{httpUpstream: upstream}
 

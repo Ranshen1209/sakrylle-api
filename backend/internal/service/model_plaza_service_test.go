@@ -237,12 +237,17 @@ func TestListPlazaGroups_OfficialPricingFill(t *testing.T) {
 	require.InDelta(t, 3e-6, *official.InputPrice, 1e-12)
 	require.InDelta(t, 6e-6, *official.CacheWrite1hPrice, 1e-12)
 	require.InDelta(t, 3e-7, *official.CacheReadPrice, 1e-12)
-	// GPT-5 模型即使远程价格未带动态计费字段，也与实际计费策略使用同一默认阈值和倍率。
+	// GPT-5 模型即使远程价格未带动态计费字段，也与实际计费策略使用同一绝对价阶梯。
 	gptOfficial := byName["gpt-5.4-mini"].OfficialPricing
 	require.NotNil(t, gptOfficial)
-	require.Equal(t, 272000, *gptOfficial.LongContextThreshold)
-	require.InDelta(t, 2.0, *gptOfficial.LongContextInputMultiplier, 1e-12)
-	require.InDelta(t, 1.5, *gptOfficial.LongContextOutputMultiplier, 1e-12)
+	require.Len(t, gptOfficial.Intervals, 2)
+	require.Equal(t, 0, gptOfficial.Intervals[0].MinTokens)
+	require.Equal(t, 272000, *gptOfficial.Intervals[0].MaxTokens)
+	require.InDelta(t, 7.5e-7, *gptOfficial.Intervals[0].InputPrice, 1e-12)
+	require.Equal(t, 272000, gptOfficial.Intervals[1].MinTokens)
+	require.Nil(t, gptOfficial.Intervals[1].MaxTokens)
+	require.InDelta(t, 1.5e-6, *gptOfficial.Intervals[1].InputPrice, 1e-12)
+	require.InDelta(t, 6.75e-6, *gptOfficial.Intervals[1].OutputPrice, 1e-12)
 	// 未命中:nil(GetModelPricing 的 claude 系列模糊匹配对非 claude 名不生效)
 	require.Nil(t, byName["unknown-model"].OfficialPricing)
 	// TokenPricingAbsent 条目不作为官方 token 价展示

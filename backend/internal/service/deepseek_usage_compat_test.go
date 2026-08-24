@@ -10,7 +10,7 @@ import (
 
 func TestDeepSeekClaudeUsageAliasesSplitPromptCacheTokens(t *testing.T) {
 	usage := parseClaudeUsageFromResponseBody([]byte(`{"usage":{"prompt_tokens":120,"prompt_cache_hit_tokens":80,"prompt_cache_miss_tokens":40,"completion_tokens":7}}`))
-	require.Equal(t, 120, usage.InputTokens)
+	require.Equal(t, 40, usage.InputTokens)
 	require.Equal(t, 80, usage.CacheReadInputTokens)
 	// Anthropic-shaped parser has no completion_tokens field; this assertion
 	// documents that only the cache/input aliases are normalized here.
@@ -20,33 +20,33 @@ func TestDeepSeekClaudeUsageAliasesSplitPromptCacheTokens(t *testing.T) {
 func TestDeepSeekClaudeUsageAliasesInferTotalWhenPromptMissing(t *testing.T) {
 	usage := &ClaudeUsage{CacheReadInputTokens: 999}
 	parseSSEUsagePassthrough(`{"type":"message_start","message":{"usage":{"prompt_cache_hit_tokens":12,"prompt_cache_miss_tokens":8}}}`, usage)
-	require.Equal(t, 20, usage.InputTokens)
+	require.Equal(t, 8, usage.InputTokens)
 	require.Equal(t, 12, usage.CacheReadInputTokens)
 }
 
 func TestDeepSeekClaudeUsageAliasesReplaceZeroInputPlaceholder(t *testing.T) {
 	usage := parseClaudeUsageFromResponseBody([]byte(`{"usage":{"input_tokens":0,"prompt_cache_hit_tokens":4,"prompt_cache_miss_tokens":6}}`))
-	require.Equal(t, 10, usage.InputTokens)
+	require.Equal(t, 6, usage.InputTokens)
 	require.Equal(t, 4, usage.CacheReadInputTokens)
-	require.True(t, usage.inputTokensIncludeCache)
+	require.False(t, usage.inputTokensIncludeCache)
 }
 
 func TestDeepSeekClaudeUsageExplicitZeroHitWins(t *testing.T) {
 	usage := &ClaudeUsage{CacheReadInputTokens: 55}
 	parseSSEUsagePassthrough(`{"type":"message_start","message":{"usage":{"prompt_tokens":40,"prompt_cache_hit_tokens":0,"cached_tokens":55}}}`, usage)
-	require.Equal(t, 40, usage.InputTokens)
-	require.Zero(t, usage.CacheReadInputTokens)
+	require.Zero(t, usage.InputTokens)
+	require.Equal(t, 55, usage.CacheReadInputTokens)
 }
 
 func TestDeepSeekClaudeUsageMissOnlyClearsCanonicalCacheHit(t *testing.T) {
 	usage := parseClaudeUsageFromResponseBody([]byte(`{"usage":{"prompt_cache_miss_tokens":100,"cached_tokens":55}}`))
 	require.Equal(t, 100, usage.InputTokens)
-	require.Zero(t, usage.CacheReadInputTokens)
-	require.True(t, usage.inputTokensIncludeCache)
+	require.Equal(t, 55, usage.CacheReadInputTokens)
+	require.False(t, usage.inputTokensIncludeCache)
 
 	normalizeDeepSeekClaudeUsageForBilling(usage)
-	require.Equal(t, 100, usage.InputTokens, "miss-only total has no cache-hit bucket to subtract")
-	require.Zero(t, usage.CacheReadInputTokens)
+	require.Equal(t, 100, usage.InputTokens, "parser already stores the cache-miss bucket")
+	require.Equal(t, 55, usage.CacheReadInputTokens)
 	require.False(t, usage.inputTokensIncludeCache)
 }
 
@@ -88,7 +88,7 @@ func TestDeepSeekClaudeUsageAliasesClampNegativeValues(t *testing.T) {
 
 	require.Zero(t, usage.CacheReadInputTokens)
 	require.Zero(t, usage.InputTokens)
-	require.True(t, usage.inputTokensIncludeCache)
+	require.False(t, usage.inputTokensIncludeCache)
 
 	normalizeDeepSeekClaudeUsageForBilling(usage)
 	require.Zero(t, usage.InputTokens)
@@ -98,9 +98,9 @@ func TestDeepSeekClaudeUsageAliasesClampNegativeValues(t *testing.T) {
 
 func TestDeepSeekClaudeUsageAliasesNormalizeBeforeGenericBilling(t *testing.T) {
 	usage := parseClaudeUsageFromResponseBody([]byte(`{"usage":{"prompt_tokens":100,"prompt_cache_hit_tokens":40,"prompt_cache_miss_tokens":60}}`))
-	require.Equal(t, 100, usage.InputTokens, "parser keeps DeepSeek total for native OpenAI conversion")
+	require.Equal(t, 60, usage.InputTokens, "parser stores mutually exclusive Anthropic billing buckets")
 	require.Equal(t, 40, usage.CacheReadInputTokens)
-	require.True(t, usage.inputTokensIncludeCache)
+	require.False(t, usage.inputTokensIncludeCache)
 
 	normalizeDeepSeekClaudeUsageForBilling(usage)
 	require.Equal(t, 60, usage.InputTokens, "generic Anthropic billing must charge only cache-miss input")

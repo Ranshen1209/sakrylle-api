@@ -32,7 +32,7 @@ func enabledGroup(platform string) *Group {
 	return &Group{ID: 100, Platform: platform, LongContextPricingEnabled: true}
 }
 
-func disabledGroup(platform string) *Group {
+func disabledScheduleGroup(platform string) *Group {
 	return &Group{ID: 100, Platform: platform, LongContextPricingEnabled: false}
 }
 
@@ -92,7 +92,7 @@ func scheduleScenarios() []scheduleScenario {
 		},
 		{
 			name: "分组关闭阶梯只剩基础档", model: "gpt-5.4", platform: PlatformOpenAI, groupPlatform: PlatformOpenAI,
-			group: disabledGroup(PlatformOpenAI), wantBasis: ContextPricingBasisWholeRequest,
+			group: disabledScheduleGroup(PlatformOpenAI), wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 1)
 				requireTier(t, s.Tiers[0], 0, nil, "", p(2.5e-6), p(15e-6), p(2.5e-6), p(0.25e-6))
@@ -173,7 +173,7 @@ func scheduleScenarios() []scheduleScenario {
 		},
 		{
 			name: "分组关闭时渠道区间折叠到 1-token 档", model: "claude-sonnet-4", platform: PlatformAnthropic, groupPlatform: PlatformAnthropic,
-			group: disabledGroup(PlatformAnthropic), wantBasis: ContextPricingBasisWholeRequest,
+			group: disabledScheduleGroup(PlatformAnthropic), wantBasis: ContextPricingBasisWholeRequest,
 			channel: sonnetChannel(
 				PricingInterval{MinTokens: 0, MaxTokens: intPtr(200000), InputMultiplier: p(0.5)},
 				PricingInterval{MinTokens: 200000, InputMultiplier: p(2)},
@@ -185,7 +185,7 @@ func scheduleScenarios() []scheduleScenario {
 		},
 		{
 			name: "分组关闭且首档不从 0 起时平价为 base", model: "claude-sonnet-4", platform: PlatformAnthropic, groupPlatform: PlatformAnthropic,
-			group: disabledGroup(PlatformAnthropic), wantBasis: ContextPricingBasisWholeRequest,
+			group: disabledScheduleGroup(PlatformAnthropic), wantBasis: ContextPricingBasisWholeRequest,
 			channel: sonnetChannel(PricingInterval{MinTokens: 200000, InputMultiplier: p(2)}),
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 1)
@@ -229,7 +229,7 @@ func scheduleScenarios() []scheduleScenario {
 		},
 		{
 			name: "Gemini 分组关闭时不用旧规则", model: "gemini-2.5-pro", platform: PlatformGemini, groupPlatform: PlatformGemini,
-			group: disabledGroup(PlatformGemini), catalog: geminiCatalogStub(), wantBasis: ContextPricingBasisWholeRequest,
+			group: disabledScheduleGroup(PlatformGemini), catalog: geminiCatalogStub(), wantBasis: ContextPricingBasisWholeRequest,
 			check: func(t *testing.T, s *ContextPricingSchedule) {
 				require.Len(t, s.Tiers, 1)
 			},
