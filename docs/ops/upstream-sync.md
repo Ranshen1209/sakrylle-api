@@ -36,6 +36,8 @@ v0.1.179 changes long-context billing activation from requiring both the group a
 
 v0.1.180 was merged from the exact annotated release tag rather than the later `upstream/main` head. Keep upstream's multi-interval model-plaza pricing, plugin manager, and model-list response limit together with Sakrylle's versioned time pricing, `￥` display, image-input ratios, and model-specific pricing resolution. The user model-plaza cards must select absolute prices from `pricing.intervals`; the removed `long_context_*_multiplier` fields are not a compatibility source. Go moved to 1.27.0, so update every Docker builder and run golangci-lint v2.13 or later. Regenerate Wire and confirm plugin manager, CN balance checking, and OIDC key rotation all remain cleanup consumers. The 2026-08-24 production audit found long-context pricing enabled on every group; account-level OpenAI overrides remained 5 enabled and 1142 disabled, with Anthropic overrides unset, so no production setting migration was required.
 
+v0.1.181 is compatibility fixes only: Gemini tool-schema sanitization, Grok official CLI User-Agent, Responses Lite `parallel_tool_calls` retention, and batch `status` stripping on rejected Responses input items. The annotated tag still said `0.1.180`; merge `upstream/main` so the follow-up VERSION sync to `0.1.181` is included. The only conflict was `backend/cmd/server/VERSION` — take upstream. Wire, Ent, frontend, and billing policy did not change. Align Sakrylle's Grok image-download path with `defaultGrokUpstreamUserAgent()`; leave the OAuth client `sub2api-grok-oauth/1.0` identity alone.
+
 ## Wire / OIDC Scheduler Footgun
 
 `wire_gen.go` is committed. CI and Docker builds do not regenerate it.

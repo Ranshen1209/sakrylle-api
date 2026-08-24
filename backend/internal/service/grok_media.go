@@ -1179,7 +1179,7 @@ func (s *OpenAIGatewayService) downloadGrokImageURL(ctx context.Context, account
 		return nil, "", err
 	}
 	req.Header.Set("Accept", "image/*,*/*;q=0.8")
-	req.Header.Set("User-Agent", "sub2api-grok/1.0")
+	req.Header.Set("User-Agent", defaultGrokUpstreamUserAgent())
 
 	accountID := int64(0)
 	concurrency := 1
