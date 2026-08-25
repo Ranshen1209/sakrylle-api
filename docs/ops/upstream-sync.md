@@ -38,6 +38,19 @@ v0.1.180 was merged from the exact annotated release tag rather than the later `
 
 v0.1.181 is compatibility fixes only: Gemini tool-schema sanitization, Grok official CLI User-Agent, Responses Lite `parallel_tool_calls` retention, and batch `status` stripping on rejected Responses input items. The annotated tag still said `0.1.180`; merge `upstream/main` so the follow-up VERSION sync to `0.1.181` is included. The only conflict was `backend/cmd/server/VERSION` — take upstream. Wire, Ent, frontend, and billing policy did not change. Align Sakrylle's Grok image-download path with `defaultGrokUpstreamUserAgent()`; leave the OAuth client `sub2api-grok-oauth/1.0` identity alone.
 
+v0.1.182 fixes contradictory Anthropic cache-creation detail totals by capping the
+5m/1h breakdown at the positive aggregate before pricing. Keep that normalization
+inside the upstream baseline calculation; Sakrylle's margin still applies separately
+through `groups.rate_multiplier`. The release also tightens Responses Lite tool-call
+mode and numeric precision across HTTP and WebSocket paths, preserves image prompts
+verbatim for OAuth image generation, routes Kimi Code K3 and Antigravity Sonnet 4.6,
+resolves monitor facts to the concrete account platform, and refreshes the displayed
+balance after payment fulfillment. Merge `upstream/main`, not only the annotated tag,
+because the following commit synchronizes `VERSION` to `0.1.182`. In the recurring
+`openai_images.go` conflict, retain both Sakrylle's Grok2API/XAI image-edit adapters
+and upstream's verbatim-prompt instruction. No Ent or Wire regeneration is required
+for this release.
+
 ## Wire / OIDC Scheduler Footgun
 
 `wire_gen.go` is committed. CI and Docker builds do not regenerate it.
