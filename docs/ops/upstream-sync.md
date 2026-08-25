@@ -51,6 +51,13 @@ because the following commit synchronizes `VERSION` to `0.1.182`. In the recurri
 and upstream's verbatim-prompt instruction. No Ent or Wire regeneration is required
 for this release.
 
+v0.1.183 improves OpenAI OAuth quota scheduling and sticky sessions, Kimi concurrency
+cooldown, Responses custom-tool item ID recovery, email alias rebinding safety,
+Antigravity token clamping, and composite channel-monitor aggregation. Merge
+`upstream/main`, not only the annotated tag, because the tag still contains
+`VERSION=0.1.182` and the following commit synchronizes it to `0.1.183`. The merge is
+clean against the Sakrylle fork and does not require Ent or Wire regeneration.
+
 ## Wire / OIDC Scheduler Footgun
 
 `wire_gen.go` is committed. CI and Docker builds do not regenerate it.
