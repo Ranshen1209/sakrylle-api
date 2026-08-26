@@ -17,7 +17,7 @@ import type {
   UserPricingTimeVersion,
   UserSupportedModelPricing,
 } from '@/api/channels'
-import type { ModelPlazaPricingMode } from '@/api/modelPlaza'
+import type { ModelPlazaGroup, ModelPlazaPricingMode } from '@/api/modelPlaza'
 
 export type ModelPlazaTimePriceField =
   | 'input_price'
@@ -137,8 +137,10 @@ interface ModelAggregate {
 export function flattenChannelsToPlaza(
   channels: UserAvailableChannel[],
   userGroupRates: Record<number, number>,
+  catalogGroups: ModelPlazaGroup[] = [],
 ): PlazaModel[] {
   const aggregates = new Map<string, ModelAggregate>()
+  const catalogIntervals = buildCatalogIntervalIndex(catalogGroups)
 
   for (const ch of channels) {
     for (const section of ch.platforms) {
@@ -151,7 +153,12 @@ export function flattenChannelsToPlaza(
           const existing = agg.groups.get(g.id)
           if (existing) {
             // group already seen via another channel; fill pricing only if missing
-            if (existing.pricing == null && model.pricing != null) existing.pricing = model.pricing
+            if (existing.pricing == null && model.pricing != null) {
+              existing.pricing = mergeCatalogIntervals(
+                model.pricing,
+                catalogIntervals.get(catalogModelKey(g.id, platform, model.name)),
+              )
+            }
             continue
           }
           const userRate = Object.prototype.hasOwnProperty.call(userGroupRates, g.id)
@@ -168,7 +175,10 @@ export function flattenChannelsToPlaza(
               userRate,
               effectiveRate: userRate ?? g.rate_multiplier,
             },
-            pricing: model.pricing ?? null,
+            pricing: mergeCatalogIntervals(
+              model.pricing ?? null,
+              catalogIntervals.get(catalogModelKey(g.id, platform, model.name)),
+            ),
           })
         }
         aggregates.set(modelKey, agg)
@@ -211,7 +221,37 @@ function comparePlazaModels(a: PlazaModel, b: PlazaModel): number {
  * because the upstream uses Anthropic protocol), but the plaza should show
  * the actual provider brand.
  */
-function inferDisplayPlatform(modelName: string, dbPlatform: string): string {
-  if (modelName.startsWith('deepseek-')) return 'deepseek'
+export function inferDisplayPlatform(modelName: string, dbPlatform: string): string {
+  const normalized = modelName.toLowerCase()
+  if (normalized.startsWith('deepseek-')) return 'deepseek'
+  if (normalized.startsWith('gemini-') || normalized.startsWith('gemma-')) return 'gemini'
+  if (normalized.startsWith('grok-')) return 'grok'
   return dbPlatform
+}
+
+function catalogModelKey(groupID: number, platform: string, modelName: string): string {
+  return `${groupID}::${platform}::${modelName}`
+}
+
+function buildCatalogIntervalIndex(
+  groups: ModelPlazaGroup[],
+): Map<string, UserSupportedModelPricing['intervals']> {
+  const out = new Map<string, UserSupportedModelPricing['intervals']>()
+  for (const group of groups) {
+    for (const model of group.models) {
+      const intervals = model.pricing?.intervals
+      if (!intervals?.length) continue
+      const platform = inferDisplayPlatform(model.name, model.platform || group.platform)
+      out.set(catalogModelKey(group.id, platform, model.name), intervals)
+    }
+  }
+  return out
+}
+
+function mergeCatalogIntervals(
+  pricing: UserSupportedModelPricing | null,
+  intervals: UserSupportedModelPricing['intervals'] | undefined,
+): UserSupportedModelPricing | null {
+  if (pricing == null || !intervals?.length) return pricing
+  return { ...pricing, intervals: intervals.map((interval) => ({ ...interval })) }
 }

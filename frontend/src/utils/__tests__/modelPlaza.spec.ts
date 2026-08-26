@@ -11,7 +11,9 @@ import {
   applyRate,
   flattenChannelsToPlaza,
   formatPrice,
+  inferDisplayPlatform,
 } from '../modelPlaza'
+import type { ModelPlazaGroup } from '@/api/modelPlaza'
 import type { UserAvailableChannel } from '@/api/channels'
 
 function group(
@@ -246,7 +248,68 @@ describe('flattenChannelsToPlaza', () => {
       'openai/gpt-5.5/GPT-Pro',
     ])
   })
+
+  it('restores group-specific GPT long-context tiers from the model catalog', () => {
+    const channels: UserAvailableChannel[] = [{
+      name: 'GPT',
+      description: '',
+      platforms: [{
+        platform: 'openai',
+        groups: [
+          group(3, 'GPT-Pro', 'openai', 0.4),
+          group(4, 'GPT-Plus', 'openai', 0.2),
+        ],
+        supported_models: [model('gpt-5.6-sol', 'openai', 5e-6, 30e-6)],
+      }],
+    }]
+    const catalogGroups = [
+      catalogGroup(3, 'GPT-Pro', 10e-6),
+      catalogGroup(4, 'GPT-Plus', 8e-6),
+    ]
+
+    const result = flattenChannelsToPlaza(channels, {}, catalogGroups)
+
+    expect(result.find((item) => item.group.id === 3)?.pricing?.intervals[1]?.input_price).toBe(10e-6)
+    expect(result.find((item) => item.group.id === 4)?.pricing?.intervals[1]?.input_price).toBe(8e-6)
+  })
+
+  it('shows Gemini and Grok branding for models carried over the OpenAI protocol', () => {
+    expect(inferDisplayPlatform('gemini-3-pro-preview', 'openai')).toBe('gemini')
+    expect(inferDisplayPlatform('grok-4.20-0309', 'openai')).toBe('grok')
+    expect(inferDisplayPlatform('gpt-5.6-sol', 'openai')).toBe('openai')
+  })
 })
+
+function catalogGroup(id: number, name: string, longInputPrice: number): ModelPlazaGroup {
+  return {
+    id,
+    name,
+    description: '',
+    platform: 'openai',
+    subscription_type: 'standard',
+    rate_multiplier: 1,
+    peak_rate_enabled: false,
+    peak_start: '',
+    peak_end: '',
+    peak_rate_multiplier: 1,
+    is_exclusive: false,
+    image_rate_independent: false,
+    image_rate_multiplier: 1,
+    long_context_pricing_enabled: true,
+    models: [{
+      name: 'gpt-5.6-sol',
+      platform: 'openai',
+      pricing: {
+        ...model('gpt-5.6-sol', 'openai', 5e-6, 30e-6).pricing!,
+        intervals: [
+          { min_tokens: 0, max_tokens: 272000, input_price: 5e-6, output_price: 30e-6, cache_write_price: null, cache_read_price: null, per_request_price: null },
+          { min_tokens: 272000, max_tokens: null, input_price: longInputPrice, output_price: 45e-6, cache_write_price: null, cache_read_price: null, per_request_price: null },
+        ],
+      },
+      official_pricing: null,
+    }],
+  }
+}
 
 describe('formatPrice', () => {
   it('returns "-" for null', () => {

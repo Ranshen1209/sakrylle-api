@@ -162,7 +162,7 @@ import PlazaSidebar from '@/components/plaza/PlazaSidebar.vue'
 import PlazaModelCard from '@/components/plaza/PlazaModelCard.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
-import type { ModelPlazaPricingMode } from '@/api/modelPlaza'
+import { getModelPlaza, type ModelPlazaGroup, type ModelPlazaPricingMode } from '@/api/modelPlaza'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { flattenChannelsToPlaza, type PlazaModel } from '@/utils/modelPlaza'
@@ -174,6 +174,7 @@ const appStore = useAppStore()
 // Raw API state
 const channels = ref<UserAvailableChannel[]>([])
 const userGroupRates = ref<Record<number, number>>({})
+const catalogGroups = ref<ModelPlazaGroup[]>([])
 const loading = ref(false)
 
 // UI state
@@ -194,7 +195,7 @@ const pricingModeInactiveClass = 'text-gray-500 hover:text-gray-800 dark:text-gr
 
 // Derived
 const plazaModels = computed<PlazaModel[]>(() =>
-  flattenChannelsToPlaza(channels.value, userGroupRates.value),
+  flattenChannelsToPlaza(channels.value, userGroupRates.value, catalogGroups.value),
 )
 
 const filteredModels = computed<PlazaModel[]>(() => {
@@ -227,15 +228,17 @@ async function loadAll() {
     // User group rates failure must not block the plaza — without overrides,
     // PlazaGroupAccess.effectiveRate falls back to the group's default
     // multiplier, which is still a usable view of the prices.
-    const [list, rates] = await Promise.all([
+    const [list, rates, catalog] = await Promise.all([
       userChannelsAPI.getAvailable(),
       userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
         console.error('Failed to load user group rates:', err)
         return {} as Record<number, number>
       }),
+      getModelPlaza().catch(() => null),
     ])
     channels.value = list
     userGroupRates.value = rates
+    catalogGroups.value = catalog?.groups ?? []
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
