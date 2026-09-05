@@ -210,23 +210,17 @@ func TestListPlazaGroups_SortedByRateMultiplierAsc(t *testing.T) {
 }
 
 func TestListPlazaGroups_OfficialPricingFill(t *testing.T) {
-	pricingSvc := newStubPricingServiceFromMap(map[string]*LiteLLMModelPricing{
-		"claude-sonnet": {
-			Mode:                                "chat",
-			InputCostPerToken:                   3e-6,
-			OutputCostPerToken:                  1.5e-5,
-			CacheCreationInputTokenCost:         3.75e-6,
-			CacheCreationInputTokenCostAbove1hr: 6e-6,
-			CacheReadInputTokenCost:             3e-7,
-		},
-		"gpt-5.4-mini": {
-			Mode:                    "chat",
-			InputCostPerToken:       7.5e-7,
-			OutputCostPerToken:      4.5e-6,
-			CacheReadInputTokenCost: 7.5e-8,
-		},
-		"token-absent": {Mode: "image_generation", TokenPricingAbsent: true, OutputCostPerImage: 0.04},
-	})
+	pricingSvc := newStubPricingServiceFromJSON(t, `{
+		"claude-sonnet": {"mode":"chat", "input_cost_per_token":3e-6, "output_cost_per_token":1.5e-5,
+			"cache_creation_input_token_cost":3.75e-6, "cache_creation_input_token_cost_above_1hr":6e-6,
+			"cache_read_input_token_cost":3e-7},
+		"gpt-5.4-mini": {"mode":"chat", "litellm_provider":"openai", "input_cost_per_token":7.5e-7,
+			"output_cost_per_token":4.5e-6, "cache_read_input_token_cost":7.5e-8,
+			"input_cost_per_token_above_272k_tokens":1.5e-6,
+			"output_cost_per_token_above_272k_tokens":6.75e-6,
+			"cache_read_input_token_cost_above_272k_tokens":1.5e-7},
+		"token-absent": {"mode":"image_generation", "output_cost_per_image":0.04}
+	}`)
 	channels := []Channel{
 		plazaPricedChannel(1, "ch", []int64{10}, "anthropic", "claude-sonnet", "gpt-5.4-mini", "unknown-model", "token-absent"),
 	}

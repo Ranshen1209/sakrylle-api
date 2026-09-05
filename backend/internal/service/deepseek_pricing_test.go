@@ -15,7 +15,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// deepseekPeakMultiplierAt：官方峰谷口径（2026-08-23 起生效）
+// 官方 DeepSeek 峰谷口径（2026-08-23 起生效）
 // 高峰时段 01:00–04:00 与 06:00–10:00 UTC（半开区间，仅工作日）；
 // 北京时间周六/周日全天低谷；高峰价 = 2× 低谷价。
 // 2026-08-24 为周一（工作日），2026-08-22 周六、2026-08-23 周日。
@@ -32,47 +32,46 @@ func TestDeepseekPeakMultiplierAt(t *testing.T) {
 		want float64
 	}{
 		// 工作日高峰窗口边界（半开区间）
-		{"weekday 01:00 peak start", mon(1, 0), 2.0},
-		{"weekday 03:59 peak upper bound", mon(3, 59), 2.0},
-		{"weekday 04:00 peak end", mon(4, 0), 1.0},
-		{"weekday 06:00 peak start", mon(6, 0), 2.0},
-		{"weekday 09:59 peak upper bound", mon(9, 59), 2.0},
-		{"weekday 10:00 peak end", mon(10, 0), 1.0},
+		{"weekday 01:00 peak start", mon(1, 0), 1.0},
+		{"weekday 03:59 peak upper bound", mon(3, 59), 1.0},
+		{"weekday 04:00 peak end", mon(4, 0), 0.5},
+		{"weekday 06:00 peak start", mon(6, 0), 1.0},
+		{"weekday 09:59 peak upper bound", mon(9, 59), 1.0},
+		{"weekday 10:00 peak end", mon(10, 0), 0.5},
 		// 工作日低谷时段
-		{"weekday 00:00 off-peak", mon(0, 0), 1.0},
-		{"weekday 05:00 off-peak", mon(5, 0), 1.0},
-		{"weekday 12:00 off-peak", mon(12, 0), 1.0},
-		{"weekday 23:59 off-peak", mon(23, 59), 1.0},
+		{"weekday 00:00 off-peak", mon(0, 0), 0.5},
+		{"weekday 05:00 off-peak", mon(5, 0), 0.5},
+		{"weekday 12:00 off-peak", mon(12, 0), 0.5},
+		{"weekday 23:59 off-peak", mon(23, 59), 0.5},
 		// 北京时间周末全天低谷（即使 UTC 处于高峰时段）
-		{"saturday utc 02:00 beijing sat 10:00", sat(2, 0), 1.0},
-		{"sunday utc 07:00 beijing sun 15:00", sun(7, 0), 1.0},
+		{"saturday utc 02:00 beijing sat 10:00", sat(2, 0), 0.5},
+		{"sunday utc 07:00 beijing sun 15:00", sun(7, 0), 0.5},
 		// 北京时间与 UTC 跨日边界：UTC 周六 16:30 = 北京周日 00:30 → 周末低谷
-		{"utc saturday 16:30 = beijing sunday 00:30", sat(16, 30), 1.0},
+		{"utc saturday 16:30 = beijing sunday 00:30", sat(16, 30), 0.5},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, deepseekPeakMultiplierAt(tt.now))
+			resolution := resolveDeepSeekOfficialTimePricing(tt.now)
+			if tt.now.Before(deepSeekOfficialTimePricingEffectiveFrom) {
+				require.Nil(t, resolution)
+				return
+			}
+			require.NotNil(t, resolution)
+			require.Equal(t, tt.want, resolution.Multiplier)
 		})
 	}
 }
 
-func TestIsDeepSeekModel(t *testing.T) {
-	deepseek := []string{
+func TestDeepSeekOfficialPricingKeyAllowlist(t *testing.T) {
+	for _, m := range []string{
 		"deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-vision-exp",
-		"deepseek-chat", "deepseek-reasoner", "deepseek-v3-2-251201",
-		"deepseek-coder", "deepseek-foo", "deepseek-v4-pro-0813",
-		"DEEPSEEK-V4-PRO", " deepseek-v4-flash ",
+		"deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro-0813",
+		"models/deepseek-v4-flash:free",
+	} {
+		require.NotEmpty(t, deepSeekOfficialPricingKey(m), "model %q should use an official card", m)
 	}
-	for _, m := range deepseek {
-		require.True(t, isDeepSeekModel(m), "model %q should be deepseek", m)
-	}
-
-	nonDeepseek := []string{
-		"gpt-5.4", "claude-sonnet-4", "deepseekcoder", // 无连字符不算 deepseek- 前缀
-		"", " deepseek", // 无连字符后缀
-	}
-	for _, m := range nonDeepseek {
-		require.False(t, isDeepSeekModel(m), "model %q should not be deepseek", m)
+	for _, m := range []string{"deepseek-v3-2-251201", "deepseek-coder", "deepseek-foo", "deepseek-v4-provision", "gpt-5.4"} {
+		require.Empty(t, deepSeekOfficialPricingKey(m), "model %q must remain dynamic or fail closed", m)
 	}
 }
 
@@ -85,8 +84,8 @@ func TestCalculateCostUnified_DeepseekDefaultCardPeakMultiplier(t *testing.T) {
 	resolver := NewModelPricingResolver(nil, bs)
 
 	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 1000}
-	// 低谷成本：1000*2.2e-7 + 500*6.6e-7 + 1000*7e-9 = 5.57e-4
-	offPeakTotal := 1000*2.2e-7 + 500*6.6e-7 + 1000*7e-9
+	// Built-in fallback cards store the official peak baseline; off-peak applies 0.5x.
+	offPeakTotal := (1000*deepSeekV4FlashInputPricePerToken + 500*deepSeekV4FlashOutputPricePerToken + 1000*deepSeekV4FlashCacheReadPerToken) * 0.5
 
 	offPeak, err := bs.CalculateCostUnified(CostInput{
 		Ctx: context.Background(), Model: "deepseek-v4-flash", Tokens: tokens,
@@ -110,7 +109,7 @@ func TestCalculateCostUnified_DeepseekProDefaultCardPeakMultiplier(t *testing.T)
 	resolver := NewModelPricingResolver(nil, bs)
 
 	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 1000}
-	offPeakTotal := 1000*6.6e-7 + 500*1.98e-6 + 1000*2.2e-8
+	offPeakTotal := (1000*deepSeekV4ProInputPricePerToken + 500*deepSeekV4ProOutputPricePerToken + 1000*deepSeekV4ProCacheReadPerToken) * 0.5
 
 	offPeak, err := bs.CalculateCostUnified(CostInput{
 		Ctx: context.Background(), Model: "deepseek-v4-pro", Tokens: tokens,
@@ -134,7 +133,7 @@ func TestCalculateCostUnified_DeepseekVersionedNamePeakMultiplier(t *testing.T) 
 	resolver := NewModelPricingResolver(nil, bs)
 
 	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 1000}
-	offPeakTotal := 1000*2.2e-7 + 500*6.6e-7 + 1000*7e-9
+	offPeakTotal := (1000*deepSeekV4FlashInputPricePerToken + 500*deepSeekV4FlashOutputPricePerToken + 1000*deepSeekV4FlashCacheReadPerToken) * 0.5
 
 	offPeak, err := bs.CalculateCostUnified(CostInput{
 		Ctx: context.Background(), Model: "deepseek-v4-flash-0731", Tokens: tokens,
@@ -170,8 +169,8 @@ func TestCalculateCostUnified_DeepseekGroupPricingNotScaledByPeak(t *testing.T) 
 	require.Equal(t, PricingSourceGroup, resolved.Source)
 
 	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 1000}
-	// 分组自定义价：1000*1e-6 + 500*2e-6 + 1000*7e-9（缓存读沿用官方 flash 价）
-	groupTotal := 1000*1e-6 + 500*2e-6 + 1000*7e-9
+	// 分组自定义价：1000*1e-6 + 500*2e-6 + 1000*deepSeekV4FlashCacheReadPerToken（缓存读沿用官方 flash 价）
+	groupTotal := 1000*1e-6 + 500*2e-6 + 1000*deepSeekV4FlashCacheReadPerToken
 
 	for _, pricingAt := range []time.Time{
 		time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC), // 低谷
@@ -250,12 +249,12 @@ func TestGetModelPricing_DeepseekForcesOfficialRatesOverJSON(t *testing.T) {
 		model                    string
 		input, output, cacheRead float64
 	}{
-		{"deepseek-v4-flash", 2.2e-7, 6.6e-7, 7e-9},
-		{"deepseek-v4-flash-vision-exp", 2.2e-7, 6.6e-7, 7e-9},
-		{"deepseek-v4-pro", 6.6e-7, 1.98e-6, 2.2e-8},
+		{"deepseek-v4-flash", deepSeekV4FlashInputPricePerToken, deepSeekV4FlashOutputPricePerToken, deepSeekV4FlashCacheReadPerToken},
+		{"deepseek-v4-flash-vision-exp", deepSeekV4FlashInputPricePerToken, deepSeekV4FlashOutputPricePerToken, deepSeekV4FlashCacheReadPerToken},
+		{"deepseek-v4-pro", deepSeekV4ProInputPricePerToken, deepSeekV4ProOutputPricePerToken, deepSeekV4ProCacheReadPerToken},
 		// 已停服的 chat/reasoner：即使 JSON 有旧条目也按 flash 价兜底。
-		{"deepseek-chat", 2.2e-7, 6.6e-7, 7e-9},
-		{"deepseek-reasoner", 2.2e-7, 6.6e-7, 7e-9},
+		{"deepseek-chat", deepSeekV4FlashInputPricePerToken, deepSeekV4FlashOutputPricePerToken, deepSeekV4FlashCacheReadPerToken},
+		{"deepseek-reasoner", deepSeekV4FlashInputPricePerToken, deepSeekV4FlashOutputPricePerToken, deepSeekV4FlashCacheReadPerToken},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
@@ -273,8 +272,8 @@ func TestGetModelPricing_DeepseekForcesOfficialRatesOverJSON(t *testing.T) {
 		model                    string
 		input, output, cacheRead float64
 	}{
-		{"deepseek-v4-pro-0813", 6.6e-7, 1.98e-6, 2.2e-8},
-		{"deepseek-v4-flash-0731", 2.2e-7, 6.6e-7, 7e-9},
+		{"deepseek-v4-pro-0813", deepSeekV4ProInputPricePerToken, deepSeekV4ProOutputPricePerToken, deepSeekV4ProCacheReadPerToken},
+		{"deepseek-v4-flash-0731", deepSeekV4FlashInputPricePerToken, deepSeekV4FlashOutputPricePerToken, deepSeekV4FlashCacheReadPerToken},
 	}
 	for _, tt := range versioned {
 		t.Run(tt.model, func(t *testing.T) {
@@ -287,23 +286,22 @@ func TestGetModelPricing_DeepseekForcesOfficialRatesOverJSON(t *testing.T) {
 	}
 }
 
-func TestGetModelPricing_UnknownDeepseekMapsToFlash(t *testing.T) {
-	// JSON 含 $0 占位条目（如旧 deepseek-v3-2-251201）：未知 deepseek-* 不再
-	// fail-closed，统一按 flash 价兜底（2.2e-7/6.6e-7/7e-9），不得按 $0 计费。
+func TestGetModelPricing_UnknownDeepseekUsesExplicitCatalogOrFailsClosed(t *testing.T) {
+	// Unknown IDs do not inherit the current V4 card. An explicit non-zero
+	// catalog entry remains usable; an absent entry fails closed.
 	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
-		"deepseek-v3-2-251201": {InputCostPerToken: 0, OutputCostPerToken: 0},
+		"deepseek-v3-2-251201": {InputCostPerToken: 1e-6, OutputCostPerToken: 2e-6},
 	}}
 	bs := NewBillingService(&config.Config{}, pricingSvc)
 
-	for _, m := range []string{"deepseek-v3-2-251201", "deepseek-chat", "deepseek-reasoner", "deepseek-foo"} {
-		t.Run(m, func(t *testing.T) {
-			pricing, err := bs.GetModelPricing(m)
-			require.NoError(t, err)
-			require.InDelta(t, 2.2e-7, pricing.InputPricePerToken, 1e-15)
-			require.InDelta(t, 6.6e-7, pricing.OutputPricePerToken, 1e-15)
-			require.InDelta(t, 7e-9, pricing.CacheReadPricePerToken, 1e-15)
-		})
-	}
+	pricing, err := bs.GetModelPricing("deepseek-v3-2-251201")
+	require.NoError(t, err)
+	require.InDelta(t, 1e-6, pricing.InputPricePerToken, 1e-15)
+	require.InDelta(t, 2e-6, pricing.OutputPricePerToken, 1e-15)
+
+	pricing, err = bs.GetModelPricing("deepseek-foo")
+	require.Error(t, err)
+	require.Nil(t, pricing)
 }
 
 // ---------------------------------------------------------------------------
@@ -329,9 +327,9 @@ func TestDeepseekPricingFileMatchesOfficialRates(t *testing.T) {
 		model                    string
 		input, output, cacheRead float64
 	}{
-		{"deepseek-v4-flash", 2.2e-7, 6.6e-7, 7e-9},
-		{"deepseek-v4-flash-vision-exp", 2.2e-7, 6.6e-7, 7e-9},
-		{"deepseek-v4-pro", 6.6e-7, 1.98e-6, 2.2e-8},
+		{"deepseek-v4-flash", deepSeekV4FlashInputPricePerToken, deepSeekV4FlashOutputPricePerToken, deepSeekV4FlashCacheReadPerToken},
+		{"deepseek-v4-flash-vision-exp", deepSeekV4FlashInputPricePerToken, deepSeekV4FlashOutputPricePerToken, deepSeekV4FlashCacheReadPerToken},
+		{"deepseek-v4-pro", deepSeekV4ProInputPricePerToken, deepSeekV4ProOutputPricePerToken, deepSeekV4ProCacheReadPerToken},
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
