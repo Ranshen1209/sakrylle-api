@@ -23,6 +23,7 @@ export type ModelPlazaTimePriceField =
   | 'input_price'
   | 'output_price'
   | 'cache_write_price'
+  | 'cache_write_1h_price'
   | 'cache_read_price'
   | 'image_input_price'
   | 'image_output_price'
