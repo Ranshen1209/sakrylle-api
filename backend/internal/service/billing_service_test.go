@@ -344,13 +344,15 @@ func TestGetModelPricing_OpenAIGPT54MiniFallback(t *testing.T) {
 	require.InDelta(t, 4.5e-6, pricing.OutputPricePerToken, 1e-12)
 	require.InDelta(t, 7.5e-7, pricing.CacheCreationPricePerToken, 1e-12)
 	require.InDelta(t, 7.5e-8, pricing.CacheReadPricePerToken, 1e-12)
-	require.Equal(t, 272000, pricing.LongContextInputThreshold)
-	require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
-	require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+	// Static fallback cards carry only the base price. Long-context tiers come
+	// from the synchronized pricing catalog.
+	require.Zero(t, pricing.LongContextInputThreshold)
+	require.Zero(t, pricing.LongContextInputMultiplier)
+	require.Zero(t, pricing.LongContextOutputMultiplier)
 }
 
 func TestCalculateCost_OpenAIGPT54MiniLongContextAppliesInputCacheAndOutputMultipliers(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	tokens := UsageTokens{
 		InputTokens:         200000,
@@ -369,15 +371,7 @@ func TestCalculateCost_OpenAIGPT54MiniLongContextAppliesInputCacheAndOutputMulti
 }
 
 func TestCalculateCost_CodexAutoReviewLongContextAppliesGPTMultipliers(t *testing.T) {
-	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
-		"codex-auto-review": {
-			InputCostPerToken:           2.5e-6,
-			OutputCostPerToken:          15e-6,
-			CacheCreationInputTokenCost: 2.5e-6,
-			CacheReadInputTokenCost:     0.25e-6,
-		},
-	}}
-	svc := NewBillingService(&config.Config{}, pricingSvc)
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	tokens := UsageTokens{
 		InputTokens:         200000,
@@ -670,13 +664,6 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedInput:     deepSeekV4FlashInputPricePerToken,
 			expectedOutput:    floatPtr(deepSeekV4FlashOutputPricePerToken),
 			expectedCacheRead: floatPtr(deepSeekV4FlashCacheReadPerToken),
-		},
-		{
-			name:              "deepseek v4 flash vision exp",
-			model:             "deepseek-v4-flash-vision-exp",
-			expectedInput:     2.2e-7,
-			expectedOutput:    floatPtr(6.6e-7),
-			expectedCacheRead: floatPtr(7e-9),
 		},
 		{
 			// deepseek-chat / deepseek-reasoner 已停止服务，统一按 flash 价兜底。
