@@ -9,8 +9,22 @@ git merge --no-ff upstream/main
 ```
 
 `theme/monet-purple` remains the upstream integration branch. After validation,
-merge it into `main`; only successful builds of the reviewed `main` commit may
-be deployed to production.
+commit the integration work there, then merge it into `main`, commit the merge
+on `main`, and push `main` to trigger the production image workflow:
+
+```bash
+git checkout theme/monet-purple
+# run the required generation, tests, and build checks
+git add -A && git commit -m "..."
+git checkout main
+git merge --no-ff theme/monet-purple -m "merge theme/monet-purple into main"
+git push origin main
+```
+
+Only a successful CI build from that reviewed `main` commit may be deployed to
+production. Before changing the deployed digest, back up the production
+database and Compose file, record the previous image digest for rollback, and
+validate the new Compose configuration.
 
 This long-lived fork must use a merge by default. Do not rebase it unless explicitly requested: replaying hundreds of local commits repeats equivalent conflicts and consumes excessive time and review tokens. Resolve each conflict once in the merge commit, preserving both new upstream behavior and the Sakrylle constraints below.
 
