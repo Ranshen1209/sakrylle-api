@@ -36,6 +36,7 @@ Quick commands (full list in `docs/development.md`): `make build`, `make test-ba
 
 - `main` is the only production branch. Build production images only from a reviewed `main` commit, and deploy that exact build by digest while retaining the previous digest for rollback.
 - Sync upstream with `git merge --no-ff upstream/main`; do not rebase this long-lived fork unless the user explicitly requests it. Replaying hundreds of commits causes repeated conflicts and excessive time/token usage.
+- The release flow is: validate and commit the integration work on `theme/monet-purple`, merge that branch into `main`, commit the merge on `main`, and push `main` to trigger the production image workflow. Deploy only after CI succeeds and the published image digest is recorded; back up the production database and Compose file before changing the deployment.
 - Before public 443 stream, firewall, or `sshd` changes, establish and keep open a direct `admin@154.44.8.202:22` fallback session; never rely only on SSH-over-443.
 - Do not reintroduce default model-list fallback in `/v1/models`.
 - Currency is display-only `￥`; do not convert stored numeric values.
