@@ -5,6 +5,7 @@ import Toast from '@/components/common/Toast.vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
 import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
+import i18n from '@/i18n'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
@@ -47,6 +48,7 @@ watch(
     () => appStore.cachedPublicSettings?.custom_menu_items,
     () => authStore.isAdmin,
     () => adminSettingsStore.customMenuItems,
+    () => i18n.global.locale.value,
   ],
   updateDocumentTitle,
   { deep: true }
