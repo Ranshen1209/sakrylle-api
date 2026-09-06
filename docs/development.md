@@ -18,7 +18,7 @@ This document replaces the old root `DEV_GUIDE.md`, which contained outdated for
 
 - Go `1.27.x`
 - pnpm 9
-- Node.js compatible with the frontend toolchain
+- Node.js `>=22.13` (CI currently uses `22.14.0`)
 - Docker / Docker Compose for local service orchestration
 - PostgreSQL and Redis if running outside Compose
 
@@ -63,6 +63,9 @@ pnpm --dir frontend run build
 ## Frontend Notes
 
 - Use pnpm, not npm.
+- This repository is not a pnpm workspace. Remove any old local
+  `frontend/pnpm-workspace.yaml`; pnpm 9 otherwise treats `frontend/` as an
+  incomplete workspace and commands such as `make build` fail.
 - Commit `frontend/pnpm-lock.yaml` when dependency graph changes.
 - If `node_modules` was created by another package manager, remove it before `pnpm install`.
 - Critical frontend tests are listed in the root `Makefile` under `FRONTEND_CRITICAL_VITEST`.
