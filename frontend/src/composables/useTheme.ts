@@ -26,8 +26,7 @@ let activeTransition: ThemeTransitionRun | null = null
 let pendingSystemTheme: boolean | null = null
 let nativeTransitionsDisabled = false
 
-const TRANSITION_MS = 500
-const TRANSITION_SAFETY_MS = TRANSITION_MS + 1500
+const TRANSITION_SAFETY_MS = 2000
 const TRANSITION_COOLDOWN_MS = 80
 
 function syncBrowserChrome(dark: boolean) {
@@ -86,6 +85,7 @@ function clearTransition(run: ThemeTransitionRun) {
   document.documentElement.style.removeProperty('--theme-transition-bg')
   document.documentElement.style.removeProperty('--theme-transition-x')
   document.documentElement.style.removeProperty('--theme-transition-y')
+  document.documentElement.style.removeProperty('--theme-transition-radius')
 
   if (pendingSystemTheme !== null) {
     const browserTheme = pendingSystemTheme
@@ -149,19 +149,9 @@ function getPointerOrigin(event?: MouseEvent): TransitionOrigin | null {
   return { x: event.clientX, y: event.clientY }
 }
 
-function resolveElementOrigin(element: HTMLElement, pointer: TransitionOrigin | null) {
+function resolveElementOrigin(element: HTMLElement) {
   const visibleRect = getVisibleRect(element)
   if (!visibleRect) return null
-
-  if (
-    pointer &&
-    pointer.x >= visibleRect.left &&
-    pointer.x <= visibleRect.right &&
-    pointer.y >= visibleRect.top &&
-    pointer.y <= visibleRect.bottom
-  ) {
-    return pointer
-  }
 
   return {
     x: (visibleRect.left + visibleRect.right) / 2,
@@ -171,20 +161,23 @@ function resolveElementOrigin(element: HTMLElement, pointer: TransitionOrigin | 
 
 function getTransitionOrigin(event?: MouseEvent): TransitionOrigin {
   const pointer = getPointerOrigin(event)
+  // A real click is authoritative even while the sidebar layout is settling.
+  // Measuring its moving control can otherwise replace it with the wrong center.
+  if (pointer) return pointer
   const trigger = event?.currentTarget
   if (trigger instanceof HTMLElement) {
-    const origin = resolveElementOrigin(trigger, pointer)
+    const origin = resolveElementOrigin(trigger)
     if (origin) return origin
   }
 
   // Responsive sidebars remain laid out while translated off-screen. Only use
   // a theme control that actually intersects the viewport.
   for (const element of document.querySelectorAll<HTMLElement>('[data-theme-toggle]')) {
-    const origin = resolveElementOrigin(element, pointer)
+    const origin = resolveElementOrigin(element)
     if (origin) return origin
   }
 
-  return pointer ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
 }
 
 export function useTheme() {
@@ -200,8 +193,7 @@ export function useTheme() {
     if (
       reducedMotion ||
       nativeTransitionsDisabled ||
-      typeof transitionDocument.startViewTransition !== 'function' ||
-      typeof document.documentElement.animate !== 'function'
+      typeof transitionDocument.startViewTransition !== 'function'
     ) {
       commitToggle()
       return
@@ -227,6 +219,7 @@ export function useTheme() {
     )
     document.documentElement.style.setProperty('--theme-transition-x', `${x}px`)
     document.documentElement.style.setProperty('--theme-transition-y', `${y}px`)
+    document.documentElement.style.setProperty('--theme-transition-radius', `${endRadius}px`)
     document.documentElement.classList.add('theme-toggling')
 
     try {
@@ -239,26 +232,10 @@ export function useTheme() {
       run.safetyTimer = setTimeout(() => requestTransitionSkip(run), TRANSITION_SAFETY_MS)
 
       void transition.updateCallbackDone?.catch(() => {})
-      void transition.ready
-        .then(() => {
-          if (activeTransition !== run) return
-          const animation = document.documentElement.animate(
-            {
-              clipPath: [
-                `circle(0px at ${x}px ${y}px)`,
-                `circle(${endRadius}px at ${x}px ${y}px)`
-              ]
-            },
-            {
-              duration: TRANSITION_MS,
-              easing: 'cubic-bezier(0.2, 0, 0, 1)',
-              fill: 'both',
-              pseudoElement: '::view-transition-new(root)'
-            }
-          )
-          void animation.finished.catch(() => {})
-        })
-        .catch(() => requestTransitionSkip(run))
+      // CSS owns the reveal from the first snapshot frame. A WAAPI animation
+      // installed in ready leaves a filled effect attached to HTML after the
+      // pseudo-element disappears, retaining stale snapshot animation state.
+      void transition.ready.catch(() => requestTransitionSkip(run))
 
       void transition.finished
         .catch(() => {})

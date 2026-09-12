@@ -6,9 +6,19 @@ Sakrylle API is a visual rebrand plus backend behavior changes. Core gateway log
 
 The brand color is Monet purple `#9181bd` (upstream teal was `#14b8a6`). Search `frontend/tailwind.config.js` and `frontend/src/` when extending theme usage.
 
-The `primary-*` Tailwind palette is backed by CSS variables in `frontend/src/style.css`. Light mode uses the canonical palette; dark mode shifts the purple scale lighter for contrast. Keep new brand styling on `primary-*` utilities so it follows the active light/dark class automatically. Theme toggles go through `frontend/src/composables/useTheme.ts` with a Telegram-style circular reveal of the destination theme, anchored to the actual pointer position. Root View Transitions must remain strictly serialized: repeat clicks do nothing until the matching `ViewTransition.finished` settles and a compositor cooldown completes. The watchdog may call that transition's `skipTransition()` but must never release the lock itself; overlapping full-viewport snapshots can crash Chromium on dense dashboard pages. The active theme follows the browser's live `prefers-color-scheme` value; manual toggles are temporary and are not persisted across refreshes or later browser preference changes. `color-scheme` is owned by CSS `:root` / `:root.dark` only — do not write inline `color-scheme` during toggles.
+The `primary-*` Tailwind palette is backed by CSS variables in `frontend/src/style.css`. Light mode uses the canonical palette; dark mode shifts the purple scale lighter for contrast. Keep new brand styling on `primary-*` utilities so it follows the active light/dark class automatically. Theme toggles go through `frontend/src/composables/useTheme.ts` with a Telegram-style circular reveal of the destination theme, anchored to the actual pointer position even while the sidebar layout is settling. The reveal is a CSS animation on `::view-transition-new(root)` with its origin and radius set before capture. Do not install filled WAAPI effects on `documentElement`: Chromium retains those effects after the snapshot disappears, leaving stale animation state across toggles. Root View Transitions must remain strictly serialized: repeat clicks do nothing until the matching `ViewTransition.finished` settles and a compositor cooldown completes. The watchdog may call that transition's `skipTransition()` but must never release the lock itself; overlapping full-viewport snapshots can crash Chromium on dense dashboard pages. The active theme follows the browser's live `prefers-color-scheme` value; manual toggles are temporary and are not persisted across refreshes or later browser preference changes. `color-scheme` is owned by CSS `:root` / `:root.dark` only — do not write inline `color-scheme` during toggles.
 
 OpenAI keys imported through the CC-Switch deeplink default to `gpt-5.6-sol`. The imported custom Codex provider name is intentionally `OpenAI`, which is CC-Switch's activation signal for remote compaction.
+
+## Account Testing
+
+The account page mounts its test dialog lazily with `show=true`. Both account
+test dialog variants must load models immediately on mount as well as when the
+account changes. Register the immediate watcher after its setup helpers, and
+invalidate pending loads and abort test streams when the dialog closes or is
+unmounted. A late response from the previous account must not replace the
+current account's selection. Keep model discovery on the existing admin API;
+do not introduce static gateway model-list fallback to fix dialog lifecycle bugs.
 
 ## Backend Behavior
 

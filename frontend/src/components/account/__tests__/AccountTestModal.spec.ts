@@ -135,7 +135,8 @@ describe('AccountTestModal', () => {
     })
 
     await flushPromises()
-    ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
+    expect(getAvailableModelsMock).toHaveBeenCalledTimes(1)
+    expect(getAvailableModelsMock).toHaveBeenCalledWith(1)
     ;(wrapper.vm as any).testMode = 'compact'
     await (wrapper.vm as any).startTest()
     await flushPromises()
@@ -183,7 +184,6 @@ describe('AccountTestModal', () => {
     })
 
     await flushPromises()
-    ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
     await (wrapper.vm as any).startTest()
     await flushPromises()
 

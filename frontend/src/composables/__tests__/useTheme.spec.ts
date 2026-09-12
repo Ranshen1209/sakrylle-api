@@ -57,12 +57,7 @@ function installViewTransitionMock() {
     updateCallbackDone: Deferred
     skipTransition: ReturnType<typeof vi.fn>
   }> = []
-  const animationRuns: Deferred[] = []
-  const animate = vi.fn().mockImplementation(() => {
-    const animation = deferred()
-    animationRuns.push(animation)
-    return { finished: animation.promise }
-  })
+  const animate = vi.fn()
   Object.defineProperty(document.documentElement, 'animate', {
     configurable: true,
     value: animate
@@ -93,7 +88,7 @@ function installViewTransitionMock() {
     value: startViewTransition
   })
 
-  return { animate, animationRuns, runs, startViewTransition }
+  return { animate, runs, startViewTransition }
 }
 
 async function flushPromises() {
@@ -154,20 +149,10 @@ describe('useTheme', () => {
       Math.max(38, window.innerWidth - 38),
       Math.max(500, window.innerHeight - 500)
     )
-    expect(mock.animate).toHaveBeenCalledWith(
-      {
-        clipPath: [
-          'circle(0px at 38px 500px)',
-          `circle(${radius}px at 38px 500px)`
-        ]
-      },
-      expect.objectContaining({
-        duration: 500,
-        pseudoElement: '::view-transition-new(root)'
-      })
-    )
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-radius')).toBe(`${radius}px`)
+    // The native snapshot owns its CSS animation; no filled root effect remains.
+    expect(mock.animate).not.toHaveBeenCalled()
 
-    mock.animationRuns[0]!.resolve()
     await flushPromises()
     button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 501 }))
     expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
@@ -197,16 +182,24 @@ describe('useTheme', () => {
     run.ready.resolve()
     await flushPromises()
 
-    expect(mock.animate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        clipPath: [
-          'circle(0px at 580px 40px)',
-          expect.stringMatching(/^circle\(.+px at 580px 40px\)$/)
-        ]
-      }),
-      expect.objectContaining({ pseudoElement: '::view-transition-new(root)' })
-    )
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-x')).toBe('580px')
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-y')).toBe('40px')
+    expect(mock.animate).not.toHaveBeenCalled()
     await finishNativeTransition(run)
+  })
+
+  it('keeps the first pointer position when the control layout is still moving', async () => {
+    const mock = installViewTransitionMock()
+    const { useTheme } = await import('../useTheme')
+    const button = document.createElement('button')
+    mockRect(button, 24, 240, 200, 48)
+    button.addEventListener('click', useTheme().toggleTheme)
+    button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 700 }))
+
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-x')).toBe('40px')
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-y')).toBe('700px')
+    await finishNativeTransition(mock.runs[0]!)
+    expect(document.documentElement.style.getPropertyValue('--theme-transition-radius')).toBe('')
   })
 
   it('coalesces 50 clicks until the native transition and compositor cooldown finish', async () => {
@@ -226,7 +219,6 @@ describe('useTheme', () => {
 
     run.ready.resolve()
     await flushPromises()
-    mock.animationRuns[0]!.resolve()
     await flushPromises()
     for (let index = 0; index < 50; index += 1) {
       button.dispatchEvent(new MouseEvent('click', { clientX: 42, clientY: 501 }))
