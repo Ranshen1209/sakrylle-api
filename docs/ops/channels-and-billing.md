@@ -65,6 +65,24 @@ The built-in V4 capability catalog follows the same announcement: 1M context, 38
 
 The Channel Pricing editor uses the same two Monday-Friday windows as the DeepSeek default when an administrator adds an explicit version. The user Available Channels popover and Model Plaza receive both the current resolved price and the schedule. Frontends must display the backend resolution instead of independently deciding whether the current instant is peak.
 
+### September 2026 Flash update
+
+The [current official CNY price card](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)
+was checked on 2026-09-12. Flash peak prices are input/cache miss **￥2**, output
+**￥8**, and cache read **￥0.04** per MTok; off-peak is half. `deepseek-flash`
+(V4.1 Flash), `deepseek-v4-flash`, and `deepseek-v4-flash-vision-exp` share this
+card and native vision capability. The existing dated Flash alias follows the
+same compatibility card. The new card supersedes the historical Flash numbers
+above; Pro remains input **￥9**, output **￥27**, cache read **￥0.30** at peak.
+
+The September 10 news item announced Pro retirement on September 14, but the
+live pricing page now explicitly keeps Pro service and billing unchanged.
+Sakrylle therefore does not adopt upstream's automatic Pro-to-Flash billing
+switch. Built-in baselines and model metadata use the published CNY numbers
+directly, without FX conversion. Explicit group/channel prices and channel time
+versions retain precedence. The predeployment database audit found no persisted
+DeepSeek channel price rows, so no production price migration was required.
+
 Account-level `model_mapping` lives in `accounts.credentials.model_mapping` (jsonb), not `accounts.extra`. Empty or absent mapping passes all models.
 
 ## codex-auto-review Two-Gate Rule

@@ -237,6 +237,7 @@ func TestCalculateCostUnified_DeepseekPricingAtZeroFallsBackToNow(t *testing.T) 
 func TestGetModelPricing_DeepseekForcesOfficialRatesOverJSON(t *testing.T) {
 	// JSON 给任意价（模拟远端旧价/占位价），deepseek-* 必须被强制覆盖为官方低谷价。
 	pricingSvc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		"deepseek-flash":               {InputCostPerToken: 1e-6, OutputCostPerToken: 2e-6, CacheReadInputTokenCost: 1e-8},
 		"deepseek-v4-flash":            {InputCostPerToken: 1e-6, OutputCostPerToken: 2e-6, CacheReadInputTokenCost: 1e-8},
 		"deepseek-v4-pro":              {InputCostPerToken: 1e-6, OutputCostPerToken: 2e-6, CacheReadInputTokenCost: 1e-8},
 		"deepseek-v4-flash-vision-exp": {InputCostPerToken: 1e-6, OutputCostPerToken: 2e-6, CacheReadInputTokenCost: 1e-8},
@@ -258,16 +259,19 @@ func TestGetModelPricing_DeepseekForcesOfficialRatesOverJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
+			// Current official pricing keeps the Pro card separate from Flash.
 			pricing, err := bs.GetModelPricing(tt.model)
 			require.NoError(t, err)
 			require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-15)
 			require.InDelta(t, tt.output, pricing.OutputPricePerToken, 1e-15)
 			require.InDelta(t, tt.cacheRead, pricing.CacheReadPricePerToken, 1e-15)
+
 			require.True(t, bs.HasIdentifiedTokenPricing(tt.model))
 		})
 	}
 
 	// 版本化名称（不在 JSON / fallbackPrices 精确表中）：按子串归档计价。
+	// flash-0731 归 flash 档，三档价与切换无关，GetModelPricing 断言稳定。
 	versioned := []struct {
 		model                    string
 		input, output, cacheRead float64
@@ -339,5 +343,54 @@ func TestDeepseekPricingFileMatchesOfficialRates(t *testing.T) {
 			require.InDelta(t, tt.output, entry.OutputCostPerToken, 1e-15)
 			require.InDelta(t, tt.cacheRead, entry.CacheReadInputTokenCost, 1e-15)
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 2026-09-10 官方降价：deepseek-flash（V4.1-Flash 新名）与旧名同价；
+// Pro remains available at its original price, per the updated official card.
+// ---------------------------------------------------------------------------
+
+func TestCalculateCostUnified_DeepseekFlashAndLegacyFlashShareNewRates(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+
+	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 1000}
+	// Official CNY prices use the peak baseline and one off-peak multiplier.
+	offPeakTotal := (1000*deepSeekV4FlashInputPricePerToken + 500*deepSeekV4FlashOutputPricePerToken + 1000*deepSeekV4FlashCacheReadPerToken) * 0.5
+
+	// deepseek-flash 与 deepseek-v4-flash 都取 Flash 新价。
+	// 时点取切换日 2026-09-14（周一）12:00 UTC 低谷，峰谷倍率不影响断言。
+	for _, model := range []string{"deepseek-flash", "deepseek-v4-flash"} {
+		cost, err := bs.CalculateCostUnified(CostInput{
+			Ctx: context.Background(), Model: model, Tokens: tokens,
+			RateMultiplier: 1.0, Resolver: resolver,
+			PricingAt: time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC),
+		})
+		require.NoError(t, err)
+		require.InDelta(t, offPeakTotal, cost.TotalCost, 1e-10, "model %s must use new flash rates", model)
+	}
+}
+
+// The live official pricing page retracts the announced September 14 Pro
+// retirement. Preserve the Pro card across that boundary, including aliases.
+func TestCalculateCostUnified_DeepseekProRetainsRatesAfterSeptember14(t *testing.T) {
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(nil, bs)
+	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 1000}
+	want := (1000*9e-6 + 500*27e-6 + 1000*0.3e-6) * 0.5
+	for _, model := range []string{"deepseek-v4-pro", "deepseek-v4-pro-0813"} {
+		for _, at := range []time.Time{
+			time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC),
+			time.Date(2026, 9, 14, 4, 0, 0, 0, time.UTC),
+			time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
+		} {
+			cost, err := bs.CalculateCostUnified(CostInput{
+				Ctx: context.Background(), Model: model, Tokens: tokens,
+				RateMultiplier: 1, Resolver: resolver, PricingAt: at,
+			})
+			require.NoError(t, err)
+			require.InDelta(t, want, cost.TotalCost, 1e-10, "%s at %v", model, at)
+		}
 	}
 }

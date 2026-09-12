@@ -296,10 +296,3 @@ func TestSecuritySecretsOIDCKeyStore_EmptyValue_Rejected(t *testing.T) {
 		t.Fatal("Put should reject empty value due to ent validator")
 	}
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
