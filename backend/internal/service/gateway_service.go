@@ -1491,6 +1491,7 @@ func (s *GatewayService) collectModelsFromAccountMapping(ctx context.Context, gr
 		models = append(models, model)
 	}
 	sort.Strings(models)
+
 	return models
 }
 

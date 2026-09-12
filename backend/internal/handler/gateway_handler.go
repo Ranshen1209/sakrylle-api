@@ -1119,7 +1119,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 }
 
 // Models handles listing available models
-// GET /v1/models
+// GET /v1/models and /v1/models/:model
 //
 // Returns the models the admin has declared this group sells, sourced
 // from the group's channel_model_pricing (and legacy account model_mapping
@@ -1152,10 +1152,16 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	ownedBy := platformOwnedBy(platform)
 
+	if platform == service.PlatformOpenAI && apiKey != nil && apiKey.Group != nil &&
+		apiKey.Group.Platform == service.PlatformOpenAI && apiKey.Group.CodexModelsManifestConfig.Enabled {
+		h.pinnedOpenAIModels(c, apiKey.Group)
+		return
+	}
+
 	if platform == service.PlatformComposite {
 		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
-		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-			availableModels = filterModelsByCustomList(availableModels, apiKey.Group.ModelsListConfig.Models)
+		if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+			availableModels = apiKey.Group.ModelAllowlist.FilterForListing(availableModels)
 		}
 		writeCustomModelsList(c, service.PlatformComposite, availableModels, ownedBy, false, false)
 		return
@@ -1172,8 +1178,8 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		allowImage = apiKey.Group.AllowImageGeneration
 	}
 
-	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-		availableModels = filterModelsByCustomList(availableModels, apiKey.Group.ModelsListConfig.Models)
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+		availableModels = apiKey.Group.ModelAllowlist.FilterForListing(availableModels)
 		writeCustomModelsList(c, platform, availableModels, ownedBy, emitImageFlag, allowImage)
 		return
 	}
@@ -1186,7 +1192,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 // 缺这个字段会让 CherryStudio 等客户端按 channel UUID 分组，UI 显示成乱码。
 func platformOwnedBy(platform string) string {
 	switch platform {
-	case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek:
+	case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo:
 		return "openai"
 	case service.PlatformGemini:
 		return "google"
@@ -1246,8 +1252,8 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	if platform == service.PlatformComposite {
 		availableModels := h.compositeAvailableModels(ctx, groupID)
 		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
-		if group.CustomModelsListEnabled() {
-			return filterModelsByCustomList(mergeModelIDs(availableModels, fallbackModels), group.ModelsListConfig.Models)
+		if group.ModelAllowlistEnabled() {
+			return group.ModelAllowlist.FilterForListing(mergeModelIDs(availableModels, fallbackModels))
 		}
 		if len(availableModels) > 0 {
 			return availableModels
@@ -1257,8 +1263,8 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 
 	availableModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 	fallbackModels := defaultCodexModelIDsForPlatform(platform)
-	if group.CustomModelsListEnabled() {
-		return filterModelsByCustomList(mergeModelIDs(availableModels, fallbackModels), group.ModelsListConfig.Models)
+	if group.ModelAllowlistEnabled() {
+		return group.ModelAllowlist.FilterForListing(mergeModelIDs(availableModels, fallbackModels))
 	}
 	if len(availableModels) > 0 {
 		return availableModels
@@ -1272,7 +1278,7 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	}
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek} {
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo} {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		for _, model := range platformModels {
 			model = strings.TrimSpace(model)
@@ -1311,10 +1317,7 @@ func writeModelsList(c *gin.Context, modelIDs []string, ownedBy string, emitImag
 		}
 		models = append(models, entry)
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   models,
-	})
+	writeModelsListResponse(c, models)
 }
 
 // writeAggregatedModels emits a flat, group-tagged model list spanning several
@@ -1329,8 +1332,8 @@ func (h *GatewayHandler) writeAggregatedModels(c *gin.Context, groups []*service
 		}
 		platform := g.Platform
 		models := h.gatewayService.GetAvailableModels(c.Request.Context(), &g.ID, platform)
-		if g.CustomModelsListEnabled() {
-			models = filterModelsByCustomList(models, g.ModelsListConfig.Models)
+		if g.ModelAllowlistEnabled() {
+			models = g.ModelAllowlist.FilterForListing(models)
 		}
 		ownedBy := platformOwnedBy(platform)
 		emitImageFlag := platform == service.PlatformOpenAI
@@ -1355,10 +1358,7 @@ func (h *GatewayHandler) writeAggregatedModels(c *gin.Context, groups []*service
 			data = append(data, entry)
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   data,
-	})
+	writeModelsListResponse(c, data)
 }
 
 type grokReasoningEffortOption struct {
@@ -1409,10 +1409,7 @@ func writeGrokModelsList(c *gin.Context, modelIDs []string) {
 		models = append(models, item)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   models,
-	})
+	writeModelsListResponse(c, models)
 }
 
 func grokModelSupportsConfigurableReasoning(modelID string) bool {
@@ -1469,72 +1466,15 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string, emitImageFlag, all
 		}
 		models = append(models, entry)
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   models,
-	})
-}
-
-func filterModelsByCustomList(availableModels, selectedModels []string) []string {
-	if len(selectedModels) == 0 {
-		return availableModels
-	}
-	source := availableModels
-	if len(source) == 0 {
-		return nil
-	}
-
-	allowed := make([]string, 0, len(source))
-	for _, model := range source {
-		model = strings.TrimSpace(model)
-		if model != "" {
-			allowed = append(allowed, model)
-		}
-	}
-
-	seen := make(map[string]struct{}, len(selectedModels))
-	filtered := make([]string, 0, len(selectedModels))
-	for _, model := range selectedModels {
-		model = strings.TrimSpace(model)
-		if model == "" {
-			continue
-		}
-		if !customModelsListAllowsModel(allowed, model) {
-			continue
-		}
-		if _, ok := seen[model]; ok {
-			continue
-		}
-		seen[model] = struct{}{}
-		filtered = append(filtered, model)
-	}
-	return filtered
-}
-
-func customModelsListAllowsModel(availablePatterns []string, model string) bool {
-	for _, pattern := range availablePatterns {
-		if pattern == model {
-			return true
-		}
-		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
-			return true
-		}
-	}
-	normalizedClaudeModel := claude.NormalizeModelID(strings.TrimSuffix(model, "-thinking"))
-	if normalizedClaudeModel != model {
-		for _, pattern := range availablePatterns {
-			if pattern == normalizedClaudeModel {
-				return true
-			}
-		}
-	}
-	return false
+	writeModelsListResponse(c, models)
 }
 
 func defaultCodexModelIDsForPlatform(platform string) []string {
 	switch platform {
 	case service.PlatformDeepseek:
-		return []string{"deepseek-v4-pro", "deepseek-v4-flash"}
+		return []string{"deepseek-v4-pro", "deepseek-v4-flash", "deepseek-flash"}
+	case service.PlatformMiniMax:
+		return []string{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5"}
 	default:
 		return defaultModelIDsForPlatform(platform)
 	}
@@ -1562,13 +1502,15 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return claude.DefaultModelIDs()
 	case service.PlatformGrok:
 		return xai.DefaultModelIDs()
+	case service.PlatformOpenCodeGo:
+		return service.DefaultOpenCodeGoModelIDs()
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
 		// Composite Codex fallback advertises protocol-native defaults. Antigravity
 		// defaults are account-backed and are added through compositeAvailableModels
 		// when an Antigravity account is actually attached.
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek} {
+		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformOpenCodeGo} {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
 					continue
@@ -1608,10 +1550,21 @@ func mergeModelIDs(primary, secondary []string) []string {
 
 // AntigravityModels 返回 Antigravity 支持的全部模型
 // GET /antigravity/models
+// 分组级模型白名单开启时按白名单过滤。
 func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
+	models := antigravity.DefaultModels()
+	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+		filtered := make([]antigravity.ClaudeModel, 0, len(models))
+		for _, model := range models {
+			if apiKey.Group.ModelAllowlist.Allows(model.ID) {
+				filtered = append(filtered, model)
+			}
+		}
+		models = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   antigravity.DefaultModels(),
+		"data":   models,
 	})
 }
 

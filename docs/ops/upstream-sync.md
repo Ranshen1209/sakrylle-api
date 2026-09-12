@@ -117,3 +117,30 @@ Upstream periodically doubles these through bulk re-sync. Revert both JSON entry
 Upstream plus Sakrylle OIDC work can extend repository interfaces, for example `DeleteWithAudit` or `ListClientsWithBackchannelLogout`.
 
 Production code may build while tests fail because service/handler/middleware stubs lack new methods. Add missing methods mirroring sibling stub implementations.
+
+## 2026-09-12: v0.2.4 plus upstream main
+
+Merge upstream `4726bdd08` (VERSION `0.2.4`) with `--no-ff`. The integration
+adds MiniMax/OpenCode, native Codex Images, group model allowlists, site billing
+mode, proxy fallback updates, and request-scoped Codex WebSocket sessions.
+Regenerate Ent from the merged schemas and run Wire through Go 1.27 (`go run github.com/google/wire/cmd/wire ./cmd/server/`); an older standalone Wire binary
+can fail even when `GOTOOLCHAIN` selects 1.27.
+
+Keep channel/account-configured `/v1/models` discovery without default model
+supplementation, while adopting allowlist filtering and single-model retrieval.
+Preserve OAuth group aggregation, scope gates, DeepSeek Files, Grok/async image
+adapters, `image_only`, QQ email warning settings, and all cleanup consumers.
+The renamed model allowlist now governs request admission as well as discovery.
+The deployment audit found no enabled legacy `models_list_config` entries.
+
+DeepSeek's current official Chinese price page retracts the September 14 Pro
+retirement announced in the September 10 news item. Do not merge upstream's
+scheduled Pro-to-Flash billing switch. Keep Pro at its existing CNY peak card;
+Flash and its compatibility aliases use the new CNY peak card (input 2, output
+8, cache read 0.04 per MTok), with the existing single 0.5 off-peak multiplier.
+Do not convert stored numbers or overwrite operator-owned channel pricing.
+See `channels-and-billing.md` for the source and details.
+
+Upstream's locale completeness test must traverse leaf values directly: OAuth
+scope message keys contain literal dots, so splitting flattened keys on `.`
+misinterprets valid messages. Keep eight-decimal usage details with the ￥ symbol.

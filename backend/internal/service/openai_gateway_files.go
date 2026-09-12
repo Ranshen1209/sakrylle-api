@@ -155,7 +155,7 @@ func (s *OpenAIGatewayService) ForwardDeepSeekFiles(
 	// Anthropic endpoint defaults to x-api-key (with the account-level scheme
 	// override still honored), just like /v1/messages.
 	if nativeAnthropic {
-		setAnthropicAPIKeyAuthHeader(upstreamReq.Header, account, strings.TrimSpace(token))
+		setAnthropicAPIKeyAuthHeader(upstreamReq.Header, account, strings.TrimSpace(token), targetURL)
 	} else {
 		upstreamReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
 	}

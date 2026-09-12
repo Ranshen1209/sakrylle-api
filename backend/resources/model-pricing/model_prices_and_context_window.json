@@ -756,17 +756,17 @@
     "supports_web_search": true,
     "supports_xhigh_reasoning_effort": true
   },
-  "deepseek-v4-flash": {
+  "deepseek-flash": {
     "cache_creation_input_token_cost": 0.0,
-    "cache_read_input_token_cost": 1e-07,
-    "input_cost_per_token": 3e-06,
-    "input_cost_per_token_cache_hit": 1e-07,
+    "cache_read_input_token_cost": 4e-08,
+    "input_cost_per_token": 2e-06,
+    "input_cost_per_token_cache_hit": 4e-08,
     "litellm_provider": "deepseek",
     "max_input_tokens": 1000000,
     "max_output_tokens": 384000,
     "max_tokens": 384000,
     "mode": "chat",
-    "output_cost_per_token": 9e-06,
+    "output_cost_per_token": 8e-06,
     "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
     "supported_endpoints": [
       "/v1/chat/completions",
@@ -782,19 +782,47 @@
     "supports_response_schema": true,
     "supports_system_messages": true,
     "supports_tool_choice": true,
-    "supports_vision": false
+    "supports_vision": true
+  },
+  "deepseek-v4-flash": {
+    "cache_creation_input_token_cost": 0.0,
+    "cache_read_input_token_cost": 4e-08,
+    "input_cost_per_token": 2e-06,
+    "input_cost_per_token_cache_hit": 4e-08,
+    "litellm_provider": "deepseek",
+    "max_input_tokens": 1000000,
+    "max_output_tokens": 384000,
+    "max_tokens": 384000,
+    "mode": "chat",
+    "output_cost_per_token": 8e-06,
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "supported_endpoints": [
+      "/v1/chat/completions",
+      "/v1/responses",
+      "/v1/messages"
+    ],
+    "supports_assistant_prefill": true,
+    "supports_function_calling": true,
+    "supports_native_streaming": true,
+    "supports_parallel_function_calling": true,
+    "supports_prompt_caching": true,
+    "supports_reasoning": true,
+    "supports_response_schema": true,
+    "supports_system_messages": true,
+    "supports_tool_choice": true,
+    "supports_vision": true
   },
   "deepseek-v4-flash-0731": {
     "cache_creation_input_token_cost": 0.0,
-    "cache_read_input_token_cost": 1e-07,
-    "input_cost_per_token": 3e-06,
-    "input_cost_per_token_cache_hit": 1e-07,
+    "cache_read_input_token_cost": 4e-08,
+    "input_cost_per_token": 2e-06,
+    "input_cost_per_token_cache_hit": 4e-08,
     "litellm_provider": "deepseek",
     "max_input_tokens": 1000000,
     "max_output_tokens": 384000,
     "max_tokens": 384000,
     "mode": "chat",
-    "output_cost_per_token": 9e-06,
+    "output_cost_per_token": 8e-06,
     "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
     "supported_endpoints": [
       "/v1/chat/completions",
@@ -810,19 +838,19 @@
     "supports_response_schema": true,
     "supports_system_messages": true,
     "supports_tool_choice": true,
-    "supports_vision": false
+    "supports_vision": true
   },
   "deepseek-v4-flash-vision-exp": {
     "cache_creation_input_token_cost": 0.0,
-    "cache_read_input_token_cost": 1e-07,
-    "input_cost_per_token": 3e-06,
-    "input_cost_per_token_cache_hit": 1e-07,
+    "cache_read_input_token_cost": 4e-08,
+    "input_cost_per_token": 2e-06,
+    "input_cost_per_token_cache_hit": 4e-08,
     "litellm_provider": "deepseek",
     "max_input_tokens": 1000000,
     "max_output_tokens": 384000,
     "max_tokens": 384000,
     "mode": "chat",
-    "output_cost_per_token": 9e-06,
+    "output_cost_per_token": 8e-06,
     "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
     "supported_endpoints": [
       "/v1/chat/completions",
@@ -6408,5 +6436,69 @@
     "supports_tool_choice": true,
     "supports_vision": true,
     "supports_web_search": true
-  }
+  },
+    "gpt-image-2.5-flare": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    },
+    "gpt-image-2.5-flare-2026-09-08": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    },
+    "gpt-image-2.5-sunburst": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    },
+    "gpt-image-2.5-sunburst-2026-09-08": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    }
 }
