@@ -320,40 +320,27 @@ const sortTestModels = (models: ClaudeModel[]) => {
   })
 }
 
-// Load available models when modal opens
-watch(
-  () => props.show,
-  async (newVal) => {
-    if (newVal && props.account) {
-      testPrompt.value = ''
-      testMode.value = 'default'
-      resetState()
-      await loadAvailableModels()
-    } else {
-      abortStream()
-    }
-  }
-)
-
 watch(selectedModelId, () => {
   if (supportsImageTest.value && !testPrompt.value.trim()) {
     testPrompt.value = t('admin.accounts.imagePromptDefault')
   }
 })
 
-const loadAvailableModels = async () => {
-  if (!props.account) return
+const loadAvailableModels = async (isCurrent: () => boolean) => {
+  const account = props.account
+  if (!account) return
 
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
-    availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
+    const models = await adminAPI.accounts.getAvailableModels(account.id)
+    if (!isCurrent()) return
+    availableModels.value = account.platform === 'gemini' || account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
+      if (account.platform === 'gemini') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model
@@ -362,12 +349,13 @@ const loadAvailableModels = async () => {
       }
     }
   } catch (error) {
+    if (!isCurrent()) return
     console.error('Failed to load available models:', error)
     // Fallback to empty list
     availableModels.value = []
     selectedModelId.value = ''
   } finally {
-    loadingModels.value = false
+    if (isCurrent()) loadingModels.value = false
   }
 }
 
@@ -559,6 +547,30 @@ const copyOutput = () => {
   const text = outputLines.value.map((l) => l.text).join('\n')
   copyToClipboard(text, t('admin.accounts.outputCopied'))
 }
+
+// Register after all setup helpers exist; lazy mounting starts with show=true.
+watch(
+  [() => props.show, () => props.account?.id],
+  async ([show], _previous, onCleanup) => {
+    let current = true
+    onCleanup(() => {
+      current = false
+      abortStream()
+    })
+    availableModels.value = []
+    selectedModelId.value = ''
+    loadingModels.value = false
+    if (show && props.account) {
+      testPrompt.value = ''
+      testMode.value = 'default'
+      resetState()
+      await loadAvailableModels(() => current)
+    } else {
+      abortStream()
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style>

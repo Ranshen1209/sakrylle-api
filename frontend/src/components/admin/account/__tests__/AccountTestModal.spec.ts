@@ -68,10 +68,10 @@ function mountModal(account: Record<string, unknown> = {
   platform: 'gemini',
   type: 'apikey',
   status: 'active'
-}) {
+}, show = false) {
   return mount(AccountTestModal, {
     props: {
-      show: false,
+      show,
       account
     } as any,
     global: {
@@ -117,6 +117,44 @@ describe('AccountTestModal', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('loads and selects models when the lazy dialog mounts already open', async () => {
+    getAvailableModels.mockClear()
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-5.6-sol', display_name: 'GPT-5.6 Sol' }
+    ])
+    const wrapper = mountModal({
+      id: 1170, name: 'API key account', platform: 'openai', type: 'apikey', status: 'active'
+    }, true)
+    await flushPromises()
+
+    expect(getAvailableModels).toHaveBeenCalledTimes(1)
+    expect(getAvailableModels).toHaveBeenCalledWith(1170)
+    const startButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))!
+    expect(startButton.attributes('disabled')).toBeUndefined()
+    await startButton.trigger('click')
+    await flushPromises()
+    expect(JSON.parse((global.fetch as any).mock.calls[0][1].body).model_id).toBe('gpt-5.6-sol')
+    wrapper.unmount()
+  })
+
+  it('keeps the current account models when an earlier request finishes late', async () => {
+    let resolveFirst!: (models: unknown[]) => void
+    getAvailableModels.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+    getAvailableModels.mockResolvedValueOnce([{ id: 'gpt-6-astra', display_name: 'GPT-6 Astra' }])
+    const account = { id: 1170, name: 'First', platform: 'openai', type: 'apikey', status: 'active' }
+    const wrapper = mountModal(account, true)
+    await wrapper.setProps({ account: { ...account, id: 1171, name: 'Second' } as any })
+    await flushPromises()
+    resolveFirst([{ id: 'old-model', display_name: 'Old model' }])
+    await flushPromises()
+
+    const startButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))!
+    await startButton.trigger('click')
+    await flushPromises()
+    expect(JSON.parse((global.fetch as any).mock.calls[0][1].body).model_id).toBe('gpt-6-astra')
+    wrapper.unmount()
   })
 
   it('gemini 图片模型测试会携带提示词并渲染图片预览', async () => {

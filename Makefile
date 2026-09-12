@@ -6,6 +6,8 @@ FRONTEND_CRITICAL_VITEST := \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/components/Guide/__tests__/steps.spec.ts \
 	src/composables/__tests__/useTheme.spec.ts \
+	src/components/admin/account/__tests__/AccountTestModal.spec.ts \
+	src/components/account/__tests__/AccountTestModal.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
 	src/views/auth/__tests__/WechatCallbackView.spec.ts \
