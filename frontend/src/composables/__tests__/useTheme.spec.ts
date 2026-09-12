@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type Deferred = {
   promise: Promise<void>
@@ -103,7 +103,28 @@ async function finishNativeTransition(run: { finished: Deferred }) {
   await vi.runAllTimersAsync()
 }
 
+function readRevealGeometry() {
+  const percent = (name: string) => {
+    const value = document.documentElement.style.getPropertyValue(`--theme-transition-${name}`)
+    expect(value.endsWith('%')).toBe(true)
+    return parseFloat(value) / 100
+  }
+  return {
+    x: percent('x') * window.innerWidth,
+    y: percent('y') * window.innerHeight,
+    radius: percent('radius') * Math.sqrt((window.innerWidth ** 2 + window.innerHeight ** 2) / 2)
+  }
+}
+
+function expectRevealOrigin(x: number, y: number) {
+  const geometry = readRevealGeometry()
+  expect(geometry.x).toBeCloseTo(x)
+  expect(geometry.y).toBeCloseTo(y)
+}
+
 describe('useTheme', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
   beforeEach(() => {
     vi.resetModules()
     vi.useFakeTimers()
@@ -137,8 +158,7 @@ describe('useTheme', () => {
 
     expect(mock.startViewTransition).toHaveBeenCalledTimes(1)
     expect(document.documentElement.classList.contains('dark')).toBe(false)
-    expect(document.documentElement.style.getPropertyValue('--theme-transition-x')).toBe('38px')
-    expect(document.documentElement.style.getPropertyValue('--theme-transition-y')).toBe('500px')
+    expectRevealOrigin(38, 500)
     expect(localStorage.getItem('theme')).toBeNull()
 
     const run = mock.runs[0]!
@@ -149,7 +169,7 @@ describe('useTheme', () => {
       Math.max(38, window.innerWidth - 38),
       Math.max(500, window.innerHeight - 500)
     )
-    expect(document.documentElement.style.getPropertyValue('--theme-transition-radius')).toBe(`${radius}px`)
+    expect(readRevealGeometry().radius).toBeCloseTo(radius)
     // The native snapshot owns its CSS animation; no filled root effect remains.
     expect(mock.animate).not.toHaveBeenCalled()
 
@@ -182,8 +202,7 @@ describe('useTheme', () => {
     run.ready.resolve()
     await flushPromises()
 
-    expect(document.documentElement.style.getPropertyValue('--theme-transition-x')).toBe('580px')
-    expect(document.documentElement.style.getPropertyValue('--theme-transition-y')).toBe('40px')
+    expectRevealOrigin(580, 40)
     expect(mock.animate).not.toHaveBeenCalled()
     await finishNativeTransition(run)
   })
@@ -196,10 +215,29 @@ describe('useTheme', () => {
     button.addEventListener('click', useTheme().toggleTheme)
     button.dispatchEvent(new MouseEvent('click', { clientX: 40, clientY: 700 }))
 
-    expect(document.documentElement.style.getPropertyValue('--theme-transition-x')).toBe('40px')
-    expect(document.documentElement.style.getPropertyValue('--theme-transition-y')).toBe('700px')
+    expectRevealOrigin(40, 700)
     await finishNativeTransition(mock.runs[0]!)
     expect(document.documentElement.style.getPropertyValue('--theme-transition-radius')).toBe('')
+  })
+
+  it.each([
+    { width: 1380, height: 972, dpr: 1, x: 117, y: 895 },
+    { width: 1380, height: 972, dpr: 2, x: 117, y: 895 },
+    { width: 390, height: 844, dpr: 3, x: 355, y: 24 }
+  ])('keeps the origin and covers all corners at $width x $height, DPR $dpr', async ({ width, height, dpr, x, y }) => {
+    vi.stubGlobal('innerWidth', width)
+    vi.stubGlobal('innerHeight', height)
+    vi.stubGlobal('devicePixelRatio', dpr)
+    const mock = installViewTransitionMock()
+    const { useTheme } = await import('../useTheme')
+
+    useTheme().toggleTheme(new MouseEvent('click', { clientX: x, clientY: y }))
+    expectRevealOrigin(x, y)
+    const { radius } = readRevealGeometry()
+    for (const [cornerX, cornerY] of [[0, 0], [width, 0], [0, height], [width, height]]) {
+      expect(Math.hypot(cornerX! - x, cornerY! - y)).toBeLessThanOrEqual(radius + 1e-8)
+    }
+    await finishNativeTransition(mock.runs[0]!)
   })
 
   it('coalesces 50 clicks until the native transition and compositor cooldown finish', async () => {

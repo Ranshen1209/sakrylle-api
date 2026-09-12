@@ -200,10 +200,16 @@ export function useTheme() {
     }
 
     const { x, y } = getTransitionOrigin(event)
+    const width = window.innerWidth
+    const height = window.innerHeight
     const endRadius = Math.hypot(
-      Math.max(x, window.innerWidth - x),
-      Math.max(y, window.innerHeight - y)
+      Math.max(x, width - x),
+      Math.max(y, height - y)
     )
+    // Keep every clip-path length relative to the root snapshot. Some Chromium
+    // compositor paths mis-scale animated pixel lengths on high-DPI displays.
+    // CSS circle percentages use the reference box's normalized diagonal.
+    const radiusReference = Math.hypot(width, height) / Math.SQRT2
     const nextDark = !document.documentElement.classList.contains('dark')
     const run: ThemeTransitionRun = {
       transition: null,
@@ -217,9 +223,12 @@ export function useTheme() {
       '--theme-transition-bg',
       nextDark ? '#020617' : '#f9fafb'
     )
-    document.documentElement.style.setProperty('--theme-transition-x', `${x}px`)
-    document.documentElement.style.setProperty('--theme-transition-y', `${y}px`)
-    document.documentElement.style.setProperty('--theme-transition-radius', `${endRadius}px`)
+    document.documentElement.style.setProperty('--theme-transition-x', `${(x / width) * 100}%`)
+    document.documentElement.style.setProperty('--theme-transition-y', `${(y / height) * 100}%`)
+    document.documentElement.style.setProperty(
+      '--theme-transition-radius',
+      `${(endRadius / radiusReference) * 100}%`
+    )
     document.documentElement.classList.add('theme-toggling')
 
     try {
