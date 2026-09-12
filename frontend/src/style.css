@@ -25,7 +25,7 @@ html.theme-toggling::view-transition-new(root) {
    effects to documentElement, where they survive ViewTransition.finished. */
 @keyframes theme-reveal {
   from {
-    clip-path: circle(0px at var(--theme-transition-x) var(--theme-transition-y));
+    clip-path: circle(0% at var(--theme-transition-x) var(--theme-transition-y));
   }
   to {
     clip-path: circle(var(--theme-transition-radius) at var(--theme-transition-x) var(--theme-transition-y));
