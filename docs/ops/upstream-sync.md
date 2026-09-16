@@ -1,5 +1,25 @@
 # Upstream Sync
 
+## 2026-09-16: v0.2.5
+
+Merge `upstream/main` at `881f32026`, including the VERSION synchronization to
+`0.2.5`. Keep the Sakrylle README and combine both critical frontend test lists
+when resolving the README/Makefile conflicts. Regenerate Wire for the Ollama
+quota reset scheduler dependency; retain OIDC key rotation, CN balance checking,
+and plugin cleanup consumers. No Ent schema or migration changes are included.
+
+The new DeepSeek empty-mapping allowlist must retain Sakrylle's
+`deepseek-v4-flash-0731` compatibility alias alongside the upstream names.
+Unknown models remain rejected, explicit mappings remain authoritative, and
+this request admission rule does not restore `/v1/models` default fallback.
+Keep the existing Pro/Flash pricing policy and channel margin behavior.
+
+The release includes API key bulk editing and provider filtering, subscription
+bulk actions, registration password confirmation, OAuth promo-code preservation,
+Codex quota/connection-pool fixes, and Responses tool/text compatibility fixes.
+Use golangci-lint 2.13 built with Go 1.27; an older Homebrew binary may precede
+the compatible binary in `~/go/bin` on PATH.
+
 ## Basic Flow
 
 ```bash
