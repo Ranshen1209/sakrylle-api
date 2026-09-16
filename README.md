@@ -20,7 +20,7 @@ This repository keeps the Go backend, Vue frontend, deployment assets, and local
 
 ## Requirements
 
-- Go `1.26.x`
+- Go `1.27.x`
 - Node.js with `pnpm`
 - Docker / Docker Compose for containerized local runs
 - PostgreSQL and Redis when running the backend outside Compose
