@@ -20,6 +20,11 @@ Codex quota/connection-pool fixes, and Responses tool/text compatibility fixes.
 Use golangci-lint 2.13 built with Go 1.27; an older Homebrew binary may precede
 the compatible binary in `~/go/bin` on PATH.
 
+The release security gate found reachable gRPC advisories `GO-2026-6443` and
+`GO-2026-6348` in the inherited `v1.82.1` dependency. Upgrade gRPC to `v1.83.2`
+with its required OpenTelemetry/genproto dependencies before deployment; do not
+waive the scan. This dependency repair adds no configuration or frontend surface.
+
 ## Basic Flow
 
 ```bash
