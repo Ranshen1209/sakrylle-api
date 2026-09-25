@@ -1,5 +1,29 @@
 # Upstream Sync
 
+## 2026-09-26: v0.2.8
+
+Merge `upstream/main` at `a3eb7ef30` with `--no-ff` on
+`theme/monet-purple`. The merge adds GPT-6 Sol/Luna, Claude Opus 5.5, and
+Grok 4.7 catalog pricing, per-effort reasoning multipliers, OpenCode Go usage
+windows, and the upstream fixes through VERSION `0.2.8`. Keep Sakrylle's
+versioned channel price cards alongside recurring schedules, account-scoped
+image-model admission, DeepSeek file affinity, `￥` display, and configured-only
+`/v1/models` discovery. The upstream model-discovery test must provide explicit
+account mappings; an allowlist by itself does not publish a default model.
+
+Migration `239_channel_reasoning_effort_multipliers.sql` copies the old Max
+multiplier into the new `reasoning_effort_multipliers.max` map entry. Merge the
+new map field through admin and user DTOs, transactional pricing persistence,
+the channel editor, and Model Plaza without dropping Sakrylle `time_versions`.
+Regenerate committed `wire_gen.go`; retain OIDC key rotation and OAuth cleanup
+alongside new Claude CLI version and OpenCode Go workers.
+
+The 2026-09-26 production audit found no account mappings for GPT-6 Sol/Luna,
+Claude Opus 5.5, or Grok 4.7. Keep their new catalog baseline prices in the
+image, but do not add channel price rows until an account can route them. Channel
+9's `codex-auto-review` row and local catalog price remain unchanged. See
+`channels-and-billing.md` for the rate card and live topology.
+
 ## 2026-09-16: v0.2.5
 
 Merge `upstream/main` at `881f32026`, including the VERSION synchronization to
