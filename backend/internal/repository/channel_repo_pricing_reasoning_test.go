@@ -83,6 +83,7 @@ func TestChannelReasoningEffortMultipliersRoundTrip(t *testing.T) {
 				mock.ExpectQuery(`(?s)SELECT .*reasoning_effort_multipliers.*FROM channel_model_pricing.*channel_id = \$1`).
 					WithArgs(int64(7)).WillReturnRows(reasoningPricingRow(stored.value))
 				expectEmptyModelPricingIntervals(mock)
+				expectEmptyModelPricingTimeVersions(mock)
 				loaded, err := repo.ListModelPricing(ctx, 7)
 				require.NoError(t, err)
 				require.Len(t, loaded, 1)
@@ -102,6 +103,7 @@ func TestChannelReasoningEffortMultipliersBatchLoad(t *testing.T) {
 	mock.ExpectQuery(`(?s)SELECT .*reasoning_effort_multipliers.*FROM channel_model_pricing.*channel_id = ANY`).
 		WithArgs(pq.Array([]int64{7})).WillReturnRows(reasoningPricingRow(`{"medium":1.25,"high":2}`))
 	expectEmptyModelPricingIntervals(mock)
+	expectEmptyModelPricingTimeVersions(mock)
 	pricing, err := repo.batchLoadModelPricing(context.Background(), []int64{7})
 	require.NoError(t, err)
 	require.Len(t, pricing[7], 1)
