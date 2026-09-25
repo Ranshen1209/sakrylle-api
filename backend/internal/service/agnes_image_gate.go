@@ -52,6 +52,9 @@ func validateOpenAIImagesModelForAccount(model string, account *Account) error {
 	if isOpenAIImageGenerationModel(model) {
 		return nil
 	}
+	if account != nil && account.Type == AccountTypeAPIKey && isGeminiCompatibleImageModel(model) {
+		return nil
+	}
 	if account != nil && account.IsDeclaredImageModel(model) {
 		return nil
 	}

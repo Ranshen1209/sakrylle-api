@@ -2,7 +2,9 @@
 
 ## Topology
 
-6 channels serve 11 groups. All accounts are `apikey` type. All channels have `restrict_models=true` since 2026-06-01, so only `channel_model_pricing.models` pass; otherwise requests return 503.
+As audited on 2026-09-26, 6 active channels serve 10 groups. All linked
+accounts are `apikey` type. All active channels have `restrict_models=true`, so
+only `channel_model_pricing.models` pass; otherwise requests return 503.
 
 Toggle:
 
@@ -14,12 +16,33 @@ Then restart `sub2api`.
 
 | Channel | billing_model_source | Groups | Key notes |
 | --- | --- | --- | --- |
-| 7 Claude | `channel_mapped` | 2 Kiro (0.4x), 7 Code (0.6x), 8 Special (0.25x) | Empty `model_mapping`. |
-| 12 Claude Max | `channel_mapped` | 16 Claude-Max (2.0x, `claude_code_only`), 17 Claude-Max-C (2.2x) | `claude-fable-5` only; accounts 120/121 `GreenMountain-Claude-Max[-C]`; empty `model_mapping`; fable-5 is adaptive-thinking only. |
-| 8 Deepseek | `channel_mapped` | 6 Deepseek (0.7x), 9 Official (1.0x) | Both groups use `platform='deepseek'`; account protocol may be OpenAI, Responses, or native Anthropic. |
-| 9 OpenAI GPT | `channel_mapped` | 3 Pro (0.4x), 4 Plus (0.25x), 10 Plus-Special (0.2x) | `codex-auto-review -> gpt-5.4` alias. |
-| 10 GPT-Image-2-4K | `requested` | 11 GPT-Image-2-4K (1.0x) | `gpt-image-2-4k -> gpt-image-2-vip`, `￥0.18/call`. |
-| 11 GPT-Image-2 | `channel_mapped` | 5 GPT-Image (1.0x) | `$0.10/call`, needs `allow_image_generation=true`. |
+| 9 OpenAI GPT | `channel_mapped` | 3 GPT-Pro-Special (0.28x), 14 GPT-Pro (0.30x), 35 GPT-Plus (0.18x), 37 GPT-Team (0.12x) | `codex-auto-review -> gpt-5.6-sol`; no GPT-6 Sol/Luna account mapping yet. |
+| 11 GPT-Image-2 | `channel_mapped` | 5 GPT-Image (1.0x) | Image-dedicated group; needs `allow_image_generation=true`. |
+| 12 Claude Max | `channel_mapped` | 16 Claude-Max (1.30x), 17 Claude-Max-C (1.50x) | No Claude Opus 5.5 account mapping yet. |
+| 14 Grok Reverse | `channel_mapped` | 22 Grok-API (0.10x) | No Grok 4.7 account mapping yet. |
+| 18 Google Gemini | `channel_mapped` | 38 Google-Gemini (0.40x) | OpenAI-compatible group. |
+| 19 Grok Build | `channel_mapped` | 41 Grok-Build (0.40x) | OpenAI-compatible group. |
+
+The DeepSeek and GPT-Image-2-4K sections below record earlier deployments and
+their billing behavior; those channels are not active in the current stack.
+
+### v0.2.8 new model baselines
+
+The bundled catalog adds the following per-million-token prices in the existing
+numeric unit. The UI shows `￥` without converting stored values. Cache write
+is shown where the catalog defines it; long-context and service-tier rules are
+also in the catalog.
+
+| Model | Input | Output | Cache read | Cache write |
+| --- | ---: | ---: | ---: | ---: |
+| `gpt-6-sol` | 2 | 10 | 0.20 | 2.50 |
+| `gpt-6-luna` | 0.10 | 0.50 | 0.01 | 0.125 |
+| `claude-opus-5-5` | 4 | 20 | 0.20 | 5 |
+| `grok-4.7` | 2 | 6 | 0.50 | — |
+
+No production account currently maps these four models. Add channel rows only
+after confirming upstream support and account mappings, then keep the row at
+the upstream baseline and apply margin with `groups.rate_multiplier`.
 
 ## Pricing Semantics
 
@@ -87,18 +110,22 @@ Account-level `model_mapping` lives in `accounts.credentials.model_mapping` (jso
 
 ## codex-auto-review Two-Gate Rule
 
-`codex-auto-review` was remapped mini -> `gpt-5.4` on 2026-06-01, roughly 3.3x cost. Channel 9 needs three pieces:
+As audited on 2026-09-26, channel 9 maps `codex-auto-review` to
+`gpt-5.6-sol`. Its channel row is the active billing baseline: input
+`5e-6`, output `30e-6`, and cache read `0.5e-6` per token. The bundled
+`codex-auto-review` fallback remains at its Sakrylle rate for requests without
+an explicit channel row. Channel 9 needs three pieces:
 
-1. Pricing visibility: `codex-auto-review` in the `gpt-5.4` pricing row's `models` array.
-2. Channel mapping: `channels.model_mapping = {"openai":{"codex-auto-review":"gpt-5.4"}}`.
-3. Account mapping: accounts 111/112 must include `"codex-auto-review":"gpt-5.4"`.
+1. Pricing visibility: `codex-auto-review` in the `gpt-5.6-sol` pricing row's `models` array.
+2. Channel mapping: `channels.model_mapping.openai.codex-auto-review = "gpt-5.6-sol"`.
+3. Account mapping: each eligible account must include the `codex-auto-review` key; current linked accounts map it to itself.
 
-Account selection runs before channel mapping. If an account has non-empty mapping but misses the key, it is filtered out and returns 503. GPT-Plus-Special group 10 is the canary because only account 111 is available there.
+Account selection runs before channel mapping. If an account has non-empty mapping but misses the key, it is filtered out and returns 503.
 
 Failure modes:
 
 - Drop account mapping key from 111 -> immediate 503.
-- Drop channel mapping -> coderelay 400.
+- Drop channel mapping -> upstream may reject the unmapped alias.
 - Drop pricing alias -> `/v1/models` hides it.
 
 `gpt-5.3-codex` was removed on 2026-06-01 after OpenAI retired it.

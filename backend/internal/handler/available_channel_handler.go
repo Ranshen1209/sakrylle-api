@@ -68,20 +68,20 @@ type userAvailableGroup struct {
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
 type userSupportedModelPricing struct {
-	BillingMode                  string                     `json:"billing_mode"`
-	InputPrice                   *float64                   `json:"input_price"`
-	OutputPrice                  *float64                   `json:"output_price"`
-	CacheWritePrice              *float64                   `json:"cache_write_price"`
-	CacheWrite1hPrice            *float64                   `json:"cache_write_1h_price"`
-	CacheReadPrice               *float64                   `json:"cache_read_price"`
-	MaxReasoningEffortMultiplier *float64                   `json:"max_reasoning_effort_multiplier,omitempty"`
-	ImageInputPrice              *float64                   `json:"image_input_price"`
-	ImageOutputPrice             *float64                   `json:"image_output_price"`
-	PerRequestPrice              *float64                   `json:"per_request_price"`
-	ImageInputRatio              *float64                   `json:"image_input_ratio"`
-	Intervals                    []userPricingIntervalDTO   `json:"intervals"`
-	TimeVersions                 []userPricingTimeVersion   `json:"time_versions"`
-	TimeResolution               *userPricingTimeResolution `json:"time_resolution"`
+	BillingMode                string                     `json:"billing_mode"`
+	InputPrice                 *float64                   `json:"input_price"`
+	OutputPrice                *float64                   `json:"output_price"`
+	CacheWritePrice            *float64                   `json:"cache_write_price"`
+	CacheWrite1hPrice          *float64                   `json:"cache_write_1h_price"`
+	CacheReadPrice             *float64                   `json:"cache_read_price"`
+	ReasoningEffortMultipliers map[string]float64         `json:"reasoning_effort_multipliers,omitempty"`
+	ImageInputPrice            *float64                   `json:"image_input_price"`
+	ImageOutputPrice           *float64                   `json:"image_output_price"`
+	PerRequestPrice            *float64                   `json:"per_request_price"`
+	ImageInputRatio            *float64                   `json:"image_input_ratio"`
+	Intervals                  []userPricingIntervalDTO   `json:"intervals"`
+	TimeVersions               []userPricingTimeVersion   `json:"time_versions"`
+	TimeResolution             *userPricingTimeResolution `json:"time_resolution"`
 }
 
 type userPricingTimeVersion struct {
@@ -397,19 +397,19 @@ func toUserPricingForModelAt(p *service.ChannelModelPricing, model string, image
 		}
 	}
 	return &userSupportedModelPricing{
-		BillingMode:                  billingMode,
-		InputPrice:                   p.InputPrice,
-		OutputPrice:                  p.OutputPrice,
-		CacheWritePrice:              p.CacheWritePrice,
-		CacheWrite1hPrice:            p.CacheWrite1hPrice,
-		CacheReadPrice:               p.CacheReadPrice,
-		MaxReasoningEffortMultiplier: p.MaxReasoningEffortMultiplier,
-		ImageInputPrice:              p.ImageInputPrice,
-		ImageOutputPrice:             p.ImageOutputPrice,
-		PerRequestPrice:              p.PerRequestPrice,
-		ImageInputRatio:              imageInputRatio,
-		Intervals:                    intervals,
-		TimeVersions:                 timeVersions,
-		TimeResolution:               timeResolution,
+		BillingMode:                billingMode,
+		InputPrice:                 p.InputPrice,
+		OutputPrice:                p.OutputPrice,
+		CacheWritePrice:            p.CacheWritePrice,
+		CacheWrite1hPrice:          p.CacheWrite1hPrice,
+		CacheReadPrice:             p.CacheReadPrice,
+		ReasoningEffortMultipliers: p.ReasoningEffortMultipliers,
+		ImageInputPrice:            p.ImageInputPrice,
+		ImageOutputPrice:           p.ImageOutputPrice,
+		PerRequestPrice:            p.PerRequestPrice,
+		ImageInputRatio:            imageInputRatio,
+		Intervals:                  intervals,
+		TimeVersions:               timeVersions,
+		TimeResolution:             timeResolution,
 	}
 }

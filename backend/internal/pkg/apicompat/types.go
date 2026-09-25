@@ -66,6 +66,7 @@ type AnthropicContentBlock struct {
 	// Signature carries provider encrypted reasoning (e.g. xAI encrypted_content)
 	// so multi-turn Claude clients can round-trip it back on subsequent turns.
 	Signature string `json:"signature,omitempty"`
+	Data      string `json:"data,omitempty"` // redacted_thinking
 
 	// type=image
 	Source *AnthropicImageSource `json:"source,omitempty"`
@@ -235,6 +236,7 @@ type AnthropicDelta struct {
 
 // ResponsesRequest is the request body for POST /v1/responses.
 type ResponsesRequest struct {
+	PromptCacheOptions json.RawMessage     `json:"prompt_cache_options,omitempty"`
 	Model              string              `json:"model"`
 	Instructions       string              `json:"instructions,omitempty"`
 	Input              json.RawMessage     `json:"input"` // string or []ResponsesInputItem
@@ -338,11 +340,12 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
-	Text     string `json:"text,omitempty"`
-	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
-	Detail   string `json:"detail,omitempty"`
-	FileID   string `json:"file_id,omitempty"`
+	PromptCacheBreakpoint json.RawMessage `json:"prompt_cache_breakpoint,omitempty"`
+	Type                  string          `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
+	Text                  string          `json:"text,omitempty"`
+	ImageURL              string          `json:"image_url,omitempty"` // data URI for input_image
+	Detail                string          `json:"detail,omitempty"`
+	FileID                string          `json:"file_id,omitempty"`
 	// FileData/Filename are emitted only for type=input_file. DeepSeek image
 	// bridges keep them local and normalize image data to image_url.
 	FileData string `json:"-"`
@@ -351,15 +354,16 @@ type ResponsesContentPart struct {
 
 func (p ResponsesContentPart) MarshalJSON() ([]byte, error) {
 	wire := struct {
-		Type     string `json:"type"`
-		Text     string `json:"text,omitempty"`
-		ImageURL string `json:"image_url,omitempty"`
-		Detail   string `json:"detail,omitempty"`
-		Filename string `json:"filename,omitempty"`
-		FileData string `json:"file_data,omitempty"`
-		FileID   string `json:"file_id,omitempty"`
+		PromptCacheBreakpoint json.RawMessage `json:"prompt_cache_breakpoint,omitempty"`
+		Type                  string          `json:"type"`
+		Text                  string          `json:"text,omitempty"`
+		ImageURL              string          `json:"image_url,omitempty"`
+		Detail                string          `json:"detail,omitempty"`
+		Filename              string          `json:"filename,omitempty"`
+		FileData              string          `json:"file_data,omitempty"`
+		FileID                string          `json:"file_id,omitempty"`
 	}{
-		Type: p.Type, Text: p.Text, ImageURL: p.ImageURL, Detail: p.Detail, FileID: p.FileID,
+		PromptCacheBreakpoint: p.PromptCacheBreakpoint, Type: p.Type, Text: p.Text, ImageURL: p.ImageURL, Detail: p.Detail, FileID: p.FileID,
 	}
 	if p.Type == "input_file" {
 		wire.Filename = p.Filename
@@ -372,24 +376,26 @@ func (p ResponsesContentPart) MarshalJSON() ([]byte, error) {
 // and the OpenAI Chat-compatible form (image_url as {url, detail}).
 func (p *ResponsesContentPart) UnmarshalJSON(data []byte) error {
 	var wire struct {
-		Type     string          `json:"type"`
-		Text     string          `json:"text,omitempty"`
-		ImageURL json.RawMessage `json:"image_url"`
-		Detail   string          `json:"detail,omitempty"`
-		FileID   string          `json:"file_id,omitempty"`
-		FileData string          `json:"file_data,omitempty"`
-		Filename string          `json:"filename,omitempty"`
+		PromptCacheBreakpoint json.RawMessage `json:"prompt_cache_breakpoint,omitempty"`
+		Type                  string          `json:"type"`
+		Text                  string          `json:"text,omitempty"`
+		ImageURL              json.RawMessage `json:"image_url"`
+		Detail                string          `json:"detail,omitempty"`
+		FileID                string          `json:"file_id,omitempty"`
+		FileData              string          `json:"file_data,omitempty"`
+		Filename              string          `json:"filename,omitempty"`
 	}
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return err
 	}
 	*p = ResponsesContentPart{
-		Type:     wire.Type,
-		Text:     wire.Text,
-		Detail:   wire.Detail,
-		FileID:   wire.FileID,
-		FileData: wire.FileData,
-		Filename: wire.Filename,
+		PromptCacheBreakpoint: wire.PromptCacheBreakpoint,
+		Type:                  wire.Type,
+		Text:                  wire.Text,
+		Detail:                wire.Detail,
+		FileID:                wire.FileID,
+		FileData:              wire.FileData,
+		Filename:              wire.Filename,
 	}
 	imageURL := bytes.TrimSpace(wire.ImageURL)
 	if len(imageURL) == 0 || bytes.Equal(imageURL, []byte("null")) {
@@ -820,6 +826,7 @@ type ResponsesStreamEvent struct {
 
 // ChatCompletionsRequest is the request body for POST /v1/chat/completions.
 type ChatCompletionsRequest struct {
+	PromptCacheOptions  json.RawMessage    `json:"prompt_cache_options,omitempty"`
 	Model               string             `json:"model"`
 	Messages            []ChatMessage      `json:"messages"`
 	Instructions        string             `json:"instructions,omitempty"` // OpenAI Responses API compat
@@ -863,37 +870,40 @@ type ChatMessage struct {
 
 // ChatContentPart is a typed content part in a multi-modal message.
 type ChatContentPart struct {
-	Type     string        `json:"type"` // "text" | "image_url" | "file"
-	Text     string        `json:"text,omitempty"`
-	ImageURL *ChatImageURL `json:"image_url,omitempty"`
-	File     *ChatFile     `json:"file,omitempty"`
-	FileID   string        `json:"file_id,omitempty"`
-	FileData string        `json:"file_data,omitempty"`
-	Filename string        `json:"filename,omitempty"`
+	PromptCacheBreakpoint json.RawMessage `json:"prompt_cache_breakpoint,omitempty"`
+	Type                  string          `json:"type"` // "text" | "image_url" | "file"
+	Text                  string          `json:"text,omitempty"`
+	ImageURL              *ChatImageURL   `json:"image_url,omitempty"`
+	File                  *ChatFile       `json:"file,omitempty"`
+	FileID                string          `json:"file_id,omitempty"`
+	FileData              string          `json:"file_data,omitempty"`
+	Filename              string          `json:"filename,omitempty"`
 }
 
 // UnmarshalJSON accepts the regular Chat image_url object and the occasional
 // string/nested-file forms emitted by OpenAI-compatible clients.
 func (p *ChatContentPart) UnmarshalJSON(data []byte) error {
 	var wire struct {
-		Type     string          `json:"type"`
-		Text     string          `json:"text,omitempty"`
-		ImageURL json.RawMessage `json:"image_url"`
-		File     json.RawMessage `json:"file"`
-		FileID   string          `json:"file_id,omitempty"`
-		FileData string          `json:"file_data,omitempty"`
-		Filename string          `json:"filename,omitempty"`
-		Detail   string          `json:"detail,omitempty"`
+		PromptCacheBreakpoint json.RawMessage `json:"prompt_cache_breakpoint,omitempty"`
+		Type                  string          `json:"type"`
+		Text                  string          `json:"text,omitempty"`
+		ImageURL              json.RawMessage `json:"image_url"`
+		File                  json.RawMessage `json:"file"`
+		FileID                string          `json:"file_id,omitempty"`
+		FileData              string          `json:"file_data,omitempty"`
+		Filename              string          `json:"filename,omitempty"`
+		Detail                string          `json:"detail,omitempty"`
 	}
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return err
 	}
 	*p = ChatContentPart{
-		Type:     wire.Type,
-		Text:     wire.Text,
-		FileID:   wire.FileID,
-		FileData: wire.FileData,
-		Filename: wire.Filename,
+		PromptCacheBreakpoint: wire.PromptCacheBreakpoint,
+		Type:                  wire.Type,
+		Text:                  wire.Text,
+		FileID:                wire.FileID,
+		FileData:              wire.FileData,
+		Filename:              wire.Filename,
 	}
 
 	imageURL := bytes.TrimSpace(wire.ImageURL)
