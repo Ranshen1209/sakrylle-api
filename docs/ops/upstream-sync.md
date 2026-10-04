@@ -1,5 +1,27 @@
 # Upstream Sync
 
+## 2026-10-05: v0.2.13
+
+Merge `upstream/main` at `b8dece900` with `--no-ff` on
+`theme/monet-purple`. Preserve configured-only `/v1/models`, OAuth/OIDC and
+Agiso route registration, DeepSeek Files, time-version pricing, and ￥ display.
+Regenerate Ent and Wire; OIDC key rotation, CN balance checking, and plugin
+cleanup remain consumers. Adopt Axios 1.20.0 and upstream billing settlement,
+GPT-6.1 Sol, Sonnet 5.5, and TypeSafe improvements with their frontend surfaces.
+
+Adapt new model-discovery tests to explicit account mappings rather than
+upstream default supplementation. In account-cost fallback, resolve pricing
+with the original `PricingAt` before overriding the long-context gate; resolving
+at settlement time otherwise applies the wrong DeepSeek peak/off-peak card.
+The existing historical-cost regression covers both models and both windows.
+
+Production model discovery confirms GPT-6.1 Sol on all five GPT accounts and
+Sonnet 5.5 on CodeRelay Claude account 1166. The rollout updates channel 9 and
+12 through the admin API after the production backup. Luna compatibility names
+and codex-auto-review route and bill as GPT-6.1 Sol; see the current channel
+policy in `channels-and-billing.md`. Do not overwrite the bundled native Luna
+prices globally, because the alias policy is specific to this channel.
+
 ## 2026-09-26: v0.2.8
 
 Merge `upstream/main` at `a3eb7ef30` with `--no-ff` on

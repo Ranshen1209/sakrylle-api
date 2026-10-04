@@ -670,7 +670,8 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "passthrough wins over ordinary account mapping",
+			// Passthrough does not add defaults; the ordinary account mapping remains visible.
+			name: "passthrough preserves ordinary account mapping without defaults",
 			accounts: []Account{
 				{
 					ID:          2,
@@ -684,7 +685,7 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 					Extra:       map[string]any{"openai_passthrough": true},
 				},
 			},
-			want: nil,
+			want: []string{"configured-model"},
 		},
 		{
 			name: "ordinary accounts preserve mapped whitelist",
@@ -708,7 +709,9 @@ func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
 				modelsListCacheTTL: time.Minute,
 			}
 
-			require.Equal(t, tt.want, svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI))
+			got := svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI)
+			require.Equal(t, tt.want, got)
+			require.NotContains(t, got, "stale-model", "passthrough mapping must never reach the public list")
 		})
 	}
 }

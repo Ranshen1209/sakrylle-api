@@ -62,6 +62,8 @@
         :image-rate-independent="group.image_rate_independent"
         :image-rate-multiplier="group.image_rate_multiplier"
         :time-pricing-mode="timePricingMode"
+        :video-rate-independent="group.video_rate_independent"
+        :video-rate-multiplier="group.video_rate_multiplier"
         :peak-window="peakWindow"
         :peak-rate-multiplier="group.peak_rate_multiplier"
       />
