@@ -38,6 +38,43 @@ policy; do not claim the relay has explicitly published those missing fields.
 The rollout does not automatically publish every discovered model ID when
 there is no verified price card or established channel policy for it.
 
+### Other channel reconciliation in this rollout
+
+All six active channels were audited against their actually linked provider.
+Channel 18 Gemini standard prices match Shuai's public card and remain unchanged.
+Channel 11 uses Shuai's per-image card: GPT-Image-2 and 2.5 cost 0.05;
+2.5 Flare costs 0.04; 2.5 Sunburst costs 0.06. Split the former shared 0.15
+row, retaining image billing rather than adding token charges.
+
+Channel 12 splits Fable 5.1 into its own row with cache-read 0.25/MTok, while
+Fable 5 stays at 1. Fill 1-hour cache-write rates at 2x input for Claude cards.
+CodeRelay quotes Sonnet 5 at input/output/cache-read/write 3/15/0.3/3.75 per
+MTok, unlike Shuai and the bundled 2/10/0.2/2.5 baseline. Keep the customer
+baseline and record CodeRelay's difference in account-stat rules for account
+1166 (1-hour write 6). Existing group margin multipliers are unchanged.
+
+Channels 19 and 14 use Grok 4.5 cache-read 0.3 (long context 0.6) and retain
+4.6/4.7 cache-read 0.5 (long context 1); all three use input/output 2/6 and
+4/12 respectively. Grok long context starts at 200000 (inclusive). The self-
+hosted channel 14 adds Composer 2.5 Fast at the existing bundled Build policy
+1/2/0.2 per MTok, doubling at 200000, and admits image lite/edit at the
+existing self-hosted 0.2-per-image policy. This is an operator-owned self-
+hosted tariff, not a newly published external rate card. Actual routes were
+verified from Grok2API's model registry; Web Chat and video are left unlisted
+where no verified tariff or established channel card exists.
+
+Channel 9 also receives explicit 272001+ tiers for GPT-5.5 and GPT-5.6
+Sol/Terra from the relay billing expressions. Expressions take precedence over
+legacy display ratios (some public `model_ratio` fields are placeholders).
+
+Deployment: reviewed main `b35bfde8d1783e70f1d989c69bfd5e16c05e0d29`,
+image `sha256:3e4f9ef72552b205fe3c97b88cda5df29f0253b953eef7d72a70111b9ce7cb7b`.
+Previous image `sha256:b71a6226b0d31231806fa89a77d2b94bf32b0e39a6aba17a7c2ede6033b0ee4e`.
+Pre-change database/Compose backups are in
+`/opt/stack/backups/sub2api-release-2026-10-04-181949/` (node UTC timestamp).
+CI, image build, and security checks succeeded before deployment; container
+health and both public API/platform HTTP checks passed afterward.
+
 ## Topology
 
 As audited on 2026-09-26, 6 active channels serve 10 groups. All linked
