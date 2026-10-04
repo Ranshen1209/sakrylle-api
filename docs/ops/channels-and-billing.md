@@ -1,5 +1,43 @@
 # Channels And Billing
 
+## 2026-10-05 model rollout
+
+The v0.2.13 rollout adds `gpt-6.1-sol` and
+`gpt-6.1-sol-openai-compact` to channel 9, backed by GPT accounts
+1153, 1159, 1170, 1172, and 1182. Both `gpt-5.6-luna` and `gpt-6-luna`,
+plus `codex-auto-review`, are compatibility aliases for `gpt-6.1-sol`.
+Channel and account mappings must both admit them, and their only price row
+is the GPT-6.1 Sol row. Channel 9 retains `channel_mapped` billing.
+This supersedes the historical codex-auto-review route to GPT-5.6 Sol below.
+
+Per MTok baseline (display ￥ without numeric conversion):
+
+| Model | Input | Output | Cache read | Cache write |
+| --- | ---: | ---: | ---: | ---: |
+| GPT-6 Astra, standard | 10 | 50 | 1 | 12.5 |
+| GPT-6 Astra, long context | 20 | 75 | 2 | 25 |
+| GPT-6 Sol, standard | 2 | 10 | 0.2 | 2.5 |
+| GPT-6 Sol, long context | 4 | 15 | 0.4 | 5 |
+| GPT-6.1 Sol and compatibility aliases, standard | 2 | 10 | 0.1 | 2.5 |
+| GPT-6.1 Sol and compatibility aliases, long context | 4 | 15 | 0.2 | 5 |
+| Claude Sonnet 5.5 | 2 | 10 | 0.2 | 2.5 |
+
+Long context starts strictly **above** 272,000 input tokens; persisted interval
+minimum is 272001. All five GPT accounts explicitly enable long-context billing.
+Sonnet 5.5 has a 1-hour cache-write price of 4 and is admitted on account 1166
+and channel 12. Group multipliers remain the margin layer.
+
+The public relay cards were audited at
+`https://api.shuaiapi.com/api/pricing` and
+`https://cdn.coderelay.cn/api/pricing`.
+Both explicitly declare Astra cache-write and long-context expressions; Shuai
+also declares the full GPT-6 Sol expression. CodeRelay Sol and both relays'
+GPT-6.1 Sol cards currently expose only standard input/output/cache-read ratios.
+For the missing fields, retain the bundled model baseline and long-context
+policy; do not claim the relay has explicitly published those missing fields.
+The rollout does not automatically publish every discovered model ID when
+there is no verified price card or established channel policy for it.
+
 ## Topology
 
 As audited on 2026-09-26, 6 active channels serve 10 groups. All linked

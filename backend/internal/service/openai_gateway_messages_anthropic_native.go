@@ -222,6 +222,7 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 		// remove the required token and turn a valid file reference into a 400.
 		ensureAnthropicBetaToken(req.Header, deepSeekFilesAPIBetaToken)
 	}
+	filterSonnet55ToolsetBetaHeader(req.Header, body, gjson.GetBytes(body, "model").String())
 	payloads := append([][]byte{body}, sessionBodies...)
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, payloads...)
 
