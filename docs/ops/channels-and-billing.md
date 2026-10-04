@@ -75,6 +75,16 @@ Pre-change database/Compose backups are in
 CI, image build, and security checks succeeded before deployment; container
 health and both public API/platform HTTP checks passed afterward.
 
+Postdeployment smoke tests confirmed Luna and codex-auto-review resolve to
+GPT-6.1 Sol and complete successfully through CodeRelay (1159/1172); Sonnet
+5.5 also completes on 1166. Shuai GPT accounts 1153, 1170, and 1182 return
+upstream HTTP 403 `insufficient_user_quota` from the same depleted provider
+balance. GPT-Pro and GPT-Plus retain their working CodeRelay alternatives;
+GPT-Pro-Special has only account 1182 and needs provider funding to recover.
+This is an upstream account-balance outage, not a model-mapping failure. Do not
+change prices, reset errors, or route special traffic into another group's
+account pool to disguise the outage. The release announcement discloses it.
+
 ## Topology
 
 As audited on 2026-09-26, 6 active channels serve 10 groups. All linked
