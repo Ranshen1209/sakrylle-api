@@ -12,6 +12,7 @@ Do not load every referenced document by default. Open the smallest relevant fil
 | Sakrylle fork behavior, visual theme, model-list fallback, currency display, custom configuration frontend coverage | `docs/ops/customizations.md` |
 | SMTP, OAuth/OIDC, clients, scopes, Sakrylle Web SSO, notification email templates | `docs/ops/identity-email.md` |
 | groups, channels, pricing, peak/off-peak schedules, billing source, model mappings, Codex 403, Deepseek, GPT-Plus-Special | `docs/ops/channels-and-billing.md` |
+| supplier monitoring, model/price change detection, automated pricing, supplier account recovery | `docs/ops/supplier-management.md` |
 | group 21, channel 13, `gpt-image-2-async`, 12ai async image billing, account Media Bridge credentials | `docs/ops/async-image-bridge.md` |
 | admin password rotation, Cloudflare DNS, DNS-01 certificates, `sub.sakrylle.com` China-access history | `docs/ops/admin-dns.md` |
 | upstream sync, merges, Wire regeneration, recurring merge conflicts, pricing drift, test stubs | `docs/ops/upstream-sync.md` |
@@ -39,6 +40,7 @@ Quick commands (full list in `docs/development.md`): `make build`, `make test-ba
 - The release flow is: validate and commit the integration work on `theme/monet-purple`, merge that branch into `main`, commit the merge on `main`, and push `main` to trigger the production image workflow. Deploy only after CI succeeds and the published image digest is recorded; back up the production database and Compose file before changing the deployment.
 - Before public 443 stream, firewall, or `sshd` changes, establish and keep open a direct `admin@154.44.8.202:22` fallback session; never rely only on SSH-over-443.
 - Do not reintroduce default model-list fallback in `/v1/models`.
+- Public announcements and customer-facing notices must not disclose suppliers, token procurement, or supplier quota/balance exhaustion. State only verified customer impact, availability, and workarounds; keep internal causes in admin/ops records and never invent an alternative cause.
 - Currency is display-only `￥`; do not convert stored numeric values.
 - Treat `channel_model_pricing` as upstream baseline pricing; apply margin with `groups.rate_multiplier`.
 - Resolve channel peak/off-peak versions in the backend using the request start time. Do not duplicate the decision in the frontend or model an upstream schedule with group `peak_rate_*` fields.
