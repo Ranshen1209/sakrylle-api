@@ -81,9 +81,14 @@ GPT-6.1 Sol and complete successfully through CodeRelay (1159/1172); Sonnet
 upstream HTTP 403 `insufficient_user_quota` from the same depleted provider
 balance. GPT-Pro and GPT-Plus retain their working CodeRelay alternatives;
 GPT-Pro-Special has only account 1182 and needs provider funding to recover.
-This is an upstream account-balance outage, not a model-mapping failure. Do not
-change prices, reset errors, or route special traffic into another group's
-account pool to disguise the outage. The release announcement discloses it.
+This was an upstream account-balance outage, not a model-mapping failure. Do not
+change prices or route special traffic into another group's account pool to
+disguise an outage. These diagnostic details are internal only. Public notices
+must describe verified service availability and alternatives without disclosing
+suppliers, procurement, or supplier balances. Announcement 11 was re-read on
+2026-10-05 and already contained only the model release and alias billing text;
+that current copy was preserved. See [supplier-management.md](supplier-management.md)
+for the subsequent supplier account policy and monitoring proposal.
 
 ## Topology
 
