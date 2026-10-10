@@ -1,5 +1,38 @@
 # Upstream Sync
 
+## 2026-10-10: v0.2.15
+
+Merge `upstream/main` at `3a6fd1c9d` with `--no-ff` on
+`theme/monet-purple`. The 154 upstream commits add the provider/platform
+catalog, Command Code and Cline with their frontend account surfaces, payment
+callback hardening, per-turn WebSocket group pricing, and Responses web-search
+history declarations. Adopt Go 1.27.2, x/net 0.60.0, and golangci-lint 2.14.0
+together across the Docker builders and CI.
+
+Resolve the seven conflicted files while retaining the Sakrylle README,
+configured-only `/v1/models`, account-backed Antigravity catalog behavior,
+DeepSeek vision/file conversion, and existing platform icons. Composite exact
+routes may publish explicitly configured aliases; prefix routes and group
+allowlists do not manufacture default models. Adapt the upstream fallback test
+to this contract. Keep the developer role and emit its Responses message type.
+The fork's custom Responses content serializers must carry the new `refusal`
+field on both decode and encode; the upstream refusal test now also checks the
+round trip through these serializers.
+Derive the fork's OpenAI-compatible messages dispatch gate from the platform
+catalog so the new Command Code and Cline groups inherit the same admission
+behavior as other OpenAI-compatible groups.
+
+Regenerate Ent after the schema validators change. Migration 242 drops the
+two database platform CHECK constraints in favor of application catalog
+validation. Wire providers are unchanged; OIDC key rotation, CN balance
+checking, and plugin cleanup remain consumed by the committed generated graph.
+Keep the bundled codex-auto-review fallback, DeepSeek peak/off-peak policy,
+request-start pricing timestamps, OAuth/OIDC routes, and ￥ display unchanged.
+
+Production model discovery and channel reconciliation are recorded in
+`channels-and-billing.md`. Do not replace account-specific supplier cost cards
+with a different supplier's newly reduced customer baseline.
+
 ## 2026-10-05: v0.2.13
 
 Merge `upstream/main` at `b8dece900` with `--no-ff` on

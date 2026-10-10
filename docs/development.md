@@ -9,7 +9,7 @@ This document replaces the old root `DEV_GUIDE.md`, which contained outdated for
 | Upstream | `Wei-Shaw/sub2api` |
 | Production branch | `main` |
 | Integration branch | `theme/monet-purple` |
-| Backend | Go `1.27.0`, Gin, Ent |
+| Backend | Go `1.27.2`, Gin, Ent |
 | Frontend | Vue 3, Vite, pnpm |
 | Runtime services | PostgreSQL 18, Redis 8 |
 | CI image alias | `ghcr.io/ranshen1209/sakrylle-api:purple` |
@@ -17,6 +17,7 @@ This document replaces the old root `DEV_GUIDE.md`, which contained outdated for
 ## Local Requirements
 
 - Go `1.27.x`
+- golangci-lint `2.14.0` or later, built with Go `1.27.2` or later
 - pnpm 9
 - Node.js `>=22.13` (CI currently uses `22.14.0`)
 - Docker / Docker Compose for local service orchestration

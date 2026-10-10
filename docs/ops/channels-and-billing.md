@@ -1,5 +1,65 @@
 # Channels And Billing
 
+## 2026-10-10 model and price reconciliation
+
+Two live account-catalog reads confirmed the current provider model IDs. Model
+metadata remains incomplete on the text accounts; discovery alone does not
+prove successful inference or complete capability metadata. Add only supported
+text models with a verified card to the existing shared channels.
+
+- Channel 12 adds `claude-haiku-5-5`, the plain `claude-haiku-4-5` name,
+  `claude-opus-4-5` and its dated snapshot, and the dated Sonnet 4.5 snapshot.
+  Accounts 1156 and 1166 both admit Haiku 5.5 and Opus 4.5; account 1156 also
+  admits the supported dated snapshots, Opus 5.5, and Sonnet 5.5.
+- Channel 18/account 1178 adds `gemini-3-flash`, Gemini 3.1 Pro high/low,
+  Gemini 3.6 Flash high/medium/low/tiered, and Gemini 3.7/3.8 Flash tiered.
+  The suffixes are provider presets or channel names, not separate official
+  Google model identities.
+- Keep the shared GPT channel's existing compatibility alias policy. Native
+  `gpt-5.6` is currently cataloged only on account 1159, and Spark only on
+  1182; do not advertise them throughout a shared channel whose other groups
+  lack a supported route. Grok Chat Fast, video, and Gemini image generation
+  are not published without an established compatible channel tariff.
+
+Current verified baseline prices per MTok, before existing group multipliers:
+
+| Model/card | Input | Output | Cache read | Cache write 5m | Cache write 1h |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Haiku 5.5, at most 100000 input tokens | 0.1 | 0.5 | 0.01 | 0.125 | 0.2 |
+| Haiku 5.5, from 100001 | 0.5 | 2.5 | 0.05 | 0.625 | 1 |
+| GPT-5.6 Sol, standard, Shuai baseline | 4 | 20 | 0.4 | 5 | — |
+| GPT-5.6 Sol, from 272001, Shuai baseline | 8 | 30 | 0.8 | 10 | — |
+| Gemini 3 Flash | 0.5 | 3 | 0.05 | — | — |
+| Gemini 3.6 Flash and listed presets | 0.75 | 3.75 | 0.075 | — | — |
+| Gemini 3.1 Pro / preview / high / low, standard | 2 | 12 | 0.2 | — | — |
+| Gemini 3.1 Pro / preview / high / low, from 200001 | 4 | 18 | 0.4 | — | — |
+
+The Gemini 3.6 card is a 50% reduction from the previous stored input/output/
+cache-read card. Gemini 3.7/3.8 standard prices, image request prices, Astra,
+Sol 6/6.1, and existing Claude cards remain unchanged. Keep the older
+`gemini-3-pro-preview` entry separate from the newly explicit 3.1 Pro tier.
+Channel 19's external Grok card now starts long-context pricing at **200001**,
+because the current published expression includes 200000 in the standard tier.
+Channel 14 retains its operator-owned inclusive-200000 self-hosted tariff.
+
+Sources are the current public pricing cards at
+`https://api.shuaiapi.com/api/pricing` and
+`https://cdn.coderelay.cn/api/pricing`, cross-checked against the authenticated
+catalog of each actual account. Expressions take precedence over legacy ratios.
+CodeRelay's GPT-5.6 Sol expression remains 5/30/0.5/6.25 standard and
+10/45/1/12.5 long-context: save that difference in account-stat rules for
+1159/1172, separately from channel 9's reduced Shuai baseline. Preserve the
+existing CodeRelay Sonnet 5 cost rule on channel 12. CodeRelay's Haiku card
+publishes only standard input/output/cache-read; the complete channel card,
+including writes and the long tier, comes from Shuai's explicit expression.
+Missing provider fields are not newly asserted zero-price fields.
+
+All writes use the existing admin APIs after the verified database/Compose
+backup at `/opt/stack/backups/sub2api-release-2026-10-10-121015/`. Preserve
+account credentials outside model mapping, pool/cooldown policy, group bindings,
+image permissions, channel mappings, schedules, and all group margin
+multipliers. These changes affect subsequent requests only.
+
 ## 2026-10-05 model rollout
 
 The v0.2.13 rollout adds `gpt-6.1-sol` and
