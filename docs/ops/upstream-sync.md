@@ -33,6 +33,45 @@ Production model discovery and channel reconciliation are recorded in
 `channels-and-billing.md`. Do not replace account-specific supplier cost cards
 with a different supplier's newly reduced customer baseline.
 
+### Production deployment
+
+Released main commit `a964c4405f5a740f9c72968fb9fe9d8500a4bf53`, containing
+integration merge `033deeafb`. All three workflows succeeded:
+[CI](https://github.com/Ranshen1209/sakrylle-api/actions/runs/38052361934),
+[security scan](https://github.com/Ranshen1209/sakrylle-api/actions/runs/38052361930),
+and [image build](https://github.com/Ranshen1209/sakrylle-api/actions/runs/38052361915).
+The production image is pinned to:
+
+```text
+ghcr.io/ranshen1209/sakrylle-api@sha256:6c7620eab45c6245872811723780dca3ecfc43365dfacbc5c22e0fe3072e4181
+```
+
+Keep the previous image available for rollback:
+
+```text
+ghcr.io/ranshen1209/sakrylle-api@sha256:3e4f9ef72552b205fe3c97b88cda5df29f0253b953eef7d72a70111b9ce7cb7b
+```
+
+The initial database/Compose backup, before model and price writes, is
+`/opt/stack/backups/sub2api-release-2026-10-10-121015/`. A second verified custom
+database dump and Compose backup, including the updated price cards, is at
+`/opt/stack/backups/release-20261010-a964c4405-124110/`; its `rollback.sh`
+restores the previous Compose image without reverting current billing data.
+Both dump manifests were verified with `pg_restore --list`. Do not restore a
+database snapshot as part of a routine image rollback: that also rewinds live
+usage, balances, and later configuration changes.
+
+Production was recreated at 12:47 UTC on 2026-10-10. The application reports
+v0.2.15 and migration 242 is applied. This migration only removes two platform
+CHECK constraints and requires no data rewrite for the previous binary.
+The application, PostgreSQL, Redis, and relay-pulse are healthy; API health,
+platform health, and the platform homepage return HTTP 200. Startup logs show
+no fatal or panic entries. Local full/unit/integration tests, lint, backend and
+frontend production builds, and security checks passed before the release.
+Post-deployment inference and pricing results are in `channels-and-billing.md`.
+The deployment record is a documentation-only follow-up; the running image
+remains tied to the successful main build above.
+
 ## 2026-10-05: v0.2.13
 
 Merge `upstream/main` at `b8dece900` with `--no-ff` on
