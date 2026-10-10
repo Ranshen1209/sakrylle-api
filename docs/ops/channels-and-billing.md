@@ -9,8 +9,13 @@ text models with a verified card to the existing shared channels.
 
 - Channel 12 adds `claude-haiku-5-5`, the plain `claude-haiku-4-5` name,
   `claude-opus-4-5` and its dated snapshot, and the dated Sonnet 4.5 snapshot.
-  Accounts 1156 and 1166 both admit Haiku 5.5 and Opus 4.5; account 1156 also
-  admits the supported dated snapshots, Opus 5.5, and Sonnet 5.5.
+  Account 1156 admits Haiku 5.5 and Opus 4.5, the supported dated snapshots,
+  Opus 5.5, and Sonnet 5.5. Account 1166's catalog lists Haiku 5.5 and the plain
+  Opus 4.5 name, but live probes returned 404 twice for Haiku and 504 for Opus.
+  Only those two newly added mappings were removed from 1166; its existing
+  dated Opus 4.5 route and all other mappings remain. Channel discovery continues to
+  expose the new names through 1156. Do not substitute a different model or
+  clear account errors to hide failed probes.
 - Channel 18/account 1178 adds `gemini-3-flash`, Gemini 3.1 Pro high/low,
   Gemini 3.6 Flash high/medium/low/tiered, and Gemini 3.7/3.8 Flash tiered.
   The suffixes are provider presets or channel names, not separate official
@@ -59,6 +64,21 @@ backup at `/opt/stack/backups/sub2api-release-2026-10-10-121015/`. Preserve
 account credentials outside model mapping, pool/cooldown policy, group bindings,
 image permissions, channel mappings, schedules, and all group margin
 multipliers. These changes affect subsequent requests only.
+
+After deploying v0.2.15, real admin inference probes succeeded for Haiku 5.5
+on 1156, Gemini 3.6 Flash low on 1178, and GPT-6.1 Sol on 1159. Other newly
+listed presets are catalog-confirmed, not individually inference-tested. The
+final audit confirms all 11 accounts remain active and schedulable, every group
+configuration is unchanged, and the relevant groups keep context-tier billing
+enabled. Billing selects tiers using input plus cache-creation plus cache-read
+tokens; an explicit interval prevents an additional official long-context
+multiplier. The final price read audits 29 rows: 26 match current published
+fields, and three legacy cards (`gpt-5.4`, `gemini-3-pro-preview`, and
+`gemini-3.5-flash`) retain their previous prices because no current source card
+exists. It checks the last standard token and first long-context token at all
+11 context boundaries, plus the separate CodeRelay Sol cost rule.
+The one-use local administrator credential and private working directory were
+deleted after verification.
 
 ## 2026-10-05 model rollout
 
